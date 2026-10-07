@@ -22,7 +22,8 @@ from app.models.port_forward import PortForwardRule
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.services.audit_service import tracked_rollback
 from app.services import opnsense_client
-from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import push_to_host
+from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
 
 def _now() -> datetime:
@@ -65,48 +66,23 @@ async def _deploy_to_host(db: AsyncSession, rule: PortForwardRule, host: Opnsens
 
     prior_uuid = existing.opnsense_port_forward_uuid if existing else None
     prior_live_payload = existing.last_payload if existing else None
-    new_uuid = prior_uuid
-    try:
-        if prior_uuid:
-            await opnsense_client.set_port_forward_rule(host, prior_uuid, payload)
-        else:
-            result = await opnsense_client.add_port_forward_rule(host, payload)
-            new_uuid = result.get("uuid") if isinstance(result, dict) else None
-            if not new_uuid:
-                raise OpnsenseAPIError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
-        await opnsense_client.apply_port_forward(host)
-    except OpnsenseAPIError as exc:
-        if existing:
-            existing.status = "error"
-            existing.opnsense_port_forward_uuid = new_uuid
-            existing.message = str(exc)
-            existing.revert_deadline = None
-            existing.deployed_at = _now()
-            return existing
-        deployment = PortForwardDeployment(
-            port_forward_id=rule.id, host_id=host.id, status="error", message=str(exc),
-            opnsense_port_forward_uuid=new_uuid, deployed_at=_now(),
-        )
-        db.add(deployment)
-        return deployment
 
-    deadline = _now() + timedelta(seconds=settings.deploy_confirm_window_seconds)
-    if existing:
-        existing.status = "pending"
-        existing.message = None
-        existing.opnsense_port_forward_uuid = new_uuid
-        existing.deployed_at = _now()
-        existing.revert_deadline = deadline
-        existing.previous_payload = prior_live_payload
-        existing.last_payload = payload
-        return existing
+    async def write(uuid_):
+        if uuid_:
+            await opnsense_client.set_port_forward_rule(host, uuid_, payload)
+            return uuid_
+        result = await opnsense_client.add_port_forward_rule(host, payload)
+        new_uuid = result.get("uuid") if isinstance(result, dict) else None
+        if not new_uuid:
+            raise OpnsenseAmbiguousError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
+        return new_uuid
 
-    deployment = PortForwardDeployment(
-        port_forward_id=rule.id, host_id=host.id, status="pending", message=None,
-        opnsense_port_forward_uuid=new_uuid, deployed_at=_now(), revert_deadline=deadline,
-        previous_payload=None, last_payload=payload,
+    deployment = await push_to_host(
+        db, existing=existing, uuid_attr="opnsense_port_forward_uuid",
+        make=lambda **fields: PortForwardDeployment(port_forward_id=rule.id, host_id=host.id, **fields),
+        prior_uuid=prior_uuid, prior_live_payload=prior_live_payload, payload=payload,
+        write=write, apply=lambda: opnsense_client.apply_port_forward(host),
     )
-    db.add(deployment)
     return deployment
 
 
@@ -124,7 +100,7 @@ async def deploy_port_forward(db: AsyncSession, rule: PortForwardRule, hosts: li
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = f"Port Forward wurde übernommen, Hierarchie-Reihenfolge aber nicht bestätigt: {exc}"
-            deployment.revert_deadline = None
+            # The change is live: keep the revert deadline so an unconfirmed result is still undone.
     await db.commit()
     return deployments
 
@@ -150,7 +126,7 @@ async def sweep_expired_port_forward_deployments(db: AsyncSession) -> list[PortF
     await policy_lock(db)
     result = await db.execute(
         select(PortForwardDeployment).where(
-            PortForwardDeployment.status == "pending", PortForwardDeployment.revert_deadline <= _now()
+            PortForwardDeployment.status.in_(("pending", "error")), PortForwardDeployment.revert_deadline <= _now()
         )
     )
     expired = list(result.scalars().all())

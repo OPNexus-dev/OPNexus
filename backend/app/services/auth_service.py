@@ -20,6 +20,7 @@ Design notes
   not reveal whether the account exists.
 """
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -33,6 +34,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser, Session
 
 logger = logging.getLogger(__name__)
@@ -60,6 +62,36 @@ def verify_password(stored_hash: str, password: str) -> bool:
         return False
 
 
+# Argon2 is deliberately expensive (CPU and ~64 MiB each). Run on the default
+# executor so the single event loop (health checks, deploy/rollback sweeps)
+# keeps running, and cap how many run — and how many may queue — at once so a
+# flood of login attempts cannot exhaust CPU/memory or the thread pool.
+_HASH_CONCURRENCY = 4
+_HASH_MAX_WAITING = 32
+_hash_slots = asyncio.Semaphore(_HASH_CONCURRENCY)
+_hash_waiting = 0
+
+
+async def _bounded(function, *args):
+    global _hash_waiting
+    if _hash_waiting >= _HASH_MAX_WAITING:
+        raise api_error(503, ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, wait=5)
+    _hash_waiting += 1
+    try:
+        async with _hash_slots:
+            return await asyncio.to_thread(function, *args)
+    finally:
+        _hash_waiting -= 1
+
+
+async def hash_password_async(password: str) -> str:
+    return await _bounded(hash_password, password)
+
+
+async def verify_password_async(stored_hash: str, password: str) -> bool:
+    return await _bounded(verify_password, stored_hash, password)
+
+
 def needs_rehash(stored_hash: str) -> bool:
     try:
         return _ph.check_needs_rehash(stored_hash)
@@ -76,21 +108,32 @@ class _AttemptRecord:
 
 
 class _LoginThrottle:
-    """Failed-login limiter with two independent buckets per window:
+    """Failed-attempt limiter with two independent buckets per window:
 
     * ``ip::username`` — targeted guessing against the one account
     * ``ip`` — spraying across many usernames from one source
 
     A login is blocked while *either* bucket is locked out.
+
+    All state is bounded: records whose window and lockout have both passed
+    are dropped, and a hard cap evicts the least recently active entries, so
+    a stream of made-up usernames/sources cannot grow memory without limit.
     """
+
+    MAX_RECORDS = 20_000
+    MAX_COUNTERS = 5_000
+    COUNTER_TTL_SECONDS = 24 * 3600
+    _PURGE_EVERY_SECONDS = 30.0
 
     def __init__(self) -> None:
         self._records: dict[str, _AttemptRecord] = {}
         # Total failures per username since their last successful login —
         # informational only (shown to the user after login), separate from
-        # the rolling lockout windows above. In-memory/per-process like the
-        # rest of this throttle, so it resets on a backend restart.
-        self._failures_since_success: dict[str, int] = {}
+        # the rolling lockout windows above: username -> (count, last_failure).
+        # In-memory/per-process like the rest of this throttle, so it resets
+        # on a backend restart.
+        self._failures_since_success: dict[str, tuple[int, float]] = {}
+        self._last_purge = 0.0
 
     @staticmethod
     def _user_key(ip: str, username: str) -> str:
@@ -107,6 +150,32 @@ class _LoginThrottle:
         remaining = rec.locked_until - time.monotonic()
         return int(remaining) + 1 if remaining > 0 else 0
 
+    @staticmethod
+    def _last_activity(rec: _AttemptRecord) -> float:
+        return max([rec.locked_until, *rec.failures]) if rec.failures or rec.locked_until else 0.0
+
+    def _purge(self, now: float, *, force: bool = False) -> None:
+        if not force and now - self._last_purge < self._PURGE_EVERY_SECONDS and len(self._records) < self.MAX_RECORDS:
+            return
+        self._last_purge = now
+        window = settings.login_window_seconds
+        for key in [
+            k for k, r in self._records.items()
+            if r.locked_until <= now and all(now - t >= window for t in r.failures)
+        ]:
+            del self._records[key]
+        if len(self._records) > self.MAX_RECORDS:
+            # Still over the cap with live entries: drop the stalest unlocked ones first.
+            stale = sorted(self._records, key=lambda k: (self._records[k].locked_until > now, self._last_activity(self._records[k])))
+            for key in stale[: len(self._records) - self.MAX_RECORDS]:
+                del self._records[key]
+        for name in [n for n, (_, ts) in self._failures_since_success.items() if now - ts > self.COUNTER_TTL_SECONDS]:
+            del self._failures_since_success[name]
+        if len(self._failures_since_success) > self.MAX_COUNTERS:
+            oldest = sorted(self._failures_since_success, key=lambda n: self._failures_since_success[n][1])
+            for name in oldest[: len(self._failures_since_success) - self.MAX_COUNTERS]:
+                del self._failures_since_success[name]
+
     def _record_key(self, key: str, max_attempts: int) -> None:
         now = time.monotonic()
         rec = self._records.setdefault(key, _AttemptRecord())
@@ -119,16 +188,19 @@ class _LoginThrottle:
 
     def retry_after(self, ip: str, username: str) -> int:
         """Seconds the caller must wait, or 0 if not currently locked out."""
+        self._purge(time.monotonic())
         return max(
             self._retry_after_key(self._user_key(ip, username)),
             self._retry_after_key(self._ip_key(ip)),
         )
 
     def record_failure(self, ip: str, username: str) -> None:
+        self._purge(time.monotonic())
         self._record_key(self._user_key(ip, username), settings.login_max_attempts)
         self._record_key(self._ip_key(ip), settings.login_ip_max_attempts)
         key = username.lower()
-        self._failures_since_success[key] = self._failures_since_success.get(key, 0) + 1
+        count, _ = self._failures_since_success.get(key, (0, 0.0))
+        self._failures_since_success[key] = (count + 1, time.monotonic())
 
     def reset(self, ip: str, username: str) -> None:
         self._records.pop(self._user_key(ip, username), None)
@@ -136,10 +208,15 @@ class _LoginThrottle:
     def pop_failures_since_success(self, username: str) -> int:
         """Read and clear the failure count for a username, called on a
         successful login so the count reflects only attempts since then."""
-        return self._failures_since_success.pop(username.lower(), 0)
+        return self._failures_since_success.pop(username.lower(), (0, 0.0))[0]
 
 
 throttle = _LoginThrottle()
+# Separate budget for the self-service security endpoints (2FA setup/enable/
+# disable, password change): keyed by (user id, action) instead of (ip,
+# username), so repeating the request from a stolen session cannot be used to
+# guess the password or a second-factor code without limit.
+account_throttle = _LoginThrottle()
 
 
 # ── Sessions ───────────────────────────────────────────────────────────
@@ -158,12 +235,27 @@ async def create_session(
     *,
     user_agent: str | None = None,
     ip_address: str | None = None,
+    verified_hash: str | None = None,
 ) -> tuple[str, datetime]:
-    """Create a session, returning the raw token (to be set as a cookie) and its expiry."""
+    """Create a session, returning the raw token (to be set as a cookie) and its expiry.
+
+    ``verified_hash`` is the password hash the caller just authenticated
+    against. The user row is re-read under a row lock first: a password
+    change/reset that committed while the (slow) password check was running
+    changed the hash, and the login must not outlive that revocation.
+    """
+    user_id = user.id
+    if verified_hash is not None:
+        locked = await db.scalar(
+            select(AdminUser.password_hash).where(AdminUser.id == user_id).with_for_update()
+        )
+        if locked != verified_hash:
+            await db.rollback()
+            raise api_error(401, ErrorCode.UNGUELTIGER_BENUTZERNAME_ODER_PASSWORT)
     token = secrets.token_urlsafe(SESSION_TOKEN_BYTES)
     expires_at = _now() + timedelta(seconds=settings.session_lifetime)
     session = Session(
-        user_id=user.id,
+        user_id=user_id,
         token_hash=_hash_token(token),
         expires_at=expires_at,
         last_used_at=_now(),
@@ -171,7 +263,7 @@ async def create_session(
         ip_address=ip_address,
     )
     db.add(session)
-    await db.execute(delete(Session).where(Session.user_id == user.id, Session.expires_at < _now()))
+    await db.execute(delete(Session).where(Session.user_id == user_id, Session.expires_at < _now()))
     await db.commit()
     return token, expires_at
 
@@ -193,6 +285,18 @@ async def revoke_session(db: AsyncSession, token: str) -> None:
     await db.commit()
 
 
+async def revoke_sessions(db: AsyncSession, user_id, *, keep_token: str | None = None, commit: bool = True) -> None:
+    """Delete every session of an account (optionally sparing the caller's own).
+    With ``commit=False`` the deletion joins the caller's transaction, so a
+    credential change and the revocation succeed or fail together."""
+    query = delete(Session).where(Session.user_id == user_id)
+    if keep_token:
+        query = query.where(Session.token_hash != _hash_token(keep_token))
+    await db.execute(query)
+    if commit:
+        await db.commit()
+
+
 # ── Authentication ────────────────────────────────────────────────────
 
 async def authenticate(
@@ -211,14 +315,14 @@ async def authenticate(
     user = result.scalar_one_or_none()
 
     if user is None:
-        verify_password(_DUMMY_HASH, password)
+        await verify_password_async(_DUMMY_HASH, password)
         return None
 
-    if not verify_password(user.password_hash, password):
+    if not await verify_password_async(user.password_hash, password):
         return None
 
     if needs_rehash(user.password_hash):
-        user.password_hash = hash_password(password)
+        user.password_hash = await hash_password_async(password)
     if finalize:
         await finalize_login(db, user, ip)
     else:

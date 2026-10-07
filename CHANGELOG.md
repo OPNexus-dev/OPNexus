@@ -31,6 +31,62 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.11.0] "Merlin" — 2026-10-07
+
+Sicherheitsüberprüfung vom 2026-10-07, umgesetzte Korrekturen.
+**Verhaltensänderungen**, die beim Update auffallen können:
+
+- **Backup-Rohdownload nur für Admins**. Nur-Lese-Konten sehen weiter die
+  Liste der Snapshots, bekommen die `config.xml` (enthält Passwort-Hashes, VPN-Schlüssel)
+  aber nicht mehr; jeder Versuch steht im Audit-Verlauf (neuer Status „abgelehnt“).
+- **Passwortwechsel/-reset beendet alle Sitzungen** des Kontos; ebenso
+  2FA-Reset durch einen Admin. 2FA aktivieren/deaktivieren beendet die *anderen* Sitzungen.
+- **SMTP über SSL/STARTTLS prüft Zertifikat und Hostname**. Mailserver mit
+  privater CA: `SMTP_CA_FILE` setzen. SMTP-Anmeldung ohne Verschlüsselung ist gesperrt
+  (`ALLOW_INSECURE_SMTP_AUTH=true` hebt das bewusst auf).
+- **Firewalls nur noch per `https://`** — beim Anlegen und bei jeder Anfrage;
+  ein vorhandener `http://`-Host zeigt „offline“, statt Zugangsdaten im Klartext zu senden
+  (`ALLOW_INSECURE_FIREWALL_URLS=true` nur für Labor-Setups).
+- **VPN-Push (IPsec/OpenVPN/WireGuard) verlangt das Vorschau-Token** und das
+  Token ändert sich, sobald nur das Geheimnis (PSK/Schlüssel) rotiert wurde. Die Vorschau
+  zeigt „unverändert“ jetzt korrekt, statt jeden Tunnel dauerhaft als geändert.
+- **Host löschen** ist auch bei VPN-, Zertifikats- und ACME-Objekten auf der Firewall
+  gesperrt, bis diese entfernt sind; Schlüsseldateien nie bereitgestellter
+  Entwürfe werden mit entfernt.
+- Benachrichtigungs-Geheimnisse liegen jetzt im Volume `notification_secrets`
+ . Ohne lesbares Signatur-/SMTP-Geheimnis wird **nichts** mehr gesendet
+  (vorher: unsigniert/ohne Login). Wer Geheimnisse gesetzt hat, muss sie nach dem
+  Update einmal neu eingeben, falls der Container zwischenzeitlich ersetzt wurde.
+
+Weitere Korrekturen:
+
+- **Deployments hinterlassen vor dem ersten Firewall-Aufruf eine dauerhafte Spur**
+  (gemeinsamer Ablauf `deploy_flow.py` für Regeln, Aliase, Port-Forwards, 1:1-NAT,
+  Outbound-NAT und Hierarchie-Regeln): Bei Absturz, verlorener Antwort oder Timeout bleibt
+  die Rollback-Frist erhalten und der Sweeper macht die Änderung rückgängig. Wo die Firewall
+  eine neue Regel möglicherweise angelegt hat, ohne dass eine UUID bekannt ist, steht der
+  Eintrag auf „Rollback fehlgeschlagen“ mit dem Hinweis „Ausgang unklar“ (blockiert
+  erneutes Deployen, löst die Benachrichtigung aus); „Rollback wiederholen“ entfernt ihn.
+  Von der Firewall beantwortete Ablehnungen und Verbindungsfehler bleiben einfache Fehler.
+- TOTP- und Recovery-Codes sind auch bei gleichzeitigen Anfragen genau einmal
+  verwendbar (Zeilensperre).
+- Login-Sperre: begrenzter Speicher, Argon2 läuft außerhalb des Event-Loops mit
+  Parallelitätsgrenze, 2FA-Einrichtung/-Aktivierung/-Deaktivierung und Passwortwechsel
+  haben ein Versuchslimit; offene 2FA-Einrichtung läuft nach 15 Minuten ab; Proxy
+  begrenzt API-Anfragen auf 2 MB.
+- Fehlermeldungen der Firewall werden vor Speicherung/Anzeige von Geheimnissen
+  bereinigt und gekürzt; Validierungsfehler (422) geben Eingaben nicht mehr
+  zurück; Webhook-URLs (oft mit Token) sieht ein Nur-Lese-Konto nur noch als
+  Host.
+- Audit: MFA/Passwort, VPN, Zertifikate/ACME, Benachrichtigungen und Backup-Exporte
+  werden aufgezeichnet, ebenso abgelehnte Schreibversuche von Nur-Lese-Konten.
+- Same-Origin-Prüfung berücksichtigt das Schema bei `COOKIE_SECURE=true`;
+  Warnung beim Start, wenn `FRONTEND_ORIGIN` https ist, das Cookie aber nicht `Secure`
+ . Geheimnisdateien werden atomar mit Modus 0600 angelegt.
+- Frontend-Abhängigkeiten (`sharp`, `source-map-js`, `brace-expansion`) aktualisiert.
+  Offen: `braces`/`postcss-selector-parser` nur in Build-Werkzeugen (Tailwind 3 /
+  ESLint), nicht im Laufzeit-Image; für `braces` gibt es keine gepatchte Version.
+
 ## [1.10.1] "Lanner" — 2026-10-06
 
 PATCH-Release (Bugfixes, Dokumentation, Lizenz/Repo-Umstellung) nach dem ersten Live-Test

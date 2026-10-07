@@ -217,6 +217,23 @@ Windows/macOS: Zertifikat als vertrauenswürdige Stammzertifizierungsstelle
 installieren). Bis dahin zeigt der Browser eine Warnung, die Verbindung ist
 trotzdem verschlüsselt.
 
+**Root-CA vor dem Import prüfen.** Die Verschlüsselung allein beweist nicht,
+dass die zuerst heruntergeladene Datei echt ist — wer auf dem Weg dazwischen
+sitzt, könnte eine eigene CA unterschieben. Vergleiche vor dem Import den
+Fingerabdruck, den du auf dem OPNexus-Server selbst ermittelst, mit dem der
+heruntergeladenen Datei:
+
+```
+# auf dem Server
+docker compose exec -T proxy cat /data/caddy/pki/authorities/local/root.crt \
+  | openssl x509 -noout -fingerprint -sha256
+# auf dem Client, für die heruntergeladene Datei
+openssl x509 -in opnexus-root-ca.crt -noout -fingerprint -sha256
+```
+
+Nur bei identischem SHA-256-Fingerabdruck importieren (oder die CA stattdessen
+über eure Unternehmens-/MDM-Verteilung ausrollen).
+
 **Weitere Adressen (IP *und* Name).** In `.env`:
 
 ```
@@ -266,8 +283,12 @@ für den letzten Admin gibt es auf dem Server:
   `Permissions-Policy`, COOP/CORP; `Server`/`X-Powered-By` entfernt. API-Antworten
   sind `Cache-Control: no-store`.
 - Login-Sperre nutzt über den Proxy die echte Client-IP (`TRUST_PROXY_HEADERS`).
-- Abhängigkeiten: `npm audit` und `pip-audit` melden keine bekannten Lücken
-  (PostCSS per `overrides` auf eine gepatchte Version gehoben).
+- Abhängigkeiten: `pip-audit` meldet keine bekannten Lücken. `npm audit` meldet
+  (Stand 2026-10-07) noch Funde nur in Build-Werkzeugen (`braces`,
+  `postcss-selector-parser` über Tailwind 3/ESLint; für `braces` existiert keine
+  gepatchte Version), die nicht im Laufzeit-Image liegen. Der Stand ändert sich
+  täglich — vor einem Release neu prüfen (`npm audit`, `pip-audit`).
+- Sicherheitsüberprüfung 2026-10-07: umgesetzte Korrekturen siehe Changelog (1.11.0).
 
 **Bekannte Grenzen.** Kein IP-Allowlisting, keine Passkeys/WebAuthn; die
 Session-Lebensdauer beträgt weiter 30 Tage. Das Zertifikat der Firewall wird

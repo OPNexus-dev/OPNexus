@@ -37,7 +37,8 @@ from app.models.policy_hierarchy_rule import PolicyHierarchyRule
 from app.models.policy_hierarchy_rule_deployment import PolicyHierarchyRuleDeployment
 from app.services.audit_service import tracked_rollback
 from app.services import opnsense_client
-from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import push_to_host
+from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 from app.services.policy_hierarchy_service import ancestor_chain, descendants, ordered_hierarchy_rules
 
 
@@ -219,62 +220,36 @@ async def _deploy_to_host(db: AsyncSession, rule: PolicyHierarchyRule, host: Opn
 
     prior_uuid = existing.opnsense_policy_hierarchy_uuid if existing else None
     prior_live_payload = existing.last_payload if existing else None
-    new_uuid = prior_uuid
-    try:
-        if prior_uuid:
-            await opnsense_client.set_rule(host, prior_uuid, payload)
-        else:
-            result = await opnsense_client.add_rule(host, payload)
-            new_uuid = result.get("uuid") if isinstance(result, dict) else None
-            if not new_uuid:
-                raise OpnsenseAPIError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
-        await opnsense_client.apply(host)
-    except OpnsenseAPIError as exc:
-        if existing:
-            existing.status = "error"
-            existing.opnsense_policy_hierarchy_uuid = new_uuid
-            existing.message = str(exc)
-            existing.revert_deadline = None
-            existing.deployed_at = _now()
-            return existing
-        deployment = PolicyHierarchyRuleDeployment(
-            policy_hierarchy_id=rule.id, host_id=host.id, status="error", message=str(exc),
-            opnsense_policy_hierarchy_uuid=new_uuid, deployed_at=_now(),
-        )
-        db.add(deployment)
-        return deployment
 
-    # Rule content is live. Persist the uuid now (flushed) so the
-    # positioning pass below sees this deployment as an anchor too.
-    if existing:
-        deployment = existing
-        deployment.opnsense_policy_hierarchy_uuid = new_uuid
-    else:
-        deployment = PolicyHierarchyRuleDeployment(
-            policy_hierarchy_id=rule.id, host_id=host.id, status="pending",
-            opnsense_policy_hierarchy_uuid=new_uuid, deployed_at=_now(),
-        )
-        db.add(deployment)
-    await db.flush()
+    async def write(uuid_):
+        if uuid_:
+            await opnsense_client.set_rule(host, uuid_, payload)
+            return uuid_
+        result = await opnsense_client.add_rule(host, payload)
+        new_uuid = result.get("uuid") if isinstance(result, dict) else None
+        if not new_uuid:
+            raise OpnsenseAmbiguousError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
+        return new_uuid
+
+    deployment = await push_to_host(
+        db, existing=existing, uuid_attr="opnsense_policy_hierarchy_uuid",
+        make=lambda **fields: PolicyHierarchyRuleDeployment(policy_hierarchy_id=rule.id, host_id=host.id, **fields),
+        prior_uuid=prior_uuid, prior_live_payload=prior_live_payload, payload=payload,
+        write=write, apply=lambda: opnsense_client.apply(host),
+    )
+
+    if deployment.status != "pending":
+        return deployment
 
     try:
         await reassert_ordering(db, host, rule.interface)
     except OpnsenseAPIError as exc:
         # Live but not provably in the right position — this must not read
-        # as a merely-unconfirmed pending change (see module docstring).
+        # as a merely-unconfirmed pending change (see module docstring), yet
+        # it stays recoverable: the deadline remains armed.
         deployment.status = "error"
         deployment.message = f"Regel wurde übernommen, Positionierung ('quick') aber nicht bestätigt: {exc}"
-        deployment.revert_deadline = None
         deployment.deployed_at = _now()
-        return deployment
-
-    deadline = _now() + timedelta(seconds=settings.deploy_confirm_window_seconds)
-    deployment.status = "pending"
-    deployment.message = None
-    deployment.deployed_at = _now()
-    deployment.revert_deadline = deadline
-    deployment.previous_payload = prior_live_payload
-    deployment.last_payload = payload
     return deployment
 
 
@@ -309,7 +284,7 @@ async def sweep_expired_hierarchy_deployments(db: AsyncSession) -> list[PolicyHi
     await policy_lock(db)
     result = await db.execute(
         select(PolicyHierarchyRuleDeployment).where(
-            PolicyHierarchyRuleDeployment.status == "pending",
+            PolicyHierarchyRuleDeployment.status.in_(("pending", "error")),
             PolicyHierarchyRuleDeployment.revert_deadline <= _now(),
         )
     )

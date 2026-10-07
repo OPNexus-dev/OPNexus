@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
+from app.services import secure_files
 
 _SUFFIX = ".psk"
 
@@ -21,9 +22,7 @@ def _path(tunnel_id: uuid.UUID) -> Path:
 
 def save_secret(tunnel_id: uuid.UUID, secret: str) -> None:
     path = _path(tunnel_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(secret.strip())
-    path.chmod(0o600)
+    secure_files.write_private(path, secret.strip())
 
 
 def read_secret(tunnel_id: uuid.UUID) -> str | None:
@@ -35,3 +34,12 @@ def read_secret(tunnel_id: uuid.UUID) -> str | None:
 
 def delete_secret(tunnel_id: uuid.UUID) -> None:
     _path(tunnel_id).unlink(missing_ok=True)
+
+
+def version(tunnel_id: uuid.UUID) -> str | None:
+    """Opaque change marker (last write time) — lets an approval token notice a
+    rotated secret without containing, or being derivable from, the secret."""
+    try:
+        return str(_path(tunnel_id).stat().st_mtime_ns)
+    except FileNotFoundError:
+        return None

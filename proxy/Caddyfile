@@ -49,6 +49,11 @@ http:// {
 	}
 
 	handle /api/* {
+		# Every legitimate API body is small JSON; refuse anything bigger before
+		# it is buffered by the application.
+		request_body {
+			max_size 2MB
+		}
 		reverse_proxy backend:8000
 	}
 

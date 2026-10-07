@@ -8,7 +8,8 @@ import hashlib
 import json
 
 from app.models.policy import IpsecTunnelRevision
-from app.services.ipsec_deploy_service import build_payloads
+from app.services import ipsec_psk_store
+from app.services.ipsec_deploy_service import _redact_for_storage, build_payloads
 from app.services.policy_service import effective_hosts  # noqa: F401 - re-exported for routers/ipsec.py
 
 IPSEC_FIELDS = (
@@ -33,6 +34,9 @@ def revision(db, tunnel, note):
 
 def preview(tunnel):
     payloads = build_payloads(tunnel)
+    # What deployments persist/compare is the redacted form (secret -> hash);
+    # comparing the raw payload with it would flag an untouched secret as changed.
+    comparable = _redact_for_storage(payloads)
     deployments = {d.host_id: d for d in tunnel.deployments}
     hosts = effective_hosts(tunnel)
     rows = []
@@ -40,7 +44,7 @@ def preview(tunnel):
         dep = deployments.get(host.id)
         before = dep.last_payload if dep else None
         action = "create" if not dep or not dep.opnsense_connection_uuid else "update"
-        if before == payloads and dep and dep.status == "success":
+        if before == comparable and dep and dep.status == "success":
             action = "unchanged"
         if not host.enabled:
             action = "disabled"
@@ -48,7 +52,7 @@ def preview(tunnel):
         if action not in ("disabled",):
             for section in ("connection", "local", "remote", "child", "psk"):
                 before_section = (before or {}).get(section, {})
-                after_section = payloads[section]
+                after_section = comparable[section]
                 for key, value in after_section.items():
                     if key == "connection":
                         continue  # UUID filled in at deploy time, not a user-visible field
@@ -57,7 +61,7 @@ def preview(tunnel):
                         label = "Pre-Shared-Key" if section == "psk" and key == "Key" else f"{section}.{key}"
                         # Never surface the PSK's own value in a diff view.
                         shown_before = "•••" if section == "psk" and key == "Key" and prior else prior
-                        shown_after = "•••" if section == "psk" and key == "Key" else value
+                        shown_after = "•••" if section == "psk" and key == "Key" and value else value
                         changes.append({"field": label, "before": shown_before, "after": shown_after})
         rows.append({
             "host_id": str(host.id), "host_name": host.name, "action": action,
@@ -89,6 +93,9 @@ def preview(tunnel):
         warnings.append("Für diesen Tunnel ist noch kein Pre-Shared-Key hinterlegt.")
     state = {
         "snapshot": snapshot(tunnel), "rows": rows,
+        # Rotating only the secret changes nothing else in the snapshot — bind the
+        # approval to the stored secret's version so an old approval cannot cover it.
+        "secret_version": ipsec_psk_store.version(tunnel.id),
         "hosts": [(str(h.id), h.base_url, h.enabled, h.verify_tls) for h in hosts],
         "deployments": sorted(
             [(str(d.host_id), d.opnsense_connection_uuid, d.opnsense_local_uuid, d.opnsense_remote_uuid,
@@ -109,12 +116,12 @@ def workflow(tunnel, deployments):
     hosts = effective_hosts(tunnel)
     active = [h for h in hosts if h.enabled]
     by_host = {d.host_id: d for d in deployments}
-    payloads = build_payloads(tunnel)
+    comparable = _redact_for_storage(build_payloads(tunnel))
     target_ids = {h.id for h in hosts}
     counts = {
         "targets": len(hosts),
         "active_targets": len(active),
-        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != payloads),
+        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != comparable),
         "errors": sum(d.status == "error" for d in deployments),
         "retained": sum(d.host_id not in target_ids for d in deployments),
     }

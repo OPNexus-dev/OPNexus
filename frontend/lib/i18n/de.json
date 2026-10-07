@@ -378,6 +378,7 @@
     "HOST_HAT_NOCH_AKTIVE_POLICY_HIERARCHIE_DEPLOYMENTS_DIESE_ADD78845": "Host hat noch aktive Policy-Hierarchie-Deployments. Diese zuerst entfernen, sonst bleiben die Regeln unverfolgt auf der Firewall aktiv.",
     "HOST_HAT_NOCH_AKTIVE_REGEL_DEPLOYMENTS_DIESE_ZUERST_0BF41721": "Host hat noch aktive Regel-Deployments. Diese zuerst entfernen, sonst bleiben die Regeln unverfolgt auf der Firewall aktiv.",
     "HOST_HAT_NOCH_NAT_DEPLOYMENTS_DIESE_ZUERST_GEZIELT_0C2A9E85": "Host hat noch NAT-Deployments. Diese zuerst gezielt entfernen.",
+    "HOST_HAT_NOCH_VPN_ODER_ZERTIFIKATS_OBJEKTE_DIESE_ZUERST_ENTFERNEN": "Host hat noch VPN-, Zertifikats- oder ACME-Objekte auf der Firewall. Diese zuerst entfernen, sonst bleiben sie aktiv und unverwaltet.",
     "HOST_IST_DEAKTIVIERT": "Host ist deaktiviert",
     "HOST_MIT_DIESEM_NAMEN_EXISTIERT_BEREITS": "Host mit diesem Namen existiert bereits",
     "HOST_MUSS_ERREICHBAR_SEIN_UND_FIRMWARE_AUFTRAG_BEENDET_BCE1390B": "Host muss erreichbar sein und Firmware-Auftrag beendet sein",
@@ -1384,7 +1385,16 @@
       "port_forward": "Port Forward",
       "one_to_one": "1:1 NAT",
       "outbound_nat": "Outbound NAT",
-      "host": "Host-Wartung"
+      "host": "Host-Wartung",
+      "user": "Benutzer",
+      "auth": "Kontosicherheit",
+      "backup": "Backup-Export",
+      "ipsec_tunnel": "IPsec-Tunnel",
+      "openvpn_instance": "OpenVPN",
+      "wireguard_tunnel": "WireGuard",
+      "certificate": "Zertifikate",
+      "acme": "ACME",
+      "notification": "Benachrichtigungen"
     },
     "action": {
       "deploy": "Push",
@@ -1408,7 +1418,19 @@
       "handoff": "Übergabe",
       "preview": "Vorschau",
       "schedule": "Eingeplant",
-      "major_update": "Major-Upgrade"
+      "major_update": "Major-Upgrade",
+      "download": "Download",
+      "push": "Übertragen",
+      "register": "Registrieren",
+      "sign": "Signieren",
+      "poll": "Status abfragen",
+      "test": "Test",
+      "change-password": "Passwort ändern",
+      "2fa/setup": "2FA einrichten",
+      "2fa/enable": "2FA aktivieren",
+      "2fa/disable": "2FA deaktivieren",
+      "reset-password": "Passwort zurücksetzen",
+      "reset-2fa": "2FA zurücksetzen"
     },
     "status": {
       "requested": "Angefordert",
@@ -1424,7 +1446,8 @@
       "submitted": "An Firewall übergeben",
       "acknowledged": "Manuell abgeschlossen",
       "starting": "Übergabe begonnen",
-      "unknown": "Ausgang unklar"
+      "unknown": "Ausgang unklar",
+      "denied": "Abgelehnt (keine Berechtigung)"
     },
     "exportFailed": "Export fehlgeschlagen",
     "title": "Deploy-Audit-Historie",

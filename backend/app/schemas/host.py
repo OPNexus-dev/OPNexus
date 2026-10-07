@@ -2,7 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.firewall_url import validate_base_url
 
 
 class HostCreate(BaseModel):
@@ -16,6 +18,11 @@ class HostCreate(BaseModel):
     enabled: bool = True
     cluster_name: str | None = Field(default=None, max_length=120)
     policy_hierarchy_group_id: uuid.UUID | None = None
+
+    @field_validator("base_url")
+    @classmethod
+    def _base_url_is_safe(cls, value: str) -> str:
+        return validate_base_url(value)
 
 
 class TlsProbeRequest(BaseModel):

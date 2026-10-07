@@ -15,6 +15,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.ipsec_tunnel_deployment import IpsecTunnelDeployment
 from tests.test_ipsec import _create_host, _tunnel_payload
+from tests.helpers import deploy_approved
 
 
 def _mock_full_success(respx_mock, base_url: str):
@@ -47,7 +48,7 @@ async def test_deploy_success_persists_all_five_uuids(client, respx_mock):
 
     _mock_full_success(respx_mock, "https://fw1.test")
 
-    resp = await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -90,7 +91,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
         return_value=httpx.Response(200, json={"status": "ok"})
     )
 
-    resp = await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -137,7 +138,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
         side_effect=httpx.ConnectError("connection refused")
     )
 
-    resp = await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -162,11 +163,11 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
     tunnel_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
 
     add_route = respx_mock.post("https://fw1.test/api/ipsec/connections/addConnection")
 
-    resp = await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -181,7 +182,7 @@ async def test_undeploy_deletes_child_local_remote_connection_then_psk(client, r
     tunnel_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
 
     del_child = respx_mock.post("https://fw1.test/api/ipsec/connections/delChild/child-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})

@@ -7,7 +7,8 @@ import hashlib
 import json
 
 from app.models.policy import OpenVpnInstanceRevision
-from app.services.openvpn_deploy_service import MissingCertError, build_payloads
+from app.services import openvpn_key_store
+from app.services.openvpn_deploy_service import MissingCertError, _redact_for_storage, build_payloads
 from app.services.policy_service import effective_hosts  # noqa: F401 - re-exported for routers/openvpn.py
 
 OPENVPN_FIELDS = (
@@ -56,6 +57,8 @@ def preview(instance):
                 "changes": [],
             })
             continue
+        # Compare in the stored (secret -> hash) form, see ipsec_service.preview().
+        payloads = _redact_for_storage(payloads)
         action = "create" if not dep or not dep.opnsense_instance_uuid else "update"
         if before == payloads and dep and dep.status == "success":
             action = "unchanged"
@@ -108,6 +111,7 @@ def preview(instance):
     blocked = instance.tls_key_enabled and not instance.tls_key_material_set
     state = {
         "snapshot": snapshot(instance), "rows": rows,
+        "secret_version": openvpn_key_store.version(instance.id),
         "hosts": [(str(h.id), h.base_url, h.enabled, h.verify_tls) for h in hosts],
         "deployments": sorted(
             [(str(d.host_id), d.opnsense_statickey_uuid, d.opnsense_instance_uuid, d.last_payload,
@@ -130,7 +134,7 @@ def _host_changed(instance, by_host, host):
     except MissingCertError:
         return True
     dep = by_host.get(host.id)
-    return dep is None or dep.last_payload != payloads
+    return dep is None or dep.last_payload != _redact_for_storage(payloads)
 
 
 def workflow(instance, deployments):

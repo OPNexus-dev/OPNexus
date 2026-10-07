@@ -27,7 +27,11 @@ def _origin_allowed(origin: str, host_header: str) -> bool:
     if not parsed.scheme or not parsed.netloc:
         return False
     if parsed.netloc.lower() == host_header.lower():
-        return True
+        # Same host is not enough on an HTTPS deployment: an http:// page on that
+        # very host (plain-HTTP port, downgraded first visit) is a different
+        # origin. The backend only sees the proxy's plain-HTTP hop, so the
+        # deployment's own COOKIE_SECURE switch says which scheme is legitimate.
+        return parsed.scheme == "https" or not settings.cookie_secure
     return f"{parsed.scheme}://{parsed.netloc}".lower() in {o.lower() for o in settings.allowed_origins}
 
 

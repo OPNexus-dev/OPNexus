@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from httpx import AsyncClient
+from tests.helpers import deploy_approved
 
 
 async def _create_host(client: AsyncClient, name: str, base_url: str) -> dict:
@@ -103,7 +104,7 @@ async def test_deploy_without_targets_rejected(client):
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([]))
     tunnel_id = resp.json()["id"]
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 400
 
 
@@ -114,7 +115,7 @@ async def test_deploy_blocked_when_psk_enabled_without_material(client, respx_mo
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]], peer_psk_enabled=True))
     tunnel_id = resp.json()["id"]
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 400
 
 

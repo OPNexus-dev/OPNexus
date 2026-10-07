@@ -28,6 +28,7 @@ import uuid
 from pathlib import Path
 
 from app.config import settings
+from app.services import secure_files
 
 _PRIVATE_KEY_SUFFIX = ".wgkey"
 _PSK_SUFFIX = ".wgpsk"
@@ -39,9 +40,7 @@ def _path(tunnel_id: uuid.UUID, suffix: str) -> Path:
 
 def save_private_key(tunnel_id: uuid.UUID, secret: str) -> None:
     path = _path(tunnel_id, _PRIVATE_KEY_SUFFIX)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(secret.strip())
-    path.chmod(0o600)
+    secure_files.write_private(path, secret.strip())
 
 
 def read_private_key(tunnel_id: uuid.UUID) -> str | None:
@@ -57,9 +56,7 @@ def delete_private_key(tunnel_id: uuid.UUID) -> None:
 
 def save_psk(tunnel_id: uuid.UUID, secret: str) -> None:
     path = _path(tunnel_id, _PSK_SUFFIX)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(secret.strip())
-    path.chmod(0o600)
+    secure_files.write_private(path, secret.strip())
 
 
 def read_psk(tunnel_id: uuid.UUID) -> str | None:
@@ -71,3 +68,15 @@ def read_psk(tunnel_id: uuid.UUID) -> str | None:
 
 def delete_psk(tunnel_id: uuid.UUID) -> None:
     _path(tunnel_id, _PSK_SUFFIX).unlink(missing_ok=True)
+
+
+def version(tunnel_id: uuid.UUID) -> str:
+    """Opaque change marker for both secrets (last write times) — lets an approval
+    token notice a rotated key/PSK without containing, or being derivable from, them."""
+    marks = []
+    for suffix in (_PRIVATE_KEY_SUFFIX, _PSK_SUFFIX):
+        try:
+            marks.append(str(_path(tunnel_id, suffix).stat().st_mtime_ns))
+        except FileNotFoundError:
+            marks.append("-")
+    return ":".join(marks)

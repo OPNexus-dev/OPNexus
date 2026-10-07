@@ -14,6 +14,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.openvpn_instance_deployment import OpenVpnInstanceDeployment
 from tests.test_openvpn import _create_host, _instance_payload
+from tests.helpers import deploy_approved
 
 
 def _mock_full_success(respx_mock, base_url: str, with_statickey: bool = False):
@@ -38,7 +39,7 @@ async def test_deploy_success_persists_instance_uuid(client, respx_mock):
 
     _mock_full_success(respx_mock, "https://fw1.test")
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -63,7 +64,7 @@ async def test_deploy_with_tls_key_writes_statickey_before_instance(client, resp
 
     _mock_full_success(respx_mock, "https://fw1.test", with_statickey=True)
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -91,7 +92,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
         return_value=httpx.Response(200, json={"result": "ok"})
     )
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -121,7 +122,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
         side_effect=httpx.ConnectError("connection refused")
     )
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -156,7 +157,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
         return_value=httpx.Response(200, json={"result": "failed"})
     )
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -171,11 +172,11 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
     instance_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
 
     add_route = respx_mock.post("https://fw1.test/api/openvpn/instances/add")
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -193,7 +194,7 @@ async def test_disabling_tls_key_after_enable_deletes_statickey(client, respx_mo
     instance = resp.json()
 
     _mock_full_success(respx_mock, "https://fw1.test", with_statickey=True)
-    await client.post(f"/api/openvpn/instances/{instance['id']}/deploy")
+    await deploy_approved(client, f"/api/openvpn/instances/{instance['id']}/deploy")
 
     del_statickey = respx_mock.post("https://fw1.test/api/openvpn/instances/delStaticKey/statickey-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})
@@ -210,7 +211,7 @@ async def test_disabling_tls_key_after_enable_deletes_statickey(client, respx_mo
     resp = await client.put(f"/api/openvpn/instances/{instance['id']}", json=edit_payload)
     assert resp.status_code == 200, resp.text
 
-    resp = await client.post(f"/api/openvpn/instances/{instance['id']}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance['id']}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -247,7 +248,7 @@ async def test_multi_host_deploy_sends_each_host_its_own_cert_and_ca(client, res
         return_value=httpx.Response(200, json={"result": "ok"})
     )
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     for dep in resp.json()["deployments"]:
         assert dep["status"] == "success"
@@ -277,7 +278,7 @@ async def test_host_missing_cert_selection_fails_closed_without_any_call(client,
         return_value=httpx.Response(200, json={"result": "ok"})
     )
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -297,7 +298,7 @@ async def test_undeploy_deletes_instance_before_statickey(client, respx_mock):
     instance_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test", with_statickey=True)
-    await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
 
     del_instance = respx_mock.post("https://fw1.test/api/openvpn/instances/del/instance-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})

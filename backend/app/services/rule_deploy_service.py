@@ -28,7 +28,8 @@ from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
 from app.services.audit_service import tracked_rollback
 from app.services import opnsense_client
-from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import push_to_host
+from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
 
 def _now() -> datetime:
@@ -73,48 +74,23 @@ async def _deploy_to_host(db: AsyncSession, rule: FirewallRule, host: OpnsenseHo
 
     prior_uuid = existing.opnsense_rule_uuid if existing else None
     prior_live_payload = existing.last_payload if existing else None
-    new_uuid = prior_uuid
-    try:
-        if prior_uuid:
-            await opnsense_client.set_rule(host, prior_uuid, payload)
-        else:
-            result = await opnsense_client.add_rule(host, payload)
-            new_uuid = result.get("uuid") if isinstance(result, dict) else None
-            if not new_uuid:
-                raise OpnsenseAPIError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
-        await opnsense_client.apply(host)
-    except OpnsenseAPIError as exc:
-        if existing:
-            existing.status = "error"
-            existing.opnsense_rule_uuid = new_uuid
-            existing.message = str(exc)
-            existing.revert_deadline = None
-            existing.deployed_at = _now()
-            return existing
-        deployment = RuleDeployment(
-            rule_id=rule.id, host_id=host.id, status="error", message=str(exc),
-            opnsense_rule_uuid=new_uuid, deployed_at=_now(),
-        )
-        db.add(deployment)
-        return deployment
 
-    deadline = _now() + timedelta(seconds=settings.deploy_confirm_window_seconds)
-    if existing:
-        existing.status = "pending"
-        existing.message = None
-        existing.opnsense_rule_uuid = new_uuid
-        existing.deployed_at = _now()
-        existing.revert_deadline = deadline
-        existing.previous_payload = prior_live_payload
-        existing.last_payload = payload
-        return existing
+    async def write(uuid_):
+        if uuid_:
+            await opnsense_client.set_rule(host, uuid_, payload)
+            return uuid_
+        result = await opnsense_client.add_rule(host, payload)
+        new_uuid = result.get("uuid") if isinstance(result, dict) else None
+        if not new_uuid:
+            raise OpnsenseAmbiguousError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
+        return new_uuid
 
-    deployment = RuleDeployment(
-        rule_id=rule.id, host_id=host.id, status="pending", message=None,
-        opnsense_rule_uuid=new_uuid, deployed_at=_now(), revert_deadline=deadline,
-        previous_payload=None, last_payload=payload,
+    deployment = await push_to_host(
+        db, existing=existing, uuid_attr="opnsense_rule_uuid",
+        make=lambda **fields: RuleDeployment(rule_id=rule.id, host_id=host.id, **fields),
+        prior_uuid=prior_uuid, prior_live_payload=prior_live_payload, payload=payload,
+        write=write, apply=lambda: opnsense_client.apply(host),
     )
-    db.add(deployment)
     return deployment
 
 
@@ -132,7 +108,7 @@ async def deploy_rule(db: AsyncSession, rule: FirewallRule, hosts: list[Opnsense
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = f"Regel wurde übernommen, Hierarchie-Reihenfolge aber nicht bestätigt: {exc}"
-            deployment.revert_deadline = None
+            # The change is live: keep the revert deadline so an unconfirmed result is still undone.
     await db.commit()
     return deployments
 
@@ -159,7 +135,7 @@ async def sweep_expired_deployments(db: AsyncSession) -> list[RuleDeployment]:
     from app.services.policy_service import policy_lock
     await policy_lock(db)
     result = await db.execute(
-        select(RuleDeployment).where(RuleDeployment.status == "pending", RuleDeployment.revert_deadline <= _now())
+        select(RuleDeployment).where(RuleDeployment.status.in_(("pending", "error")), RuleDeployment.revert_deadline <= _now())
     )
     expired = list(result.scalars().all())
     touched: list[RuleDeployment] = []

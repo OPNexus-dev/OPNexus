@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from httpx import AsyncClient
+from tests.helpers import deploy_approved
 
 
 async def _create_host(client: AsyncClient, name: str, base_url: str) -> dict:
@@ -119,7 +120,7 @@ async def test_deploy_without_targets_rejected(client):
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([]))
     instance_id = resp.json()["id"]
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 400
 
 
@@ -130,7 +131,7 @@ async def test_deploy_blocked_when_tls_key_enabled_without_material(client, resp
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]], tls_key_enabled=True))
     instance_id = resp.json()["id"]
 
-    resp = await client.post(f"/api/openvpn/instances/{instance_id}/deploy")
+    resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 400
 
 

@@ -2,6 +2,7 @@ import httpx
 import pytest
 
 from httpx import AsyncClient
+from tests.helpers import deploy_approved
 
 
 async def _create_host(client: AsyncClient, name: str, base_url: str) -> dict:
@@ -84,7 +85,7 @@ async def test_deploy_without_targets_rejected(client):
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([]))
     tunnel_id = resp.json()["id"]
 
-    resp = await client.post(f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 400
 
 

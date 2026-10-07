@@ -17,6 +17,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from app.config import settings
+from app.services import secure_files
 
 STEP_SECONDS = 30
 DIGITS = 6
@@ -94,14 +95,22 @@ def _path(user_id: uuid.UUID, pending: bool) -> Path:
 
 def save_secret(user_id: uuid.UUID, secret: str, pending: bool = False) -> None:
     path = _path(user_id, pending)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(secret)
-    path.chmod(0o600)
+    secure_files.write_private(path, secret)
+
+
+# An enrolment that was started but never completed expires, so a forgotten
+# QR code (or a stolen session's half-finished attempt) does not stay valid.
+PENDING_TTL_SECONDS = 15 * 60
 
 
 def read_secret(user_id: uuid.UUID, pending: bool = False) -> str | None:
     path = _path(user_id, pending)
-    return path.read_text().strip() if path.exists() else None
+    if not path.exists():
+        return None
+    if pending and time.time() - path.stat().st_mtime > PENDING_TTL_SECONDS:
+        path.unlink(missing_ok=True)
+        return None
+    return path.read_text().strip()
 
 
 def delete_secrets(user_id: uuid.UUID) -> None:

@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     opnsense_secret_dir: str = "/data/opnsense-secrets"
     opnsense_backup_dir: str = "/data/opnsense-backups"
     opnsense_timeout: float = 10.0
+    # Firewall API credentials are sent as HTTP Basic auth. Plain http://
+    # addresses are therefore refused (on create AND on every request) unless
+    # this is switched on — only meant for isolated lab setups.
+    allow_insecure_firewall_urls: bool = False
 
     # ── Auth ──────────────────────────────────────────────────────────
     admin_username: str = "admin"
@@ -86,6 +90,13 @@ class Settings(BaseSettings):
     # calls every cycle.
     notification_poll_min_interval_seconds: int = 60
     notification_smtp_timeout_seconds: float = 10.0
+    # SMTP over SSL/STARTTLS always verifies the server certificate and host
+    # name against the container's trust store. A mail server with a private
+    # CA needs that CA's PEM file mounted and referenced here.
+    smtp_ca_file: str = ""
+    # Sending SMTP credentials over an unencrypted connection (security "none")
+    # is refused unless this is switched on explicitly.
+    allow_insecure_smtp_auth: bool = False
 
     # ── Log ingest ────────────────────────────────────────────────────
     # Floor against an admin setting an absurdly low poll interval — same

@@ -42,7 +42,7 @@ def deployment_history(session, flush_context, instances):
         PolicyHierarchyRuleDeployment: ("policy_hierarchy", PolicyHierarchyRule, "policy_hierarchy_id", "opnsense_policy_hierarchy_uuid"),
     }
     for dep in list(session.new) + list(session.dirty) + list(session.deleted):
-        if type(dep) not in mapping:
+        if type(dep) not in mapping or getattr(dep, "_skip_audit", False):
             continue
         is_new, deleted = dep in session.new, dep in session.deleted
         if not is_new and not deleted and not session.is_modified(dep, include_collections=False):

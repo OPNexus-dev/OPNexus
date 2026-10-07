@@ -11,7 +11,8 @@ from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.services.outbound_nat_mode import require_manual_mode
 from app.services.audit_service import tracked_rollback
 from app.services import opnsense_client
-from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import push_to_host
+from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
 
 def _now() -> datetime:
@@ -57,48 +58,23 @@ async def _deploy_to_host(db: AsyncSession, rule: OutboundNatRule, host: Opnsens
 
     prior_uuid = existing.opnsense_outbound_nat_uuid if existing else None
     prior_live_payload = existing.last_payload if existing else None
-    new_uuid = prior_uuid
-    try:
-        if prior_uuid:
-            await opnsense_client.set_outbound_nat_rule(host, prior_uuid, payload)
-        else:
-            result = await opnsense_client.add_outbound_nat_rule(host, payload)
-            new_uuid = result.get("uuid") if isinstance(result, dict) else None
-            if not new_uuid:
-                raise OpnsenseAPIError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
-        await opnsense_client.apply_outbound_nat(host)
-    except OpnsenseAPIError as exc:
-        if existing:
-            existing.status = "error"
-            existing.opnsense_outbound_nat_uuid = new_uuid
-            existing.message = str(exc)
-            existing.revert_deadline = None
-            existing.deployed_at = _now()
-            return existing
-        deployment = OutboundNatDeployment(
-            outbound_nat_id=rule.id, host_id=host.id, status="error", message=str(exc),
-            opnsense_outbound_nat_uuid=new_uuid, deployed_at=_now(),
-        )
-        db.add(deployment)
-        return deployment
 
-    deadline = _now() + timedelta(seconds=settings.deploy_confirm_window_seconds)
-    if existing:
-        existing.status = "pending"
-        existing.message = None
-        existing.opnsense_outbound_nat_uuid = new_uuid
-        existing.deployed_at = _now()
-        existing.revert_deadline = deadline
-        existing.previous_payload = prior_live_payload
-        existing.last_payload = payload
-        return existing
+    async def write(uuid_):
+        if uuid_:
+            await opnsense_client.set_outbound_nat_rule(host, uuid_, payload)
+            return uuid_
+        result = await opnsense_client.add_outbound_nat_rule(host, payload)
+        new_uuid = result.get("uuid") if isinstance(result, dict) else None
+        if not new_uuid:
+            raise OpnsenseAmbiguousError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
+        return new_uuid
 
-    deployment = OutboundNatDeployment(
-        outbound_nat_id=rule.id, host_id=host.id, status="pending", message=None,
-        opnsense_outbound_nat_uuid=new_uuid, deployed_at=_now(), revert_deadline=deadline,
-        previous_payload=None, last_payload=payload,
+    deployment = await push_to_host(
+        db, existing=existing, uuid_attr="opnsense_outbound_nat_uuid",
+        make=lambda **fields: OutboundNatDeployment(outbound_nat_id=rule.id, host_id=host.id, **fields),
+        prior_uuid=prior_uuid, prior_live_payload=prior_live_payload, payload=payload,
+        write=write, apply=lambda: opnsense_client.apply_outbound_nat(host),
     )
-    db.add(deployment)
     return deployment
 
 
@@ -119,7 +95,7 @@ async def deploy_outbound_nat(db: AsyncSession, rule: OutboundNatRule, hosts: li
             except OpnsenseAPIError as exc:
                 deployment.status = "error"
                 deployment.message = f"Outbound NAT wurde übernommen, Hierarchie-Reihenfolge aber nicht bestätigt: {exc}"
-                deployment.revert_deadline = None
+                # The change is live: keep the revert deadline so an unconfirmed result is still undone.
     except Exception:
         # A mode can change after fleet preflight. Preserve already applied
         # hosts and their rollback deadlines even if a later host now blocks.
@@ -150,7 +126,7 @@ async def sweep_expired_outbound_nat_deployments(db: AsyncSession) -> list[Outbo
     await policy_lock(db)
     result = await db.execute(
         select(OutboundNatDeployment).where(
-            OutboundNatDeployment.status == "pending", OutboundNatDeployment.revert_deadline <= _now()
+            OutboundNatDeployment.status.in_(("pending", "error")), OutboundNatDeployment.revert_deadline <= _now()
         )
     )
     expired = list(result.scalars().all())

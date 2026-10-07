@@ -16,10 +16,13 @@ import { useParams } from "next/navigation";
 import { Collapsible } from "@/components/ui/Collapsible";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
+import { useReadOnly } from "@/lib/useReadOnly";
 
 export default function HostDetailPage() {
   const { t, ts, errorMessage, locale } = useLanguage();
   const { id } = useParams<{ id: string }>();
+  // The raw config.xml contains secrets: its download is admin-only on the server too.
+  const readOnly = useReadOnly();
   const [host, setHost] = useState<Host | null>(null);
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [liveRules, setLiveRules] = useState<LiveRule[] | null>(null);
@@ -393,10 +396,12 @@ export default function HostDetailPage() {
                       <td className="px-5 py-3 text-slate-900">{new Date(backup.created_at).toLocaleString(locale)}</td>
                       <td className="px-5 py-3 text-slate-500">{formatSize(backup.size)}</td>
                       <td className="px-5 py-3 text-right">
-                        <Button variant="ghost" onClick={() => handleDownloadBackup(backup.id)}>
-                          <Download size={14} />
-                          {t("hostDetail.download")}
-                        </Button>
+                        {!readOnly && (
+                          <Button variant="ghost" onClick={() => handleDownloadBackup(backup.id)}>
+                            <Download size={14} />
+                            {t("hostDetail.download")}
+                          </Button>
+                        )}
                         <Button variant="ghost" onClick={() => setRestoreTarget(backup.id)}>
                           <RotateCcw size={14} />
                           {t("hostDetail.restore")}

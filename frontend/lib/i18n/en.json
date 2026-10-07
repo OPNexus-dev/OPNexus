@@ -378,6 +378,7 @@
     "HOST_HAT_NOCH_AKTIVE_POLICY_HIERARCHIE_DEPLOYMENTS_DIESE_ADD78845": "The host still has active policy hierarchy deployments. Remove them first or the rules will remain active and untracked.",
     "HOST_HAT_NOCH_AKTIVE_REGEL_DEPLOYMENTS_DIESE_ZUERST_0BF41721": "The host still has active rule deployments. Remove them first or the firewall rules will remain active and untracked.",
     "HOST_HAT_NOCH_NAT_DEPLOYMENTS_DIESE_ZUERST_GEZIELT_0C2A9E85": "The host still has NAT deployments. Remove them explicitly first.",
+    "HOST_HAT_NOCH_VPN_ODER_ZERTIFIKATS_OBJEKTE_DIESE_ZUERST_ENTFERNEN": "The host still has VPN, certificate or ACME objects on the firewall. Remove them first or they will remain active and unmanaged.",
     "HOST_IST_DEAKTIVIERT": "Host is disabled",
     "HOST_MIT_DIESEM_NAMEN_EXISTIERT_BEREITS": "A host with this name already exists",
     "HOST_MUSS_ERREICHBAR_SEIN_UND_FIRMWARE_AUFTRAG_BEENDET_BCE1390B": "The host must be reachable and the firmware job must be finished",
@@ -1384,7 +1385,16 @@
       "port_forward": "Port forward",
       "one_to_one": "1:1 NAT",
       "outbound_nat": "Outbound NAT",
-      "host": "Host maintenance"
+      "host": "Host maintenance",
+      "user": "Users",
+      "auth": "Account security",
+      "backup": "Backup export",
+      "ipsec_tunnel": "IPsec tunnels",
+      "openvpn_instance": "OpenVPN",
+      "wireguard_tunnel": "WireGuard",
+      "certificate": "Certificates",
+      "acme": "ACME",
+      "notification": "Notifications"
     },
     "action": {
       "deploy": "Push",
@@ -1408,7 +1418,19 @@
       "handoff": "Handover",
       "preview": "Preview",
       "schedule": "Scheduled",
-      "major_update": "Major upgrade"
+      "major_update": "Major upgrade",
+      "download": "Download",
+      "push": "Push",
+      "register": "Register",
+      "sign": "Sign",
+      "poll": "Poll status",
+      "test": "Test",
+      "change-password": "Change password",
+      "2fa/setup": "2FA setup",
+      "2fa/enable": "2FA enable",
+      "2fa/disable": "2FA disable",
+      "reset-password": "Password reset",
+      "reset-2fa": "2FA reset"
     },
     "status": {
       "requested": "Requested",
@@ -1424,7 +1446,8 @@
       "submitted": "Submitted to firewall",
       "acknowledged": "Completed manually",
       "starting": "Handover started",
-      "unknown": "Outcome unclear"
+      "unknown": "Outcome unclear",
+      "denied": "Denied"
     },
     "exportFailed": "Export failed",
     "title": "Deploy audit history",

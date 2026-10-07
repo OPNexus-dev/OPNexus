@@ -8,6 +8,7 @@ webhook config for the whole install).
 from pathlib import Path
 
 from app.config import settings
+from app.services import secure_files
 
 _SUFFIX = ".secret"
 
@@ -18,9 +19,7 @@ def _path(name: str) -> Path:
 
 def save_secret(name: str, secret: str) -> None:
     path = _path(name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(secret.strip())
-    path.chmod(0o600)
+    secure_files.write_private(path, secret.strip())
 
 
 def read_secret(name: str) -> str | None:

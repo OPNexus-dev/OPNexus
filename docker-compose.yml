@@ -109,12 +109,16 @@ services:
       CERT_KEY_SECRET_DIR: /data/cert-key-secrets
       ACME_SECRET_DIR: /data/acme-secrets
       TOTP_SECRET_DIR: /data/totp-secrets
+      NOTIFICATION_SECRET_DIR: /data/notification-secrets
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       UPDATE_CHECK_URL: ${UPDATE_CHECK_URL:-}
+      ALLOW_INSECURE_FIREWALL_URLS: ${ALLOW_INSECURE_FIREWALL_URLS:-false}
+      ALLOW_INSECURE_SMTP_AUTH: ${ALLOW_INSECURE_SMTP_AUTH:-false}
+      SMTP_CA_FILE: ${SMTP_CA_FILE:-}
       UPDATE_CHECK_INTERVAL_HOURS: ${UPDATE_CHECK_INTERVAL_HOURS:-12}
     volumes:
       - secrets:/data/opnsense-secrets
@@ -125,6 +129,7 @@ services:
       - cert_key_secrets:/data/cert-key-secrets
       - acme_secrets:/data/acme-secrets
       - totp_secrets:/data/totp-secrets
+      - notification_secrets:/data/notification-secrets
       # Gleiches Volume wie der postgres-backup-Service: hier landet das
       # automatische Sicherheits-Backup vor einer Schema-Migration.
       - postgres_backups:/backups
@@ -201,5 +206,6 @@ volumes:
   cert_key_secrets:
   acme_secrets:
   totp_secrets:
+  notification_secrets:
   caddy_data:
   caddy_config:

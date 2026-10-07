@@ -10,11 +10,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import AdminUser
+from app.routers.auth import current_user
+from app.services import audit_service
 from app.services.policy_service import policy_lock
 from app.models.host import OpnsenseHost
 from app.models.policy_hierarchy_group import PolicyHierarchyGroup
 from app.models.policy_hierarchy_rule_deployment import PolicyHierarchyRuleDeployment
 from app.models.rule_deployment import RuleDeployment
+from app.models.ipsec_tunnel_deployment import IpsecTunnelDeployment
+from app.models.openvpn_instance_deployment import OpenVpnInstanceDeployment
+from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
+from app.models.managed_certificate import ManagedCertificate
+from app.models.acme_account import AcmeAccount
+from app.models.acme_certificate_request import AcmeCertificateRequest
 from app.models.alias_deployment import AliasDeployment
 from app.schemas.host import AliasOption, FirmwareInfo, HostBackup, HostCa, HostCertificate, HostCreate, HostRead, HostUpdate, TlsProbeRequest, TlsProbeResult, InterfaceOption, LiveRule
 from app.services import backup_store, opnsense_client, opnsense_secret_store, tls_pin_service
@@ -192,13 +201,35 @@ async def delete_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
             raise api_error(409, ErrorCode.HOST_HAT_NOCH_NAT_DEPLOYMENTS_DIESE_ZUERST_GEZIELT_0C2A9E85)
     if await db.scalar(select(PolicyHierarchyRuleDeployment.id).where(PolicyHierarchyRuleDeployment.host_id == host_id).limit(1)):
         raise api_error(409, ErrorCode.HOST_HAT_NOCH_AKTIVE_POLICY_HIERARCHIE_DEPLOYMENTS_DIESE_ADD78845)
+    # VPN tunnels, certificates and ACME objects likewise cascade away with the host
+    # while staying live on the firewall: block until they are removed there.
+    for deployment_model in (IpsecTunnelDeployment, OpenVpnInstanceDeployment, WireguardTunnelDeployment):
+        if await db.scalar(select(deployment_model.id).where(deployment_model.host_id == host_id).limit(1)):
+            raise api_error(409, ErrorCode.HOST_HAT_NOCH_VPN_ODER_ZERTIFIKATS_OBJEKTE_DIESE_ZUERST_ENTFERNEN)
+    for cert_model in (ManagedCertificate, AcmeAccount, AcmeCertificateRequest):
+        # A never-deployed draft only exists locally and may go with the host.
+        if await db.scalar(
+            select(cert_model.id).where(
+                cert_model.host_id == host_id,
+                (cert_model.opnsense_uuid.is_not(None)) | (cert_model.status == "success"),
+            ).limit(1)
+        ):
+            raise api_error(409, ErrorCode.HOST_HAT_NOCH_VPN_ODER_ZERTIFIKATS_OBJEKTE_DIESE_ZUERST_ENTFERNEN)
     from app.models.host_operation import HostOperation
     from app.services.host_maintenance_service import ACTIVE
     if await db.scalar(select(HostOperation.id).where(HostOperation.host_id == host_id, HostOperation.status.in_(ACTIVE)).limit(1)):
         raise api_error(409, ErrorCode.HOST_HAT_EINE_OFFENE_WARTUNGSAKTION_ZUERST_PRUEFEN_UND_8CC5FBE0)
+    # Local drafts cascade away with the host; their file-backed secrets must not outlive them.
+    from app.services import acme_secret_store, cert_key_store
+    draft_certs = (await db.scalars(select(ManagedCertificate.id).where(ManagedCertificate.host_id == host_id))).all()
+    draft_accounts = (await db.scalars(select(AcmeAccount.id).where(AcmeAccount.host_id == host_id))).all()
     await db.delete(host)
     await db.commit()
     opnsense_secret_store.delete_secret(host_id)
+    for cert_id in draft_certs:
+        cert_key_store.delete_secret(cert_id)
+    for account_id in draft_accounts:
+        acme_secret_store.delete_secret(account_id)
 
 
 @router.get("/{host_id}/live-rules", response_model=list[LiveRule])
@@ -246,11 +277,23 @@ async def list_host_backups(host_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 
 @router.get("/{host_id}/backups/{backup_id}")
-async def download_host_backup(host_id: uuid.UUID, backup_id: str, db: AsyncSession = Depends(get_db)):
-    await _get_host_or_404(db, host_id)
+async def download_host_backup(
+    host_id: uuid.UUID, backup_id: str,
+    db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user),
+):
+    """Raw config.xml snapshot — contains password hashes, VPN keys and other
+    firewall secrets, so unlike the (metadata-only) listing it is not part of
+    the "read_only may GET everything" allowance. Every attempt is audited
+    (who/which snapshot, never the content)."""
+    host = await _get_host_or_404(db, host_id)
+    event = {"kind": "backup", "action": "download", "entity_id": backup_id[:36], "host_id": str(host_id), "host_name": host.name}
+    if user.role != "admin":
+        await audit_service.persist(**event, status="denied", message="Rohdownload nur für Administratoren")
+        raise api_error(403, ErrorCode.READ_ONLY_ACCESS)
     content = backup_store.read_snapshot(host_id, backup_id)
     if content is None:
         raise api_error(404, ErrorCode.BACKUP_NICHT_GEFUNDEN)
+    await audit_service.persist(**event, status="accepted")
     return Response(
         content=content,
         media_type="application/xml",

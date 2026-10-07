@@ -76,9 +76,11 @@ def _reset_login_throttle():
     # across requests/sessions in production), so it leaks between tests
     # unless explicitly cleared. Without this, a lockout test running before
     # a login-success test would spuriously 429 it.
-    auth_service.throttle._records.clear()
+    for throttle in (auth_service.throttle, auth_service.account_throttle):
+        throttle._records.clear()
     yield
-    auth_service.throttle._records.clear()
+    for throttle in (auth_service.throttle, auth_service.account_throttle):
+        throttle._records.clear()
 
 
 @pytest_asyncio.fixture

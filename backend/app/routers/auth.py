@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ErrorCode, api_error
@@ -45,6 +46,22 @@ def _clear_session_cookie(response: Response) -> None:
     response.delete_cookie(key=COOKIE_NAME, path="/")
 
 
+def _check_account_budget(user: AdminUser, action: str) -> None:
+    """429 once too many failed password/code attempts piled up for this account
+    and action (see auth_service.account_throttle)."""
+    wait = auth_service.account_throttle.retry_after(str(user.id), action)
+    if wait > 0:
+        raise api_error(status.HTTP_429_TOO_MANY_REQUESTS, ErrorCode.TOO_MANY_LOGIN_ATTEMPTS, wait=wait)
+
+
+def _account_failure(user: AdminUser, action: str) -> None:
+    auth_service.account_throttle.record_failure(str(user.id), action)
+
+
+def _account_success(user: AdminUser, action: str) -> None:
+    auth_service.account_throttle.reset(str(user.id), action)
+
+
 async def resolve_user(request: Request, db: AsyncSession) -> AdminUser:
     token = request.cookies.get(COOKIE_NAME, "")
     user = await auth_service.resolve_session(db, token)
@@ -84,6 +101,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
         logger.info("Failed login for '%s' from %s", payload.username, ip)
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.UNGUELTIGER_BENUTZERNAME_ODER_PASSWORT)
 
+    verified_hash = user.password_hash
     if user.totp_enabled:
         # Only revealed after the password was correct, so it cannot be used
         # to find out which usernames exist or have 2FA.
@@ -98,7 +116,7 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     auth_service.throttle.reset(ip, payload.username)
     failed_since_last_login = auth_service.throttle.pop_failures_since_success(payload.username)
     token, expires_at = await auth_service.create_session(
-        db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip
+        db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip, verified_hash=verified_hash
     )
     _set_session_cookie(response, token)
     logger.info("Successful login for '%s' from %s", user.username, ip)
@@ -114,20 +132,33 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
 
 
 async def _accept_second_factor(db: AsyncSession, user: AdminUser, code: str) -> bool:
-    """Authenticator code (replay-protected) or, failing that, a one-time recovery code."""
-    secret = totp_service.read_secret(user.id)
+    """Authenticator code (replay-protected) or, failing that, a one-time recovery code.
+
+    A code is single-use only if "check, then mark as used" cannot interleave
+    with a second request carrying the same code. The user row is therefore
+    re-read under a row lock (FOR UPDATE, fresh values) and the used step /
+    consumed recovery hash is committed while holding it; a concurrent attempt
+    blocks here and then sees the updated state.
+    """
+    locked = await db.scalar(
+        select(AdminUser).where(AdminUser.id == user.id).with_for_update().execution_options(populate_existing=True)
+    )
+    if locked is None:
+        return False
+    secret = totp_service.read_secret(locked.id)
     if secret:
-        step = totp_service.verify_code(secret, code, user.totp_last_step)
+        step = totp_service.verify_code(secret, code, locked.totp_last_step)
         if step is not None:
-            user.totp_last_step = step
+            locked.totp_last_step = step
             await db.commit()
             return True
-    remaining = totp_service.consume_recovery(user.totp_recovery_hashes, code)
+    remaining = totp_service.consume_recovery(locked.totp_recovery_hashes, code)
     if remaining is not None:
-        user.totp_recovery_hashes = remaining
+        locked.totp_recovery_hashes = remaining
         await db.commit()
-        logger.warning("Recovery code used by '%s' (%d left)", user.username, len(remaining))
+        logger.warning("Recovery code used by '%s' (%d left)", locked.username, len(remaining))
         return True
+    await db.commit()  # nothing changed — just release the row lock
     return False
 
 
@@ -156,45 +187,66 @@ async def totp_setup(payload: TotpSetupRequest, user: AdminUser = Depends(curren
     active until /2fa/enable proves the authenticator works."""
     if user.totp_enabled:
         raise api_error(status.HTTP_409_CONFLICT, ErrorCode.TOTP_ALREADY_ENABLED)
-    if not auth_service.verify_password(user.password_hash, payload.password):
+    _check_account_budget(user, "2fa-setup")
+    if not await auth_service.verify_password_async(user.password_hash, payload.password):
+        _account_failure(user, "2fa-setup")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.AKTUELLES_PASSWORT_IST_FALSCH)
+    _account_success(user, "2fa-setup")
     secret = totp_service.generate_secret()
     totp_service.save_secret(user.id, secret, pending=True)
     return {"secret": secret, "otpauth_uri": totp_service.otpauth_uri(user.username, secret)}
 
 
 @router.post("/2fa/enable")
-async def totp_enable(payload: TotpEnableRequest, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+async def totp_enable(
+    payload: TotpEnableRequest, request: Request,
+    db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user),
+):
     if user.totp_enabled:
         raise api_error(status.HTTP_409_CONFLICT, ErrorCode.TOTP_ALREADY_ENABLED)
+    _check_account_budget(user, "2fa-enable")
     pending = totp_service.read_secret(user.id, pending=True)
     if not pending:
         raise api_error(status.HTTP_409_CONFLICT, ErrorCode.TOTP_SETUP_MISSING)
     step = totp_service.verify_code(pending, payload.code)
     if step is None:
+        # Not reset by a fresh /2fa/setup: recreating the pending enrolment
+        # must not hand out a new guessing budget.
+        _account_failure(user, "2fa-enable")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.TOTP_INVALID)
+    _account_success(user, "2fa-enable")
     plain, hashes = totp_service.new_recovery_codes()
     totp_service.promote_pending(user.id)
     user.totp_enabled = True
     user.totp_last_step = step
     user.totp_recovery_hashes = hashes
+    # Other sessions were established without the second factor — end them.
+    await auth_service.revoke_sessions(db, user.id, keep_token=request.cookies.get(COOKIE_NAME, ""), commit=False)
     await db.commit()
     logger.info("Two-factor enabled for '%s'", user.username)
     return {"enabled": True, "recovery_codes": plain}
 
 
 @router.post("/2fa/disable")
-async def totp_disable(payload: TotpDisableRequest, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+async def totp_disable(
+    payload: TotpDisableRequest, request: Request,
+    db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user),
+):
     if not user.totp_enabled:
         raise api_error(status.HTTP_409_CONFLICT, ErrorCode.TOTP_NOT_ENABLED)
-    if not auth_service.verify_password(user.password_hash, payload.password):
+    _check_account_budget(user, "2fa-disable")
+    if not await auth_service.verify_password_async(user.password_hash, payload.password):
+        _account_failure(user, "2fa-disable")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.AKTUELLES_PASSWORT_IST_FALSCH)
     if not await _accept_second_factor(db, user, payload.code):
+        _account_failure(user, "2fa-disable")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.TOTP_INVALID)
+    _account_success(user, "2fa-disable")
     totp_service.delete_secrets(user.id)
     user.totp_enabled = False
     user.totp_recovery_hashes = None
     user.totp_last_step = 0
+    await auth_service.revoke_sessions(db, user.id, keep_token=request.cookies.get(COOKIE_NAME, ""), commit=False)
     await db.commit()
     logger.info("Two-factor disabled for '%s'", user.username)
     return {"enabled": False}
@@ -225,15 +277,18 @@ async def change_password(
     db: AsyncSession = Depends(get_db),
     user: AdminUser = Depends(current_user),
 ):
-    if not auth_service.verify_password(user.password_hash, payload.current_password):
+    _check_account_budget(user, "change-password")
+    if not await auth_service.verify_password_async(user.password_hash, payload.current_password):
+        _account_failure(user, "change-password")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.AKTUELLES_PASSWORT_IST_FALSCH)
+    _account_success(user, "change-password")
     if payload.new_password == payload.current_password:
         raise api_error(status.HTTP_400_BAD_REQUEST, ErrorCode.DAS_NEUE_PASSWORT_MUSS_SICH_VOM_AKTUELLEN_UNTERSCHEIDEN)
 
-    user.password_hash = auth_service.hash_password(payload.new_password)
-    await db.commit()
-
-    await auth_service.revoke_session(db, request.cookies.get(COOKIE_NAME, ""))
+    # New hash, revocation of EVERY existing session (including other devices
+    # an attacker may hold) and the replacement session commit as one unit.
+    user.password_hash = await auth_service.hash_password_async(payload.new_password)
+    await auth_service.revoke_sessions(db, user.id, commit=False)
     token, _ = await auth_service.create_session(
         db, user, user_agent=request.headers.get("User-Agent"), ip_address=client_ip(request)
     )

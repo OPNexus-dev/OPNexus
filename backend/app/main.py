@@ -3,8 +3,10 @@ import logging
 import re
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app import models  # noqa: F401 - registers models with Base.metadata
 from app.auth_middleware import AuthMiddleware
@@ -245,6 +247,13 @@ async def lifespan(app: FastAPI):
     await migrate.run()
     async with SessionLocal() as db:
         await auth_service.bootstrap_admin(db)
+    if any(o.startswith("https://") for o in settings.allowed_origins) and not settings.cookie_secure:
+        logger.warning(
+            "FRONTEND_ORIGIN is https:// but COOKIE_SECURE is false — the session cookie "
+            "would also be sent over plain HTTP. Set COOKIE_SECURE=true."
+        )
+    if settings.allow_insecure_firewall_urls:
+        logger.warning("ALLOW_INSECURE_FIREWALL_URLS is on: firewall API credentials may travel over plain HTTP.")
 
     sweep_task = asyncio.create_task(_deploy_revert_sweep_loop())
     notification_task = asyncio.create_task(_notification_poll_loop())
@@ -267,6 +276,18 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="OPNexus", version=APP_VERSION, lifespan=lifespan)
+
+@app.exception_handler(RequestValidationError)
+async def _safe_validation_error(request: Request, exc: RequestValidationError):
+    """FastAPI's default 422 body echoes the offending `input` (and validator
+    `ctx`) back — for password/key/PSK fields that puts the secret into
+    responses that browsers, proxies and error telemetry may record. Only
+    where the problem is and what it is are returned."""
+    return JSONResponse(
+        status_code=422,
+        content={"detail": [{"loc": list(err.get("loc", ())), "msg": err.get("msg", ""), "type": err.get("type", "")} for err in exc.errors()]},
+    )
+
 
 app.add_middleware(AuthMiddleware)
 # Inside CORS so preflights are answered first; outside Auth so a forged

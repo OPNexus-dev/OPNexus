@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -162,10 +162,10 @@ async def list_revisions(tunnel_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 
 @router.post("/{tunnel_id}/deploy", response_model=WireguardTunnelRead)
-async def deploy(tunnel_id: uuid.UUID, approval: WireguardDeployApproval | None = Body(default=None), db: AsyncSession = Depends(get_db)):
+async def deploy(tunnel_id: uuid.UUID, approval: WireguardDeployApproval, db: AsyncSession = Depends(get_db)):
     tunnel = await _load_tunnel(db, tunnel_id)
     plan = preview(tunnel)
-    if approval and approval.preview_token != plan["token"]:
+    if approval.preview_token != plan["token"]:
         raise api_error(409, ErrorCode.ENTWURF_ODER_ZIELE_WURDEN_GEAENDERT_VORSCHAU_ERNEUT_OEFFNEN)
     if not tunnel.server_private_key_set:
         raise api_error(400, ErrorCode.FUER_DIESEN_TUNNEL_IST_NOCH_KEIN_SERVER_PRIVATSCHLUESSEL_D7527998)

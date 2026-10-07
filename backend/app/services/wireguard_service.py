@@ -8,7 +8,8 @@ import hashlib
 import json
 
 from app.models.policy import WireguardTunnelRevision
-from app.services.wireguard_deploy_service import build_payloads
+from app.services import wireguard_key_store
+from app.services.wireguard_deploy_service import _redact_for_storage, build_payloads
 from app.services.policy_service import effective_hosts  # noqa: F401 - re-exported for routers/wireguard.py
 
 WIREGUARD_FIELDS = (
@@ -43,7 +44,8 @@ def revision(db, tunnel, note):
 
 
 def preview(tunnel):
-    payloads = build_payloads(tunnel)
+    # Compare in the stored (secret -> hash) form, see ipsec_service.preview().
+    payloads = _redact_for_storage(build_payloads(tunnel))
     deployments = {d.host_id: d for d in tunnel.deployments}
     hosts = effective_hosts(tunnel)
     rows = []
@@ -103,6 +105,7 @@ def preview(tunnel):
     blocked = not tunnel.server_private_key_set or (tunnel.peer_psk_enabled and not tunnel.peer_psk_set)
     state = {
         "snapshot": snapshot(tunnel), "rows": rows,
+        "secret_version": wireguard_key_store.version(tunnel.id),
         "hosts": [(str(h.id), h.base_url, h.enabled, h.verify_tls) for h in hosts],
         "deployments": sorted(
             [(str(d.host_id), d.opnsense_server_uuid, d.opnsense_peer_uuid, d.last_payload,
@@ -123,7 +126,7 @@ def workflow(tunnel, deployments):
     hosts = effective_hosts(tunnel)
     active = [h for h in hosts if h.enabled]
     by_host = {d.host_id: d for d in deployments}
-    payloads = build_payloads(tunnel)
+    payloads = _redact_for_storage(build_payloads(tunnel))
     target_ids = {h.id for h in hosts}
     counts = {
         "targets": len(hosts),

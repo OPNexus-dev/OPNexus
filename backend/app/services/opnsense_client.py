@@ -16,7 +16,8 @@ import httpx
 
 from app.config import settings
 from app.models.host import OpnsenseHost
-from app.services import opnsense_secret_store, tls_pin_service
+from app.services import firewall_url, opnsense_secret_store, tls_pin_service
+from app.services.redaction import redact_data, redact_text
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,18 @@ class OpnsenseAPIError(Exception):
     pass
 
 
+class OpnsenseAmbiguousError(OpnsenseAPIError):
+    """The request may have been executed although no usable answer arrived (lost
+    reply, timeout while waiting, server error, no UUID returned). A refusal the
+    firewall actually answered is a plain OpnsenseAPIError; this one means the
+    outcome of a write is unknown and must be reconciled, not retried blindly."""
+
+
 def _client(host: OpnsenseHost) -> httpx.AsyncClient:
+    # Before the secret is even read: an http:// host must never receive credentials.
+    reason = firewall_url.check_base_url(host.base_url)
+    if reason:
+        raise OpnsenseAPIError(f"Host '{host.name}': {reason}")
     secret = opnsense_secret_store.read_secret(host.id)
     if not secret:
         raise OpnsenseAPIError(f"Kein API-Secret für Host '{host.name}' hinterlegt")
@@ -44,7 +56,12 @@ async def _do_request(host: OpnsenseHost, method: str, path: str, **kwargs) -> h
             resp.raise_for_status()
             return resp
         except httpx.HTTPStatusError as exc:
-            raise OpnsenseAPIError(f"{exc.response.status_code} {path}: {exc.response.text}") from exc
+            # The body may reflect submitted secrets: keep only a scrubbed, bounded excerpt.
+            secret = opnsense_secret_store.read_secret(host.id)
+            error = OpnsenseAmbiguousError if exc.response.status_code >= 500 else OpnsenseAPIError
+            raise error(
+                f"{exc.response.status_code} {path}: {redact_text(exc.response.text, host.api_key, secret)}"
+            ) from exc
         except httpx.HTTPError as exc:
             if host.tls_ca_pem and "CERTIFICATE_VERIFY_FAILED" in str(exc):
                 raise OpnsenseAPIError(
@@ -54,12 +71,17 @@ async def _do_request(host: OpnsenseHost, method: str, path: str, **kwargs) -> h
             if isinstance(exc, httpx.RemoteProtocolError):
                 # The firewall answered, but the HTTP framing is broken (seen with
                 # OPNsense 26.7: kernel TLS corrupts responses above ~64 KiB).
-                raise OpnsenseAPIError(
+                raise OpnsenseAmbiguousError(
                     f"{host.name} hat eine beschädigte HTTP-Antwort geliefert ({exc}). "
                     "Bei OPNsense 26.x hilft meist `kern.ipc.tls.enable=0` (System ▸ Einstellungen ▸ "
                     "Tunables), siehe Handbuch „Fehlerbehebung“."
                 ) from exc
-            raise OpnsenseAPIError(f"Verbindung zu {host.name} fehlgeschlagen: {exc}") from exc
+            # Once the request was (partly) sent, a failed read/write says nothing about
+            # whether the firewall executed it; a failed connect means it never did.
+            error = OpnsenseAmbiguousError if isinstance(
+                exc, (httpx.ReadTimeout, httpx.ReadError, httpx.WriteTimeout, httpx.WriteError)
+            ) else OpnsenseAPIError
+            raise error(f"Verbindung zu {host.name} fehlgeschlagen: {exc}") from exc
 
 
 async def _request(host: OpnsenseHost, method: str, path: str, **kwargs) -> Any:
@@ -167,8 +189,7 @@ def _mutation_result(data: Any, operation: str, results: set[str]) -> dict:
     status = str(data.get("status", "")).strip().lower()
     accepted = result in results if "result" in data else status in {"ok", "done"}
     if data.get("validations") or not accepted or status in {"error", "failed"}:
-        detail = json.dumps(data, ensure_ascii=False)[:350]
-        raise OpnsenseAPIError(f"{operation} von Firewall nicht bestätigt: {detail}")
+        raise OpnsenseAPIError(f"{operation} von Firewall nicht bestätigt: {redact_data(data)}")
     return data
 
 
@@ -962,7 +983,7 @@ def _acme_action_result(data: Any, operation: str) -> dict:
         return data
     if str(data.get("result", "")).strip().lower() == "failed":
         raise OpnsenseAPIError(f"{operation}: von der Firewall abgelehnt (Objekt nicht gefunden oder keine POST-Anfrage)")
-    raise OpnsenseAPIError(f"{operation}: unerwartete Antwortform der Firewall: {json.dumps(data, ensure_ascii=False)[:350]}")
+    raise OpnsenseAPIError(f"{operation}: unerwartete Antwortform der Firewall: {redact_data(data)}")
 
 
 async def register_acme_account(host: OpnsenseHost, uuid_: str) -> dict:

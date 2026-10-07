@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -153,10 +153,10 @@ async def list_revisions(instance_id: uuid.UUID, db: AsyncSession = Depends(get_
 
 
 @router.post("/{instance_id}/deploy", response_model=OpenVpnInstanceRead)
-async def deploy(instance_id: uuid.UUID, approval: OpenVpnDeployApproval | None = Body(default=None), db: AsyncSession = Depends(get_db)):
+async def deploy(instance_id: uuid.UUID, approval: OpenVpnDeployApproval, db: AsyncSession = Depends(get_db)):
     instance = await _load_instance(db, instance_id)
     plan = preview(instance)
-    if approval and approval.preview_token != plan["token"]:
+    if approval.preview_token != plan["token"]:
         raise api_error(409, ErrorCode.ENTWURF_ODER_ZIELE_WURDEN_GEAENDERT_VORSCHAU_ERNEUT_OEFFNEN)
     if instance.tls_key_enabled and not instance.tls_key_material_set:
         raise api_error(400, ErrorCode.TLS_HARDENING_IST_AKTIVIERT_ABER_ES_WURDE_NOCH_F53C81DD)

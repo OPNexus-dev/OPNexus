@@ -34,7 +34,7 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
         raise api_error(409, ErrorCode.BENUTZERNAME_BEREITS_VERGEBEN)
     user = AdminUser(
         username=payload.username,
-        password_hash=auth_service.hash_password(payload.password),
+        password_hash=await auth_service.hash_password_async(payload.password),
         role=payload.role.value,
     )
     db.add(user)
@@ -64,6 +64,8 @@ async def reset_two_factor(user_id: uuid.UUID, db: AsyncSession = Depends(get_db
     target.totp_enabled = False
     target.totp_recovery_hashes = None
     target.totp_last_step = 0
+    # The account lost its second factor (maybe to someone else): force a fresh login.
+    await auth_service.revoke_sessions(db, target.id, commit=False)
     await db.commit()
     return target
 
@@ -73,7 +75,10 @@ async def reset_password(user_id: uuid.UUID, payload: UserPasswordReset, db: Asy
     target = await db.get(AdminUser, user_id)
     if target is None:
         raise api_error(404, ErrorCode.BENUTZER_NICHT_GEFUNDEN)
-    target.password_hash = auth_service.hash_password(payload.new_password)
+    target.password_hash = await auth_service.hash_password_async(payload.new_password)
+    # A reset is the answer to a suspected compromise: every session of the
+    # account ends with the old password, atomically with the new hash.
+    await auth_service.revoke_sessions(db, target.id, commit=False)
     await db.commit()
     return target
 

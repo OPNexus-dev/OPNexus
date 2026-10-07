@@ -1,9 +1,13 @@
+from urllib.parse import urlsplit
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ErrorCode, api_error
 from app.database import get_db
+from app.models.user import AdminUser
+from app.routers.auth import current_user
 from app.models.notification import NotificationProblem
 from app.schemas.notification import (
     NotificationProblemRead,
@@ -16,9 +20,25 @@ from app.services import notification_delivery, notification_settings_service
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+def _redact_url(url: str | None) -> str | None:
+    """Webhook URLs very often carry the credential itself (a token in the path or
+    query), so anyone who can read the URL can post to the receiver. Readers see
+    only where it points."""
+    if not url:
+        return url
+    parts = urlsplit(url)
+    if not parts.hostname:
+        return "…"
+    return f"{parts.scheme}://{parts.hostname}{f':{parts.port}' if parts.port else ''}/…"
+
+
 @router.get("/settings", response_model=NotificationSettingsRead)
-async def read_settings(db: AsyncSession = Depends(get_db)):
-    return await notification_settings_service.get_settings(db)
+async def read_settings(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+    row = await notification_settings_service.get_settings(db)
+    result = NotificationSettingsRead.model_validate(row)
+    if user.role != "admin":
+        result = result.model_copy(update={"webhook_url": _redact_url(result.webhook_url)})
+    return result
 
 
 @router.put("/settings", response_model=NotificationSettingsRead)

@@ -5,9 +5,9 @@ import { api, AuditEvent, AuditPage } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
 import { useLanguage } from "@/components/LanguageProvider";
-const kindKeys = ["rule","alias","port_forward","one_to_one","outbound_nat","host"];
+const kindKeys = ["rule","alias","port_forward","one_to_one","outbound_nat","host","user","auth","backup","ipsec_tunnel","openvpn_instance","wireguard_tunnel","certificate","acme","notification"];
 const actionKeys = ["deploy","confirm","rollback","remove","retry-rollback","delete","create","edit","reboot","update"];
-const statusKeys = ["requested","accepted","rejected","interrupted","success","pending","error","reverted","revert_failed","removed","submitted","acknowledged","starting","unknown"];
+const statusKeys = ["requested","accepted","rejected","interrupted","success","pending","error","reverted","revert_failed","removed","submitted","acknowledged","starting","unknown","denied"];
 export default function AuditHistory() {
   const {t,ts,errorMessage,locale}=useLanguage();
   const lbl=(ns:string,key:string)=>{const k=`audit.${ns}.${key}`;const v=t(k);return v===k?key:v;};

@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import settings
+from app.services import secure_files
 
 _SUFFIX = ".xml"
 
@@ -21,11 +22,10 @@ def save_snapshot(host_id: uuid.UUID, content: bytes) -> str:
     microsecond precision to avoid collisions on rapid consecutive saves.
     Returns the filename, used as the backup's id."""
     host_dir = _host_dir(host_id)
-    host_dir.mkdir(parents=True, exist_ok=True)
+    host_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     filename = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f") + _SUFFIX
     path = host_dir / filename
-    path.write_bytes(content)
-    path.chmod(0o600)
+    secure_files.write_private(path, content)
     return filename
 
 

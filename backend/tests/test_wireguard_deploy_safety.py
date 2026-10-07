@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.database import SessionLocal
 from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
 from tests.test_wireguard import _create_host, _tunnel_payload
+from tests.helpers import deploy_approved
 
 
 def _mock_full_success(respx_mock, base_url: str):
@@ -36,7 +37,7 @@ async def test_deploy_success_persists_server_and_peer_uuid(client, respx_mock):
 
     _mock_full_success(respx_mock, "https://fw1.test")
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -71,7 +72,7 @@ async def test_peer_payload_carries_injected_server_uuid(client, respx_mock):
         return_value=httpx.Response(200, json={"result": "ok"})
     )
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
 
     assert add_server.called and add_peer.called
@@ -102,7 +103,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
         return_value=httpx.Response(200, json={"result": "ok"})
     )
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -137,7 +138,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
         side_effect=httpx.ConnectError("connection refused")
     )
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -176,7 +177,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
         return_value=httpx.Response(200, json={"result": "failed"})
     )
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "error"
@@ -191,11 +192,11 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
     tunnel_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
 
     add_route = respx_mock.post("https://fw1.test/api/wireguard/server/addServer")
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
@@ -210,7 +211,7 @@ async def test_undeploy_deletes_peer_before_server(client, respx_mock):
     tunnel_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
 
     del_peer = respx_mock.post("https://fw1.test/api/wireguard/client/delClient/peer-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})
@@ -247,7 +248,7 @@ async def test_secrets_never_persisted_and_rotation_is_not_a_no_op(client, respx
     tunnel_id = tunnel["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     assert resp.json()["deployments"][0]["status"] == "success"
 
@@ -275,7 +276,7 @@ async def test_secrets_never_persisted_and_rotation_is_not_a_no_op(client, respx
     )
     assert resp.status_code == 200, resp.text
 
-    resp = await client.post(f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
     assert resp.status_code == 200, resp.text
     assert resp.json()["deployments"][0]["status"] == "success"
     assert add_server_route.call_count == 1, "unchanged from the first deploy — the rotation must go through setServer, not addServer"
