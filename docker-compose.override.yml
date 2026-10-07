@@ -1,0 +1,18 @@
+# Wird von `docker compose` automatisch zusätzlich zu docker-compose.yml
+# geladen, solange es daneben liegt (Repo-Checkout). Das Release-Bundle
+# enthält diese Datei NICHT — dort kommen die Images aus der Registry.
+services:
+  postgres:
+    volumes:
+      # Legt neben der Produktiv-DB die *_test-Datenbank für die Backend-Tests
+      # an (nur beim allerersten Start eines leeren Volumes).
+      - ./backend/postgres-init:/docker-entrypoint-initdb.d:ro
+
+  backend:
+    build: ./backend
+
+  frontend:
+    build: ./frontend
+
+  proxy:
+    build: ./proxy

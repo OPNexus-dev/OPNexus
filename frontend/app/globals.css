@@ -1,0 +1,230 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Visible keyboard focus everywhere. Mouse clicks do not trigger :focus-visible, so this
+   only shows for keyboard users. Inputs keep their own ring via the focus: utilities. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid rgb(var(--focus-ring));
+    outline-offset: 2px;
+  }
+  :root { --focus-ring: 3 105 161; }
+  [data-theme="dark"] { --focus-ring: 125 190 235; }
+}
+
+/* Existing utility-based screens share one accessible dark palette. */
+@layer base {
+  :root {
+    /* Slate scale as CSS variables ("R G B", consumed via rgb(var(--x) / <alpha-value>)
+       in tailwind.config.ts) so dark mode flips the whole scale in one place instead of
+       a per-class-name override table. Composes correctly with opacity modifiers
+       (bg-slate-50/60) and any Tailwind variant (hover:, arbitrary values, ...) — the
+       previous table-based approach silently missed both. Light values = Tailwind's
+       stock slate palette, so light mode is pixel-identical to before this change. */
+    --slate-50: 248 250 252;
+    --slate-100: 241 245 249;
+    --slate-200: 226 232 240;
+    --slate-300: 203 213 225;
+    /* 400/500 are the secondary/muted text shades; stock Tailwind values failed WCAG AA
+       (4.5:1) on white and slate-50, so light mode uses slightly darker equivalents. */
+    --slate-400: 96 110 132;
+    --slate-500: 82 95 117;
+    --slate-600: 71 85 105;
+    --slate-700: 51 65 85;
+    --slate-800: 30 41 59;
+    --slate-900: 15 23 42;
+    --slate-950: 2 6 23;
+    --btn-secondary: 30 64 175;       /* blue-800 */
+    --btn-secondary-hover: 30 58 138; /* blue-900 */
+    --surface: 255 255 255;
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    /* Neutral anthracite (no blue cast). Same shade pairs as before
+       (50<->950, 100<->800, ...), expressed as variables. 50 = page, 100 = subtle
+       fills/hover, 200 = borders, 500 = secondary text, 900 = primary text. */
+    --slate-50: 18 18 18;
+    --slate-100: 39 39 42;
+    --slate-200: 56 56 61;
+    --slate-300: 82 82 91;
+    --slate-400: 142 142 152;
+    --slate-500: 168 168 177;
+    --slate-600: 212 212 216;
+    --slate-700: 228 228 231;
+    --slate-800: 244 244 245;
+    --slate-900: 250 250 250;
+    --slate-950: 10 10 10;
+    --btn-secondary: 63 63 70;
+    --btn-secondary-hover: 82 82 91;
+    --surface: 28 28 30;
+  }
+
+  /* Semantic tone tokens for the Badge/Toast primitives (components/ui). Unlike the
+     slate scale above, these are dedicated per-purpose variables rather than a
+     reused Tailwind color scale — they don't depend on (or extend) the legacy
+     per-class-name accent overrides further down this file, so any page migrated
+     onto <Badge>/<Toast> stops needing that override list entirely. */
+  :root {
+    --tone-neutral-bg: 241 245 249;   /* slate-100 */
+    --tone-neutral-text: 51 65 85;    /* slate-700 */
+    --tone-neutral-border: 226 232 240; /* slate-200 */
+    --tone-info-bg: 224 242 254;      /* sky-100 */
+    --tone-info-text: 3 105 161;      /* sky-700 */
+    --tone-info-border: 186 230 253;  /* sky-200 */
+    --tone-success-bg: 209 250 229;   /* emerald-100 */
+    --tone-success-text: 4 120 87;    /* emerald-700 */
+    --tone-success-border: 167 243 208; /* emerald-200 */
+    --tone-warning-bg: 251 223 203;   /* flame-100 */
+    --tone-warning-text: 140 52 0;    /* flame-700 */
+    --tone-warning-border: 246 188 151; /* flame-200 */
+    --tone-danger-bg: 254 226 226;    /* red-100 */
+    --tone-danger-text: 185 28 28;    /* red-700 */
+    --tone-danger-border: 254 202 202; /* red-200 */
+    --tone-accent-bg: 243 232 255;    /* purple-100 */
+    --tone-accent-text: 126 34 206;   /* purple-700 */
+    --tone-accent-border: 233 213 255; /* purple-200 */
+  }
+  [data-theme="dark"] {
+    --tone-neutral-bg: 39 39 42;
+    --tone-neutral-text: 212 212 216;
+    --tone-neutral-border: 63 63 70;
+    --tone-info-bg: 30 38 46;         /* desaturated steel */
+    --tone-info-text: 147 197 227;
+    --tone-info-border: 52 78 99;
+    --tone-success-bg: 2 44 34;       /* emerald-950 */
+    --tone-success-text: 110 231 183; /* emerald-300 */
+    --tone-success-border: 6 95 70;   /* emerald-800 */
+    --tone-warning-bg: 44 16 0;       /* flame-950 */
+    --tone-warning-text: 239 154 97;  /* flame-300 */
+    --tone-warning-border: 105 39 0;  /* flame-800 */
+    --tone-danger-bg: 69 10 10;       /* red-950 */
+    --tone-danger-text: 252 165 165;  /* red-300 */
+    --tone-danger-border: 153 27 27;  /* red-800 */
+    --tone-accent-bg: 59 7 100;       /* purple-950 */
+    --tone-accent-text: 216 180 254;  /* purple-300 */
+    --tone-accent-border: 107 33 168; /* purple-800 */
+  }
+  [data-theme="light"] { color-scheme: light; }
+  input, select, textarea { background-color: transparent; }
+  /* Fixed dark navy (Tailwind's literal, static slate-900 — 15 23 42), NOT
+     rgb(var(--slate-900)): --slate-900 is deliberately *inverted* in dark mode
+     (it's the variable behind text-slate-900, near-black text that should turn
+     near-white in dark mode), so referencing it here would make .bg-white cards
+     turn nearly-white-again in dark mode instead of dark — exactly backwards.
+     These two rules want one fixed dark color regardless of theme, not the
+     theme-flipped slate scale. (Found via a real login-page screenshot where
+     the card stayed light in dark mode after the CSS-variable slate migration.) */
+  [data-theme="dark"] select option { background-color: rgb(28 28 30); }
+}
+@layer utilities {
+  [data-theme="dark"] .bg-white { background-color: rgb(28 28 30); }
+  [data-theme="dark"] .bg-sky-50 { background-color: rgb(30 38 46); }
+  [data-theme="dark"] .bg-sky-100 { background-color: rgb(30 38 46); }
+  [data-theme="dark"] .bg-blue-50 { background-color: rgb(30 38 46); }
+  [data-theme="dark"] .bg-blue-100 { background-color: rgb(30 38 46); }
+  [data-theme="dark"] .bg-emerald-50 { background-color: theme('colors.emerald.950'); }
+  [data-theme="dark"] .bg-emerald-100 { background-color: theme('colors.emerald.950'); }
+  [data-theme="dark"] .bg-green-50 { background-color: theme('colors.green.950'); }
+  [data-theme="dark"] .bg-green-100 { background-color: theme('colors.green.950'); }
+  [data-theme="dark"] .bg-flame-50 { background-color: theme('colors.flame.950'); }
+  [data-theme="dark"] .bg-flame-100 { background-color: theme('colors.flame.950'); }
+  [data-theme="dark"] .bg-orange-50 { background-color: theme('colors.orange.950'); }
+  [data-theme="dark"] .bg-orange-100 { background-color: theme('colors.orange.950'); }
+  [data-theme="dark"] .bg-red-50 { background-color: theme('colors.red.950'); }
+  [data-theme="dark"] .bg-red-100 { background-color: theme('colors.red.950'); }
+  [data-theme="dark"] .bg-yellow-50 { background-color: theme('colors.yellow.950'); }
+  [data-theme="dark"] .bg-yellow-100 { background-color: theme('colors.yellow.950'); }
+  [data-theme="dark"] .bg-violet-50 { background-color: theme('colors.violet.950'); }
+  [data-theme="dark"] .bg-violet-100 { background-color: theme('colors.violet.950'); }
+  [data-theme="dark"] .text-violet-700 { color: theme('colors.violet.300'); }
+  [data-theme="dark"] .text-violet-800 { color: theme('colors.violet.300'); }
+  [data-theme="dark"] .border-violet-200 { border-color: theme('colors.violet.800'); }
+  [data-theme="dark"] .text-violet-600 { color: theme('colors.violet.300'); }
+  [data-theme="dark"] .bg-purple-50 { background-color: theme('colors.purple.950'); }
+  [data-theme="dark"] .bg-purple-100 { background-color: theme('colors.purple.950'); }
+  [data-theme="dark"] .text-brand-600 { color: theme('colors.brand.300'); }
+  [data-theme="dark"] .bg-brand-50 { background-color: theme('colors.brand.900'); }
+  [data-theme="dark"] .text-sky-600 { color: theme('colors.sky.300'); }
+  [data-theme="dark"] .text-sky-700 { color: theme('colors.sky.300'); }
+  [data-theme="dark"] .text-sky-800 { color: theme('colors.sky.300'); }
+  [data-theme="dark"] .text-blue-600 { color: theme('colors.blue.300'); }
+  [data-theme="dark"] .text-blue-700 { color: theme('colors.blue.300'); }
+  [data-theme="dark"] .text-blue-800 { color: theme('colors.blue.300'); }
+  [data-theme="dark"] .text-emerald-600 { color: theme('colors.emerald.300'); }
+  [data-theme="dark"] .text-emerald-700 { color: theme('colors.emerald.300'); }
+  [data-theme="dark"] .text-emerald-800 { color: theme('colors.emerald.300'); }
+  [data-theme="dark"] .text-green-600 { color: theme('colors.green.300'); }
+  [data-theme="dark"] .text-green-700 { color: theme('colors.green.300'); }
+  [data-theme="dark"] .text-green-800 { color: theme('colors.green.300'); }
+  [data-theme="dark"] .text-flame-600 { color: theme('colors.flame.300'); }
+  [data-theme="dark"] .text-flame-700 { color: theme('colors.flame.300'); }
+  [data-theme="dark"] .text-flame-800 { color: theme('colors.flame.300'); }
+  [data-theme="dark"] .text-orange-600 { color: theme('colors.orange.300'); }
+  [data-theme="dark"] .text-orange-700 { color: theme('colors.orange.300'); }
+  [data-theme="dark"] .text-orange-800 { color: theme('colors.orange.300'); }
+  [data-theme="dark"] .text-red-600 { color: theme('colors.red.300'); }
+  [data-theme="dark"] .text-red-700 { color: theme('colors.red.300'); }
+  [data-theme="dark"] .text-red-800 { color: theme('colors.red.300'); }
+  [data-theme="dark"] .text-yellow-600 { color: theme('colors.yellow.300'); }
+  [data-theme="dark"] .text-yellow-700 { color: theme('colors.yellow.300'); }
+  [data-theme="dark"] .text-yellow-800 { color: theme('colors.yellow.300'); }
+  [data-theme="dark"] .text-purple-600 { color: theme('colors.purple.300'); }
+  [data-theme="dark"] .text-purple-700 { color: theme('colors.purple.300'); }
+  [data-theme="dark"] .text-purple-800 { color: theme('colors.purple.300'); }
+  [data-theme="dark"] .border-sky-100 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-sky-200 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-sky-300 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-blue-100 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-blue-200 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-blue-300 { border-color: rgb(52 78 99); }
+  [data-theme="dark"] .border-emerald-100 { border-color: theme('colors.emerald.800'); }
+  [data-theme="dark"] .border-emerald-200 { border-color: theme('colors.emerald.800'); }
+  [data-theme="dark"] .border-emerald-300 { border-color: theme('colors.emerald.800'); }
+  [data-theme="dark"] .border-green-100 { border-color: theme('colors.green.800'); }
+  [data-theme="dark"] .border-green-200 { border-color: theme('colors.green.800'); }
+  [data-theme="dark"] .border-green-300 { border-color: theme('colors.green.800'); }
+  [data-theme="dark"] .border-flame-100 { border-color: theme('colors.flame.800'); }
+  [data-theme="dark"] .border-flame-200 { border-color: theme('colors.flame.800'); }
+  [data-theme="dark"] .border-flame-300 { border-color: theme('colors.flame.800'); }
+  [data-theme="dark"] .border-orange-100 { border-color: theme('colors.orange.800'); }
+  [data-theme="dark"] .border-orange-200 { border-color: theme('colors.orange.800'); }
+  [data-theme="dark"] .border-orange-300 { border-color: theme('colors.orange.800'); }
+  [data-theme="dark"] .border-red-100 { border-color: theme('colors.red.800'); }
+  [data-theme="dark"] .border-red-200 { border-color: theme('colors.red.800'); }
+  [data-theme="dark"] .border-red-300 { border-color: theme('colors.red.800'); }
+  [data-theme="dark"] .border-yellow-100 { border-color: theme('colors.yellow.800'); }
+  [data-theme="dark"] .border-yellow-200 { border-color: theme('colors.yellow.800'); }
+  [data-theme="dark"] .border-yellow-300 { border-color: theme('colors.yellow.800'); }
+  [data-theme="dark"] .border-purple-100 { border-color: theme('colors.purple.800'); }
+  [data-theme="dark"] .border-purple-200 { border-color: theme('colors.purple.800'); }
+  [data-theme="dark"] .border-purple-300 { border-color: theme('colors.purple.800'); }
+  /* hover:bg-slate-* needs no override anymore: bg-slate-* now resolves through the
+     CSS variables above, so the hover variant inherits the fix automatically. */
+}
+
+/* Login screen: glass card over the animated network, staggered entrance,
+   shake on a failed sign-in, fade-out on success. Everything that moves sits
+   inside the no-preference query, so reduced-motion users get a static page. */
+.login-card {
+  border: 1px solid rgb(var(--slate-200));
+  background-color: rgb(var(--surface) / 0.82);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.login-glow-blue { background: radial-gradient(closest-side, rgb(0 115 168 / 0.20), transparent); }
+.login-glow-orange { background: radial-gradient(closest-side, rgb(217 79 0 / 0.13), transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes login-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  @keyframes login-shake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-6px); }
+    40%, 60% { transform: translateX(6px); }
+  }
+  @keyframes login-glow { 0%, 100% { opacity: 0.55; transform: scale(1); } 50% { opacity: 1; transform: scale(1.12); } }
+  .login-rise { opacity: 0; animation: login-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+  .login-shake { animation: login-shake 0.45s ease-in-out; }
+  .login-glow { animation: login-glow 10s ease-in-out infinite; }
+  .login-leave { opacity: 0; transform: translateY(-10px) scale(0.98); transition: opacity 0.3s ease, transform 0.3s ease; }
+}

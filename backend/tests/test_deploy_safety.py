@@ -1,0 +1,198 @@
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import httpx
+import pytest
+from sqlalchemy import select
+
+from app.database import SessionLocal
+from app.models.rule_deployment import RuleDeployment
+from app.services.rule_deploy_service import sweep_expired_deployments
+
+
+async def _create_host(client, name: str, base_url: str) -> dict:
+    resp = await client.post(
+        "/api/hosts",
+        json={"name": name, "base_url": base_url, "api_key": "key", "api_secret": "secret", "verify_tls": False},
+    )
+    assert resp.status_code == 201, resp.text
+    return resp.json()
+
+
+def _rule_payload(target_host_ids: list[str], **overrides) -> dict:
+    payload = {
+        "description": "Allow SSH",
+        "interface": "lan",
+        "direction": "in",
+        "protocol": "tcp",
+        "action": "pass",
+        "source_net": "any",
+        "destination_net": "lan",
+        "destination_port": "22",
+        "target_host_ids": target_host_ids,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _mock_deploy_success(respx_mock, base_url: str, uuid_: str = "abc-123"):
+    respx_mock.post(f"{base_url}/api/firewall/filter/addRule").mock(
+        return_value=httpx.Response(200, json={"result": "saved", "uuid": uuid_})
+    )
+    respx_mock.post(f"{base_url}/api/firewall/filter/apply").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+
+
+@pytest.mark.asyncio
+async def test_deploy_starts_in_pending_state(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    _mock_deploy_success(respx_mock, "https://fw1.test")
+
+    resp = await client.post(f"/api/rules/{rule_id}/deploy")
+    assert resp.status_code == 200, resp.text
+    dep = resp.json()["deployments"][0]
+    assert dep["status"] == "pending"
+    assert dep["revert_deadline"] is not None
+
+
+@pytest.mark.asyncio
+async def test_confirm_makes_deployment_permanent(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    _mock_deploy_success(respx_mock, "https://fw1.test")
+    await client.post(f"/api/rules/{rule_id}/deploy")
+
+    resp = await client.post(f"/api/rules/{rule_id}/confirm")
+    assert resp.status_code == 200, resp.text
+    dep = resp.json()["deployments"][0]
+    assert dep["status"] == "success"
+    assert dep["revert_deadline"] is None
+
+
+@pytest.mark.asyncio
+async def test_redeploy_unchanged_payload_skips_pending(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    add_route = respx_mock.post("https://fw1.test/api/firewall/filter/addRule").mock(
+        return_value=httpx.Response(200, json={"result": "saved", "uuid": "abc-123"})
+    )
+    respx_mock.post("https://fw1.test/api/firewall/filter/apply").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+
+    await client.post(f"/api/rules/{rule_id}/deploy")
+    await client.post(f"/api/rules/{rule_id}/confirm")
+
+    # Same rule, same targets, nothing changed — deploying again must not
+    # touch OPNsense at all (addRule called exactly once) and must go
+    # straight back to "success" with no new pending window.
+    resp = await client.post(f"/api/rules/{rule_id}/deploy")
+    assert resp.status_code == 200, resp.text
+    dep = resp.json()["deployments"][0]
+    assert dep["status"] == "success"
+    assert dep["revert_deadline"] is None
+    assert add_route.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_sweep_reverts_fresh_deploy_by_deleting_it(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    _mock_deploy_success(respx_mock, "https://fw1.test", uuid_="abc-123")
+    await client.post(f"/api/rules/{rule_id}/deploy")
+
+    del_route = respx_mock.post("https://fw1.test/api/firewall/filter/delRule/abc-123").mock(
+        return_value=httpx.Response(200, json={"status": "ok"})
+    )
+
+    async with SessionLocal() as db:
+        deployment = (await db.execute(select(RuleDeployment))).scalar_one()
+        deployment.revert_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+
+        await sweep_expired_deployments(db)
+
+        remaining = (await db.execute(select(RuleDeployment))).scalar_one_or_none()
+        assert remaining is None
+
+    assert del_route.called
+
+
+@pytest.mark.asyncio
+async def test_sweep_reverts_redeploy_by_restoring_previous_payload(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    old_payload = {"description": "old", "action": "pass"}
+    new_payload = {"description": "new", "action": "block"}
+
+    set_route = respx_mock.post("https://fw1.test/api/firewall/filter/setRule/existing-uuid").mock(
+        return_value=httpx.Response(200, json={"result": "saved"})
+    )
+    respx_mock.post("https://fw1.test/api/firewall/filter/apply").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+
+    async with SessionLocal() as db:
+        deployment = RuleDeployment(
+            rule_id=uuid.UUID(rule_id),
+            host_id=uuid.UUID(host["id"]),
+            status="pending",
+            opnsense_rule_uuid="existing-uuid",
+            previous_payload=old_payload,
+            last_payload=new_payload,
+            revert_deadline=datetime.now(timezone.utc) - timedelta(seconds=1),
+        )
+        db.add(deployment)
+        await db.commit()
+
+        reverted = await sweep_expired_deployments(db)
+        assert len(reverted) == 1
+        assert reverted[0].status == "reverted"
+        assert reverted[0].last_payload == old_payload
+
+    assert set_route.called
+    sent = json.loads(set_route.calls.last.request.content)
+    assert sent["rule"] == old_payload
+
+
+@pytest.mark.asyncio
+async def test_sweep_marks_revert_failed_when_host_unreachable(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
+    rule_id = resp.json()["id"]
+
+    _mock_deploy_success(respx_mock, "https://fw1.test", uuid_="abc-123")
+    await client.post(f"/api/rules/{rule_id}/deploy")
+
+    respx_mock.post("https://fw1.test/api/firewall/filter/delRule/abc-123").mock(
+        side_effect=httpx.ConnectError("connection refused")
+    )
+
+    async with SessionLocal() as db:
+        deployment = (await db.execute(select(RuleDeployment))).scalar_one()
+        deployment.revert_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+
+        reverted = await sweep_expired_deployments(db)
+        assert len(reverted) == 1
+        assert reverted[0].status == "revert_failed"
+        assert reverted[0].message
+
+        # The row must survive a failed revert — it needs human attention,
+        # not to silently vanish.
+        still_there = (await db.execute(select(RuleDeployment))).scalar_one_or_none()
+        assert still_there is not None
+        assert still_there.status == "revert_failed"

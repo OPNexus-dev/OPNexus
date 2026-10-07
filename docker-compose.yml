@@ -1,0 +1,205 @@
+name: opnexus
+
+# Dieses File enthält nur fertige Release-Images (kein `build:`) und ist
+# damit zugleich das Compose-File des Release-Bundles.
+#  - Fertige Release-Images: in .env OPNEXUS_IMAGE_REPO und OPNEXUS_VERSION
+#    setzen (siehe .env.example), dann `opnexus update` oder
+#      docker compose pull && docker compose up -d --no-build
+#  - Entwicklung/Selbstbau aus dem Repo: docker-compose.override.yml wird
+#    automatisch mitgeladen und ergänzt die Build-Kontexte:
+#      docker compose up -d --build
+#    (taggt lokal als local/opnexus-<dienst>:latest)
+
+# Shared bound-size log driver — without this, Docker's default json-file
+# driver keeps every log line forever, which on a long-running self-hosted
+# install can quietly fill the disk (this has already happened once here
+# via accumulated build cache, see the 2026-09-12 health audit — logs are
+# the same failure mode).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    # Docker's default 64MB /dev/shm is too small for Postgres's parallel
+    # vacuum/query workers on anything but a toy dataset — found the hard
+    # way running VACUUM on a multi-GB table (see docs/HANDBUCH.md's "Backup &
+    # Restore" section for how that table got that large in the first
+    # place). Official Postgres image docs recommend raising this.
+    shm_size: "256mb"
+    environment:
+      # Datenbank- und Benutzername. Wirken nur beim allerersten Start eines
+      # leeren Volumes; eine bestehende Installation behält ihre Namen und
+      # trägt sie in .env ein (siehe docs/HANDBUCH.md, "Datenbank-Namen").
+      POSTGRES_DB: ${POSTGRES_DB:-opnexus}
+      POSTGRES_USER: ${POSTGRES_USER:-opnexus}
+      # No insecure fallback on purpose — a guessable baked-in default
+      # would ship as public, well-known source. Set it in .env.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting (see .env.example)}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # No host port published — only reachable from other containers on
+    # this stack's own network. Keeps us out of "which host ports are
+    # free" territory entirely for this service.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Nightly logical dump of OPNexus's OWN database (users, rules, NAT,
+  # VPN/cert entities, audit trail, deployment history — everything
+  # except the secret material, which never touches Postgres in the
+  # first place, see the *_secret_store.py modules). This is distinct
+  # from the app's own backup feature under /hosts/{id}/backups, which
+  # backs up the MANAGED FIREWALLS' configs, not OPNexus's own data —
+  # before this, a lost/corrupted postgres_data volume had no recovery
+  # path at all. Reuses the postgres image directly (pg_dump is already
+  # in it) rather than adding a new image to build/maintain.
+  # Excludes firewall_log_entries/host_resource_samples: high-volume,
+  # disposable operational history (see docs/HANDBUCH.md's "Backup & Restore"
+  # section for exactly how large this got in practice) rather than
+  # config a disaster recovery actually needs — including them would
+  # make the backup itself multi-GB and a disk-usage risk in its own
+  # right, working against the point of this service.
+  postgres-backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting (see .env.example)}
+    volumes:
+      - postgres_backups:/backups
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        set -e
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M%S)
+          echo "postgres-backup: dumping to /backups/opnexus-$$ts.dump"
+          pg_dump -h postgres -U ${POSTGRES_USER:-opnexus} -d ${POSTGRES_DB:-opnexus} -F c \
+            --exclude-table=firewall_log_entries --exclude-table=host_resource_samples \
+            -f "/backups/opnexus-$$ts.dump"
+          find /backups -name 'opnexus-*.dump' -mtime +14 -delete
+          sleep 86400
+        done
+
+  backend:
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-backend:${OPNEXUS_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-opnexus}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env before starting (see .env.example)}@postgres:5432/${POSTGRES_DB:-opnexus}
+      OPNSENSE_SECRET_DIR: /data/opnsense-secrets
+      OPNSENSE_BACKUP_DIR: /data/opnsense-backups
+      IPSEC_PSK_SECRET_DIR: /data/ipsec-psk-secrets
+      OPENVPN_KEY_SECRET_DIR: /data/openvpn-key-secrets
+      WIREGUARD_KEY_SECRET_DIR: /data/wireguard-key-secrets
+      CERT_KEY_SECRET_DIR: /data/cert-key-secrets
+      ACME_SECRET_DIR: /data/acme-secrets
+      TOTP_SECRET_DIR: /data/totp-secrets
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+      UPDATE_CHECK_URL: ${UPDATE_CHECK_URL:-}
+      UPDATE_CHECK_INTERVAL_HOURS: ${UPDATE_CHECK_INTERVAL_HOURS:-12}
+    volumes:
+      - secrets:/data/opnsense-secrets
+      - backups:/data/opnsense-backups
+      - ipsec_psk_secrets:/data/ipsec-psk-secrets
+      - openvpn_key_secrets:/data/openvpn-key-secrets
+      - wireguard_key_secrets:/data/wireguard-key-secrets
+      - cert_key_secrets:/data/cert-key-secrets
+      - acme_secrets:/data/acme-secrets
+      - totp_secrets:/data/totp-secrets
+      # Gleiches Volume wie der postgres-backup-Service: hier landet das
+      # automatische Sicherheits-Backup vor einer Schema-Migration.
+      - postgres_backups:/backups
+    # Bound to loopback only by default — reachable from this host, not
+    # the network. Set BIND_ADDRESS in .env (e.g. to 0.0.0.0, or a
+    # specific interface IP) for network-wide access instead of editing
+    # this file — see docs/HANDBUCH.md's "Produktivbetrieb" for the TLS-proxy
+    # alternative, which is safer than widening this directly.
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8100}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-frontend:${OPNEXUS_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      # Docker always sets HOSTNAME=<container-id> in the environment,
+      # and Next.js's standalone server.js binds to `process.env.HOSTNAME
+      # || '0.0.0.0'` — so without this override it silently listens only
+      # on the container's own IP, never on 127.0.0.1. Harmless for the
+      # published port (Docker's NAT reaches the container IP directly,
+      # not via loopback) but breaks any in-container check (e.g. the
+      # healthcheck below) that queries localhost.
+      HOSTNAME: "0.0.0.0"
+    depends_on:
+      backend:
+        condition: service_healthy
+    # Same rationale and same BIND_ADDRESS override as the backend
+    # service above.
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-3100}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000/login', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # TLS termination in front of everything. The only service meant to be
+  # reachable from the network; backend/frontend stay on 127.0.0.1.
+  proxy:
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-proxy:${OPNEXUS_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    environment:
+      OPNEXUS_SITES: ${OPNEXUS_SITES:-localhost}
+      OPNEXUS_DEFAULT_SNI: ${OPNEXUS_DEFAULT_SNI:-localhost}
+    ports:
+      - "${PROXY_BIND_ADDRESS:-0.0.0.0}:${PROXY_HTTPS_PORT:-443}:443"
+      - "${PROXY_BIND_ADDRESS:-0.0.0.0}:${PROXY_HTTP_PORT:-80}:80"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  postgres_data:
+  postgres_backups:
+  secrets:
+  backups:
+  ipsec_psk_secrets:
+  openvpn_key_secrets:
+  wireguard_key_secrets:
+  cert_key_secrets:
+  acme_secrets:
+  totp_secrets:
+  caddy_data:
+  caddy_config:

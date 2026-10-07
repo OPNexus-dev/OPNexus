@@ -1,0 +1,58 @@
+# TLS front for OPNexus. Certificates come from Caddy's own internal CA, so
+# they work for bare IP addresses and for names that exist in no DNS at all.
+# Clients trust it once by importing the root certificate served at
+# /opnexus-ca.crt.
+#
+# OPNEXUS_SITES is a comma-separated list of every address OPNexus is reached
+# by, e.g. "10.0.0.5" or "10.0.0.5, opnexus.lan".
+# OPNEXUS_DEFAULT_SNI is the primary one (normally the IP).
+{
+	admin off
+	local_certs
+	# Clients that connect by bare IP send no SNI, and behind Docker the proxy
+	# cannot see which host IP was dialled - so name the certificate to use then.
+	default_sni {$OPNEXUS_DEFAULT_SNI}
+	# Redirect plain http://IP to https, but never serve anything over http.
+	auto_https disable_redirects
+}
+
+http:// {
+	redir https://{host}{uri} permanent
+}
+
+{$OPNEXUS_SITES} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Cross-Origin-Resource-Policy "same-origin"
+		# Next.js hydrates with inline scripts and React sets inline styles, hence
+		# 'unsafe-inline'. Everything else is locked to this origin: no third-party
+		# scripts, no framing, no plugins, the API is same-origin.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+		-X-Powered-By
+	}
+
+	# Root certificate of the internal CA, for importing into browsers/OS.
+	handle /opnexus-ca.crt {
+		root * /data/caddy/pki/authorities/local
+		rewrite * /root.crt
+		header Content-Type "application/x-x509-ca-cert"
+		header Content-Disposition `attachment; filename="opnexus-root-ca.crt"`
+		file_server
+	}
+
+	handle /api/* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

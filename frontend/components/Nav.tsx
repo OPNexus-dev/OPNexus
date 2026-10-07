@@ -1,0 +1,230 @@
+"use client";
+
+import { Logo } from "@/components/Logo";
+import { api } from "@/lib/api";
+import clsx from "clsx";
+import {
+  Cable,
+  FolderTree,
+  GitBranch,
+  KeyRound,
+  LayoutDashboard,
+  Layers,
+  LogOut,
+  Network,
+  RefreshCw,
+  ScrollText,
+  Search,
+  Settings,
+  Shield,
+  ShieldCheck,
+  Tags,
+  Users,
+  Waypoints,
+} from "lucide-react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/events";
+import { useLanguage } from "@/components/LanguageProvider";
+
+export type NavItem = { href: string; label: string; icon: typeof Network; keywords?: string[] };
+export type NavGroup = { key: string; label: string; icon: typeof Network; items: NavItem[] };
+
+// keywords catch searches that use a different word than the page's own
+// label/heading (e.g. "darkmode" for the theme radio group under
+// Einstellungen → Darstellung, which never spells out that word itself) —
+// each list is grounded in what the target page actually shows, not
+// invented, so a hit always lands somewhere the term is genuinely relevant.
+export const navGroups: NavGroup[] = [
+  {
+    key: "overview",
+    label: "Übersicht",
+    icon: Network,
+    items: [
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, keywords: ["Startseite", "Home", "Offene Aktionen", "Sicherheitswarnungen", "Fleet-Status"] },
+      { href: "/hosts", label: "Hosts", icon: Network, keywords: ["Firewalls", "OPNsense-Instanzen"] },
+      { href: "/cluster", label: "Cluster", icon: Layers, keywords: ["CARP", "Hochverfügbarkeit", "Failover", "HA", "Master", "Backup"] },
+    ],
+  },
+  {
+    key: "policy",
+    label: "Regelwerk",
+    icon: Shield,
+    items: [
+      { href: "/rules", label: "Regeln", icon: Shield, keywords: ["Firewall-Regeln", "Filter"] },
+      { href: "/policy-hierarchy", label: "Policy-Hierarchie", icon: GitBranch, keywords: ["Pre-Rules", "Post-Rules", "Vererbung", "Inheritance", "Hierarchische Policies"] },
+      { href: "/groups", label: "Gruppen", icon: FolderTree, keywords: ["Gerätegruppen", "Device Groups"] },
+      { href: "/aliases", label: "Aliase", icon: Tags, keywords: ["Netzwerk-Objekte", "Netzwerkgruppen"] },
+      { href: "/nat", label: "NAT", icon: Network, keywords: ["Port Forward", "Portweiterleitung", "1:1 NAT", "Outbound NAT", "Masquerade"] },
+    ],
+  },
+  {
+    key: "vpn",
+    label: "VPN",
+    icon: KeyRound,
+    items: [
+      { href: "/ipsec", label: "IPsec-VPN", icon: KeyRound, keywords: ["Site-to-Site", "PSK", "Pre-Shared Key", "Tunnel"] },
+      { href: "/openvpn", label: "OpenVPN", icon: Cable, keywords: ["Server", "Client", "TLS-Auth", "TLS-Crypt"] },
+      { href: "/wireguard", label: "WireGuard", icon: Waypoints, keywords: ["Peer", "Tunnel", "Endpoint"] },
+    ],
+  },
+  {
+    key: "certificates",
+    label: "Zertifikate",
+    icon: ShieldCheck,
+    items: [{ href: "/certificates", label: "Zertifikate", icon: ShieldCheck, keywords: ["TLS", "SSL", "Let's Encrypt", "ACME", "Trust-Store", "CA"] }],
+  },
+  {
+    key: "monitoring",
+    label: "Monitoring",
+    icon: ScrollText,
+    items: [
+      { href: "/logs", label: "Logs", icon: ScrollText, keywords: ["Firewall-Logs", "Geblockt", "Blocked", "Top Ports"] },
+      { href: "/audit", label: "Audit", icon: ScrollText, keywords: ["Deploy-Historie", "Protokoll", "Verlauf"] },
+    ],
+  },
+  {
+    key: "system",
+    label: "System",
+    icon: Settings,
+    items: [
+      {
+        href: "/updates",
+        label: "Update Center",
+        icon: RefreshCw,
+        keywords: ["Firmware", "OPNsense-Updates", "Pakete", "Wartung", "Neustart erforderlich", "Versionen"],
+      },
+      {
+        href: "/settings",
+        label: "Einstellungen",
+        icon: Settings,
+        keywords: [
+          "Darstellung",
+          "Dark Mode",
+          "Darkmode",
+          "Light Mode",
+          "Theme",
+          "Farbschema",
+          "Hell",
+          "Dunkel",
+          "Passwort ändern",
+          "Password",
+          "Konto",
+          "Benachrichtigungen",
+          "Webhook",
+          "E-Mail",
+          "SMTP",
+        ],
+      },
+      {
+        href: "/users",
+        label: "Benutzer",
+        icon: Users,
+        keywords: ["User", "Accounts", "Rollen", "Rechte", "Read-Only", "Nur-Lesen", "Admin-Rolle", "Passwort zurücksetzen"],
+      },
+    ],
+  },
+];
+
+export function Nav() {
+  const { t } = useLanguage();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [readOnly, setReadOnly] = useState(false);
+
+  const activeGroup = navGroups.find((g) => g.items.some((i) => pathname?.startsWith(i.href))) ?? null;
+
+  useEffect(() => {
+    api.me().then((state) => setReadOnly(state.role === "read_only")).catch(() => {});
+  }, []);
+
+  async function handleLogout() {
+    await api.logout();
+    router.push("/login");
+  }
+
+  return (
+    <header className="border-b border-slate-200 bg-white">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3 sm:px-6">
+        <Link href="/about" title={t("nav.aboutTitle")} className="shrink-0">
+          <Logo className="h-6 w-auto sm:h-7" />
+        </Link>
+        <nav aria-label={t("nav.mainNavigation")} className="order-3 flex w-full min-w-0 gap-0.5 overflow-x-auto sm:order-none sm:w-auto sm:gap-1">
+          {navGroups.map(({ key, icon: Icon, items }) => {
+            const active = activeGroup?.key === key;
+            return (
+              <Link
+                key={key}
+                href={items[0].href}
+                title={t(`nav.groups.${key}`)}
+                aria-label={t(`nav.groups.${key}`)}
+                aria-current={active ? "true" : undefined}
+                className={clsx(
+                  "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
+                  active ? "bg-brand-50 text-brand-600" : "text-slate-600 hover:bg-slate-100"
+                )}
+              >
+                <Icon size={16} aria-hidden="true" />
+                <span className="hidden sm:inline">{t(`nav.groups.${key}`)}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        {readOnly && (
+          <span
+            title={t("nav.readOnlyDescription")}
+            className="ml-auto shrink-0 rounded-full bg-flame-50 px-2.5 py-1 text-xs font-medium text-flame-800"
+          >
+            {t("nav.readOnly")}
+          </span>
+        )}
+        <button
+          onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
+          title={t("nav.search")}
+          aria-label={t("nav.search")}
+          className={clsx(
+            "flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:px-3",
+            !readOnly && "ml-auto"
+          )}
+        >
+          <Search size={16} aria-hidden="true" />
+          <span className="hidden text-xs text-slate-400 sm:inline">⌘K</span>
+        </button>
+        <button
+          onClick={handleLogout}
+          title={t("nav.logout")}
+          className="flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:px-3"
+        >
+          <LogOut size={16} aria-hidden="true" />
+          <span className="hidden sm:inline">{t("nav.logout")}</span>
+        </button>
+      </div>
+      {activeGroup && activeGroup.items.length > 1 && (
+        <div className="border-t border-slate-100 bg-slate-50">
+          <nav aria-label={t("nav.subNavigation")} className="mx-auto flex max-w-6xl items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:px-6 sm:gap-1">
+            {activeGroup.items.map(({ href, icon: Icon }) => {
+              const active = pathname?.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  title={t(`nav.items.${href.slice(1)}`)}
+                  aria-label={t(`nav.items.${href.slice(1)}`)}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors",
+                    active ? "bg-white font-medium text-brand-600 shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"
+                  )}
+                >
+                  <Icon size={14} aria-hidden="true" />
+                  <span className="hidden sm:inline">{t(`nav.items.${href.slice(1)}`)}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+    </header>
+  );
+}

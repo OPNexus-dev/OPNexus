@@ -1,0 +1,357 @@
+import asyncio
+import logging
+import re
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from app import models  # noqa: F401 - registers models with Base.metadata
+from app.auth_middleware import AuthMiddleware
+from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddleware
+from app.config import settings
+from app.database import SessionLocal
+from app import migrate
+from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router
+from app.routers import one_to_one
+from app.services.one_to_one_deploy_service import sweep_expired_one_to_one_deployments
+from app.routers import outbound_nat
+from app.services.outbound_nat_deploy_service import sweep_expired_outbound_nat_deployments
+from app.services import auth_service, audit_service
+from app.routers import audit, maintenance, settings as settings_router, notifications as notifications_router
+from app.routers import system as system_router
+from app.services.rule_deploy_service import sweep_expired_deployments
+from app.services.alias_deploy_service import sweep_expired_alias_deployments
+from app.services.port_forward_deploy_service import sweep_expired_port_forward_deployments
+from app.services import notification_service, notification_settings_service
+from app.routers import policy_hierarchy, policy_hierarchy_groups
+from app.services.policy_hierarchy_deploy_service import sweep_expired_hierarchy_deployments
+from app.services import log_ingest_service, log_settings_service
+from app.routers import ipsec as ipsec_router
+from app.routers import openvpn as openvpn_router
+from app.routers import wireguard as wireguard_router
+from app.routers import certificates as certificates_router
+from app.routers import restore as restore_router
+from app.version import APP_VERSION
+from app.routers import dashboard as dashboard_router
+from app.routers import cluster as cluster_router
+from app.routers import services as services_router
+from app.routers import resource_samples as resource_samples_router
+from app.services import resource_monitor_service
+from app.routers import scheduled_maintenance as scheduled_maintenance_router
+from app.services import scheduled_maintenance_service
+from app.services import carp_event_service, carp_maintenance_window_service
+
+# Without this, Python's root logger defaults to WARNING with no handler,
+# so every logger.info() call in the 5 background loops below (CARP role
+# changes, log-ingest counts, sweep results, ...) is silently dropped —
+# `docker compose logs backend` then shows only uvicorn's own access log,
+# even after days of the loops actually running. Only warning/exception
+# calls survived before this (e.g. the one-time generated-admin-password
+# banner), which made debugging "is X even running" needlessly hard.
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+logger = logging.getLogger(__name__)
+
+_SWEEP_INTERVAL_SECONDS = 10
+# Prune retention-expired log rows once every N poll cycles rather than
+# every tick — cleanup has no reason to run at poll cadence (default
+# 30s), and a DELETE scanning by timestamp on every cycle would be wasted
+# work once the table is non-trivially sized.
+_LOG_PRUNE_EVERY_N_CYCLES = 20
+# Same rationale as _LOG_PRUNE_EVERY_N_CYCLES, but the resource-sampling
+# loop's own cadence (settings.resource_poll_interval_seconds, default 60s).
+_RESOURCE_PRUNE_EVERY_N_CYCLES = 20
+
+
+async def _deploy_revert_sweep_loop():
+    """Background safety net for the deploy lockout protection: reverts any
+    RuleDeployment whose confirm window passed without a human confirming
+    (see rule_deploy_service.sweep_expired_deployments)."""
+    while True:
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed rule deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("Deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_alias_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed alias deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("Alias deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_port_forward_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed port-forward deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("Port-forward deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_outbound_nat_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed outbound-nat deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("Outbound NAT deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_one_to_one_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed one-to-one deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("1:1 NAT deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await carp_maintenance_window_service.sweep_expired(db)
+            if reverted:
+                logger.info("CARP-Auto-Revert: %d Zeitfenster verarbeitet", len(reverted))
+        except Exception:
+            logger.exception("CARP-Auto-Revert-Sweep fehlgeschlagen")
+        try:
+            async with SessionLocal() as db:
+                reverted = await sweep_expired_hierarchy_deployments(db)
+            if reverted:
+                logger.info("Auto-reverted %d unconfirmed policy-hierarchy deployment(s)", len(reverted))
+        except Exception:
+            logger.exception("Policy-hierarchy deploy-revert sweep failed")
+        await asyncio.sleep(_SWEEP_INTERVAL_SECONDS)
+
+
+async def _notification_poll_loop():
+    """Separate, slower loop from the deploy-revert sweep above: this one
+    makes live HTTP calls to every real firewall per cycle (host status,
+    certificates, live rules for drift), so it must not run at the sweep's
+    10s cadence — that cadence is a security control for the deploy-confirm
+    window, not applicable here. Interval is admin-configurable via
+    NotificationSettings.poll_interval_seconds, floored by
+    settings.notification_poll_min_interval_seconds."""
+    while True:
+        interval = settings.notification_poll_min_interval_seconds
+        try:
+            async with SessionLocal() as db:
+                await notification_service.run_notification_checks(db)
+                row = await notification_settings_service.get_settings(db)
+                interval = max(row.poll_interval_seconds, settings.notification_poll_min_interval_seconds)
+        except Exception:
+            logger.exception("Notification poll failed")
+        try:
+            async with SessionLocal() as db:
+                events = await carp_event_service.detect_and_record(db)
+            for event in events:
+                logger.info(
+                    "CARP-Rollenwechsel auf %s: %s -> %s", event.host_name, event.from_status, event.to_status,
+                )
+        except Exception:
+            logger.exception("CARP-Ereignis-Erkennung fehlgeschlagen")
+        await asyncio.sleep(interval)
+
+
+async def _log_ingest_poll_loop():
+    """Third background loop, mirroring _notification_poll_loop's shape:
+    a live GET call (diagnostics/firewall/log) to every enabled host per
+    cycle, so it runs on its own admin-configurable cadence rather than
+    the 10s deploy-revert sweep's. Interval comes from
+    LogSettings.poll_interval_seconds, floored by
+    settings.log_poll_min_interval_seconds. Retention pruning runs only
+    every _LOG_PRUNE_EVERY_N_CYCLES cycles (see constant above)."""
+    cycle = 0
+    while True:
+        interval = settings.log_poll_min_interval_seconds
+        cycle += 1
+        try:
+            async with SessionLocal() as db:
+                row = await log_settings_service.get_settings(db)
+                interval = max(row.poll_interval_seconds, settings.log_poll_min_interval_seconds)
+                enabled = row.enabled
+                retention_days = row.retention_days
+                max_size_gb = row.max_size_gb
+                await db.commit()
+
+                if enabled:
+                    result = await log_ingest_service.poll_all_hosts(db)
+                    if result["inserted"]:
+                        logger.info(
+                            "Log-Ingest: %d neue Einträge über %d Host(s) (%d fehlgeschlagen)",
+                            result["inserted"], result["hosts_polled"], result["hosts_failed"],
+                        )
+
+                if cycle % _LOG_PRUNE_EVERY_N_CYCLES == 0:
+                    deleted = await log_ingest_service.prune_old_entries(db, retention_days)
+                    if deleted:
+                        logger.info("Log-Retention: %d alte Einträge gelöscht", deleted)
+                    trimmed = await log_ingest_service.enforce_size_limit(db, max_size_gb)
+                    if trimmed:
+                        logger.info("Log-Größenlimit (%.1f GB): %d älteste Einträge gelöscht", max_size_gb, trimmed)
+        except Exception:
+            logger.exception("Log-Ingest-Poll fehlgeschlagen")
+        await asyncio.sleep(interval)
+
+
+async def _resource_poll_loop():
+    """Fourth background loop, same shape as _log_ingest_poll_loop but with
+    a fixed interval (settings.resource_poll_interval_seconds) — v1
+    deliberately has no admin-editable settings row for this, see
+    resource_monitor_service.py's module docstring."""
+    cycle = 0
+    while True:
+        cycle += 1
+        try:
+            async with SessionLocal() as db:
+                result = await resource_monitor_service.poll_all_hosts(db)
+                if result["hosts_failed"]:
+                    logger.warning(
+                        "Resource-Sampling: %d von %d Host(s) fehlgeschlagen",
+                        result["hosts_failed"], result["hosts_polled"],
+                    )
+                if cycle % _RESOURCE_PRUNE_EVERY_N_CYCLES == 0:
+                    deleted = await resource_monitor_service.prune_old_samples(db, settings.resource_sample_retention_days)
+                    if deleted:
+                        logger.info("Resource-Sample-Retention: %d alte Einträge gelöscht", deleted)
+        except Exception:
+            logger.exception("Resource-Poll fehlgeschlagen")
+        await asyncio.sleep(settings.resource_poll_interval_seconds)
+
+
+_SCHEDULED_MAINTENANCE_POLL_SECONDS = 60
+
+
+async def _scheduled_maintenance_poll_loop():
+    """Fifth background loop: fires due one-shot ScheduledMaintenance rows.
+    A fixed 60s cadence is plenty — these are human-picked timestamps, not
+    a sub-minute-precision cron."""
+    while True:
+        try:
+            async with SessionLocal() as db:
+                result = await scheduled_maintenance_service.fire_due(db)
+                if result["due"]:
+                    logger.info(
+                        "Geplante Wartung: %d fällig, %d ausgeführt, %d blockiert/fehlgeschlagen",
+                        result["due"], result["fired"], result["blocked_or_failed"],
+                    )
+        except Exception:
+            logger.exception("Geplante-Wartung-Poll fehlgeschlagen")
+        await asyncio.sleep(_SCHEDULED_MAINTENANCE_POLL_SECONDS)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await migrate.run()
+    async with SessionLocal() as db:
+        await auth_service.bootstrap_admin(db)
+
+    sweep_task = asyncio.create_task(_deploy_revert_sweep_loop())
+    notification_task = asyncio.create_task(_notification_poll_loop())
+    log_ingest_task = asyncio.create_task(_log_ingest_poll_loop())
+    resource_task = asyncio.create_task(_resource_poll_loop())
+    scheduled_maintenance_task = asyncio.create_task(_scheduled_maintenance_poll_loop())
+    try:
+        yield
+    finally:
+        sweep_task.cancel()
+        notification_task.cancel()
+        log_ingest_task.cancel()
+        resource_task.cancel()
+        scheduled_maintenance_task.cancel()
+        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+
+app = FastAPI(title="OPNexus", version=APP_VERSION, lifespan=lifespan)
+
+app.add_middleware(AuthMiddleware)
+# Inside CORS so preflights are answered first; outside Auth so a forged
+# cross-site write is rejected before any session lookup happens.
+app.add_middleware(OriginCheckMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+# Added last so it wraps outermost (Starlette runs the last-added
+# middleware first) — CORS must see and answer OPTIONS preflight requests
+# before AuthMiddleware ever gets a chance to 401 them.
+# An explicit FRONTEND_ORIGIN (required for any non-localhost deployment,
+# see config.py) is matched exactly, never as a regex fragment — avoids
+# turning operator-supplied input into an accidental regex hole.
+_cors_origin_regex = (
+    "^(" + "|".join(re.escape(o) for o in settings.allowed_origins) + ")$"
+    if settings.allowed_origins else settings.cors_origin_regex
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=_cors_origin_regex,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # Browsers hide all but a few standard response headers cross-origin
+    # by default — the backup-download endpoint's filename (carried in
+    # Content-Disposition) needs this to reach the frontend's fetch().
+    expose_headers=["Content-Disposition"],
+)
+
+app.include_router(auth.router)
+app.include_router(hosts.router, prefix="/api")
+app.include_router(rules.router, prefix="/api")
+app.include_router(search_router.router, prefix="/api")
+app.include_router(users_router.router, prefix="/api")
+app.include_router(logs.router, prefix="/api")
+app.include_router(groups.router, prefix="/api")
+app.include_router(aliases.router, prefix="/api")
+app.include_router(port_forward.router, prefix="/api")
+
+
+@app.get("/api/health")
+async def health():
+    return {"status": "ok"}
+
+app.include_router(one_to_one.router, prefix="/api")
+
+app.include_router(outbound_nat.router, prefix="/api")
+
+app.include_router(audit.router, prefix="/api")
+
+app.include_router(maintenance.router, prefix="/api")
+
+app.include_router(settings_router.router, prefix="/api")
+app.include_router(system_router.router, prefix="/api")
+
+app.include_router(notifications_router.router, prefix="/api")
+
+app.include_router(policy_hierarchy_groups.router, prefix="/api")
+app.include_router(policy_hierarchy.router, prefix="/api")
+
+# No background sweep loop for this router — see
+# ipsec_deploy_service.py's module docstring: there is no pending/
+# auto-revert state here to sweep.
+app.include_router(ipsec_router.router, prefix="/api")
+
+# Same as above — no sweep loop, see openvpn_deploy_service.py's module
+# docstring (identical no-pending/auto-revert rationale as IPsec).
+app.include_router(openvpn_router.router, prefix="/api")
+
+# Same as above — no sweep loop, see wireguard_deploy_service.py's module
+# docstring (identical no-pending/auto-revert rationale as IPsec/OpenVPN).
+app.include_router(wireguard_router.router, prefix="/api")
+
+# Trust-Store + ACME certificate management — single-host entities (no
+# multi-host targeting, see the models' own docstrings), no sweep loop
+# either: Trust-Store has no restart/apply step to auto-revert at all, and
+# ACME's register/sign are one-shot external-network triggers, not
+# config-write-then-reconfigure flows with a "config live, reload
+# unconfirmed" middle state to sweep.
+app.include_router(certificates_router.managed_router, prefix="/api")
+app.include_router(certificates_router.acme_accounts_router, prefix="/api")
+app.include_router(certificates_router.acme_certificates_router, prefix="/api")
+app.include_router(restore_router.router, prefix="/api")
+app.include_router(dashboard_router.router, prefix="/api")
+app.include_router(cluster_router.router, prefix="/api")
+app.include_router(services_router.router, prefix="/api")
+app.include_router(resource_samples_router.router, prefix="/api")
+app.include_router(scheduled_maintenance_router.router, prefix="/api")
