@@ -339,13 +339,7 @@ function AliasesContent() {
                     ))}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {hasPending && (
-                    <Button variant="secondary" onClick={() => handleConfirm(alias.id)} disabled={confirmingId === alias.id}>
-                      <ShieldCheck size={14} />
-                      {confirmingId === alias.id ? t("rules.confirming") : t("rules.confirm")}
-                    </Button>
-                  )}
+                <div className="flex shrink-0 flex-wrap gap-2">
                   <Button
                     variant="outline"
                     onClick={() => openEditor(alias)}
@@ -375,6 +369,12 @@ function AliasesContent() {
                       <DeploymentRow key={d.host_id} deployment={d} secondsLeft={secondsLeft} />
                     ))}
                   </ul>
+                  {hasPending && (
+                    <Button className="ml-auto" variant="secondary" onClick={() => handleConfirm(alias.id)} disabled={confirmingId === alias.id}>
+                      <ShieldCheck size={14} />
+                      {confirmingId === alias.id ? t("rules.confirming") : t("rules.confirm")}
+                    </Button>
+                  )}
                 </div>
               )}
             </Card>

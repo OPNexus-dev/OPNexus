@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](website/assets/screenshots/de/rules-light-desktop.webp)
 
-> **Stand:** `1.11.0-rc1` ist der aktuelle öffentliche Release-Candidate (er löst die `1.10.x`-Kandidaten ab). Entwickelt wurde gegen echte OPNsense-Instanzen, eine frische Installation aus den veröffentlichten Images ist aber noch nicht im Feld erprobt — bitte Ecken und Kanten melden.
+> **Stand:** `1.11.0-rc2` ist der aktuelle öffentliche Release-Candidate (er löst `1.11.0-rc1` und die `1.10.x`-Kandidaten ab). Entwickelt wurde gegen echte OPNsense-Instanzen, eine frische Installation aus den veröffentlichten Images ist aber noch nicht im Feld erprobt — bitte Ecken und Kanten melden.
 
 ## Funktionen
 
@@ -46,7 +46,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.11.0-rc1
+OPNEXUS_VERSION=1.11.0-rc2
 ```
 
 ```bash

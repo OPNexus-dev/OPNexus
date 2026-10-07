@@ -443,7 +443,7 @@ function RulesContent() {
           return (
             <Card key={rule.id} className="p-5">
               <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-medium text-slate-900">{rule.description}</h2>
                     <ActionBadge action={rule.action} />
@@ -465,13 +465,7 @@ function RulesContent() {
                     ))}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {hasPending && (
-                    <Button variant="secondary" onClick={() => handleConfirm(rule.id)} disabled={confirmingId === rule.id}>
-                      <ShieldCheck size={14} />
-                      {confirmingId === rule.id ? t("rules.confirming") : t("rules.confirm")}
-                    </Button>
-                  )}
+                <div className="flex shrink-0 flex-wrap gap-2">
                   <Button variant="outline" onClick={() => openEditor(rule)} disabled={rule.deployments.some(d => ["pending", "revert_failed"].includes(d.status))}><Pencil size={14} />{t("rules.edit")}</Button>
                   <Button onClick={() => setReview({ rule, mode: "preview" })}><Rocket size={14} />{t("rules.reviewPush")}</Button>
                   <Tooltip content={t("rules.historyTitle")}><Button variant="ghost" onClick={() => setReview({ rule, mode: "history" })} aria-label={t("rules.historyTitle")}><History size={14} /></Button></Tooltip>
@@ -493,6 +487,12 @@ function RulesContent() {
                       <DeploymentRow key={d.host_id} deployment={d} secondsLeft={secondsLeft} />
                     ))}
                   </ul>
+                  {hasPending && (
+                    <Button className="ml-auto" variant="secondary" onClick={() => handleConfirm(rule.id)} disabled={confirmingId === rule.id}>
+                      <ShieldCheck size={14} />
+                      {confirmingId === rule.id ? t("rules.confirming") : t("rules.confirm")}
+                    </Button>
+                  )}
                 </div>
               )}
             </Card>

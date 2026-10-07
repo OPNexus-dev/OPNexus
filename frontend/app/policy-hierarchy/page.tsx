@@ -640,12 +640,6 @@ function RuleTable({
                   <span className="cursor-grab text-slate-400" title={t("ph.dragTitle")} aria-hidden="true"><GripVertical size={16} /></span>
                   <Button variant="ghost" disabled={i === 0} onClick={() => onMove(rule, "up")} aria-label={t("ph.moveUp")}><ArrowUp size={14} /></Button>
                   <Button variant="ghost" disabled={i === rules.length - 1} onClick={() => onMove(rule, "down")} aria-label={t("ph.moveDown")}><ArrowDown size={14} /></Button>
-                  {hasPending && (
-                    <Button variant="secondary" onClick={() => onConfirm(rule.id)} disabled={confirmingId === rule.id}>
-                      <ShieldCheck size={14} />
-                      {confirmingId === rule.id ? t("rules.confirming") : t("rules.confirm")}
-                    </Button>
-                  )}
                   <Button variant="outline" onClick={() => onEdit(rule)} disabled={rule.deployments.some((d) => ["pending", "revert_failed"].includes(d.status))}><Pencil size={14} /></Button>
                   <Button onClick={() => onReview(rule, "preview")}><Rocket size={14} />{t("rules.reviewPush")}</Button>
                   <Button variant="ghost" onClick={() => onReview(rule, "history")} title={t("rules.history")}><History size={14} /></Button>
@@ -653,14 +647,22 @@ function RuleTable({
                 </div>
               </div>
               {rule.deployments.length > 0 && (
-                <ul className="mt-3 space-y-1 border-t border-slate-100 pt-2 text-xs text-slate-500">
-                  {rule.deployments.map((d) => (
-                    <li key={d.host_id}>
-                      {d.host_name}: {d.status}
-                      {d.message ? ` — ${ts(d.message)}` : ""}
-                    </li>
-                  ))}
-                </ul>
+                <div className="mt-3 flex flex-wrap items-end justify-between gap-2 border-t border-slate-100 pt-2">
+                  <ul className="min-w-0 space-y-1 text-xs text-slate-500">
+                    {rule.deployments.map((d) => (
+                      <li key={d.host_id}>
+                        {d.host_name}: {d.status}
+                        {d.message ? ` — ${ts(d.message)}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  {hasPending && (
+                    <Button className="ml-auto" variant="secondary" onClick={() => onConfirm(rule.id)} disabled={confirmingId === rule.id}>
+                      <ShieldCheck size={14} />
+                      {confirmingId === rule.id ? t("rules.confirming") : t("rules.confirm")}
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
           );

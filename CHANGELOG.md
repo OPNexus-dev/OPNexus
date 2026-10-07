@@ -60,6 +60,10 @@ Sicherheitsüberprüfung vom 2026-10-07, umgesetzte Korrekturen.
 
 Weitere Korrekturen:
 
+- Oberfläche: Der „Bestätigen“-Button steht jetzt am Ende der Deploy-Ergebnis-Zeile statt
+  in der Aktionszeile (Regeln, Aliase, Port-Forwards, 1:1-NAT, Outbound-NAT,
+  Hierarchie-Regeln); die Aktionszeile springt nicht mehr, wenn ein Deployment offen wird.
+
 - **Deployments hinterlassen vor dem ersten Firewall-Aufruf eine dauerhafte Spur**
   (gemeinsamer Ablauf `deploy_flow.py` für Regeln, Aliase, Port-Forwards, 1:1-NAT,
   Outbound-NAT und Hierarchie-Regeln): Bei Absturz, verlorener Antwort oder Timeout bleibt

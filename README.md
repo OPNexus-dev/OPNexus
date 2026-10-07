@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](website/assets/screenshots/en/rules-light-desktop.webp)
 
-> **Status:** `1.11.0-rc1` is the current public release candidate (it replaces the `1.10.x` candidates). It has been developed against real OPNsense instances, but a fresh install from the published images has not been field-tested yet — please expect rough edges and report them.
+> **Status:** `1.11.0-rc2` is the current public release candidate (it replaces `1.11.0-rc1` and the `1.10.x` candidates). It has been developed against real OPNsense instances, but a fresh install from the published images has not been field-tested yet — please expect rough edges and report them.
 
 ## What it does
 
@@ -48,7 +48,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.11.0-rc1
+OPNEXUS_VERSION=1.11.0-rc2
 ```
 
 ```bash
