@@ -42,6 +42,7 @@ function NotificationsSection() {
   const [maintenanceUnknown, setMaintenanceUnknown] = useState(true);
   const [carpHealth, setCarpHealth] = useState(true);
   const [natDrift, setNatDrift] = useState(true);
+  const [networkDrift, setNetworkDrift] = useState(true);
   const [carpAutoRevertFailed, setCarpAutoRevertFailed] = useState(true);
   const [pollInterval, setPollInterval] = useState(300);
 
@@ -63,6 +64,7 @@ function NotificationsSection() {
     setMaintenanceUnknown(data.maintenance_unknown_enabled);
     setCarpHealth(data.carp_health_enabled);
     setNatDrift(data.nat_drift_enabled);
+    setNetworkDrift(data.network_drift_enabled);
     setCarpAutoRevertFailed(data.carp_auto_revert_failed_enabled);
     setPollInterval(data.poll_interval_seconds);
     setWebhookSecret("");
@@ -102,6 +104,7 @@ function NotificationsSection() {
         maintenance_unknown_enabled: maintenanceUnknown,
         carp_health_enabled: carpHealth,
         nat_drift_enabled: natDrift,
+        network_drift_enabled: networkDrift,
         carp_auto_revert_failed_enabled: carpAutoRevertFailed,
         poll_interval_seconds: pollInterval,
       });
@@ -232,6 +235,7 @@ function NotificationsSection() {
             [t("settings.notify.event.maintenanceUnknown"), maintenanceUnknown, setMaintenanceUnknown],
             [t("settings.notify.event.carpHealth"), carpHealth, setCarpHealth],
             [t("settings.notify.event.natDrift"), natDrift, setNatDrift],
+            [t("settings.notify.event.networkDrift"), networkDrift, setNetworkDrift],
             [t("settings.notify.event.carpAutoRevertFailed"), carpAutoRevertFailed, setCarpAutoRevertFailed],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">

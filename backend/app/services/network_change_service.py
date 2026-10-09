@@ -48,6 +48,16 @@ FIELDS: dict[str, set[str]] = {
     "kea_subnet": {"subnet", "pools", "valid_lifetime", "next_server", "description", "option_data.routers",
                    "option_data.domain_name_servers", "option_data.domain_name", "option_data.ntp_servers"},
     "kea_reservation": {"subnet", "ip_address", "hw_address", "client_id", "hostname", "description", "next_server"},
+    "tunable": {"tunable", "value", "descr"},
+    "cron_job": {"enabled", "minutes", "hours", "days", "months", "weekdays", "who", "command", "parameters", "description"},
+    "syslog_destination": {"enabled", "transport", "program", "level", "facility", "hostname", "port", "rfc5424", "description"},
+    "gateway_group": {"name", "item", "item2", "item3", "item4", "item5", "trigger", "poolopts", "descr"},
+    "lagg": {"members", "primary_member", "proto", "lacp_fast_timeout", "use_flowid", "lagghash", "lacp_strict", "mtu", "descr"},
+    "bridge": {"members", "linklocal", "enablestp", "proto", "descr"},
+    "loopback": {"deviceId", "description"},
+    "gre": {"local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "tunnel-remote-net", "descr"},
+    "dns_forward": {"enabled", "type", "domain", "server", "port", "verify", "forward_tcp_upstream", "forward_first", "description"},
+    "dhcp_range": {"interface", "start_addr", "end_addr", "subnet_mask", "lease_time", "domain_type", "domain", "description"},
     "interface": {"if", "descr", "enable", "type4", "ipaddr", "gateway", "type6", "ipaddrv6", "gatewayv6", "mtu",
                   "blockpriv", "blockbogons", "lock"},
 }
@@ -56,8 +66,21 @@ SECRET_FIELDS: dict[str, set[str]] = {"vip": {"password"}}
 SECTION = {"vlan": "vlans", "vip": "vips", "gateway": "gateways", "route": "routes", "interface": "assignments",
            "dns_host": "dns_hosts", "dhcp_host": "dhcp_hosts", "kea_subnet": "kea_subnets",
            "kea_reservation": "kea_reservations"}
+# Columns the generic object lists show (the firewall's own field names). Lists never carry fields outside FIELDS.
+OBJECT_COLUMNS: dict[str, list[str]] = {
+    "tunable": ["tunable", "value", "default_value", "descr"],
+    "cron_job": ["enabled", "minutes", "hours", "days", "months", "weekdays", "command", "description"],
+    "syslog_destination": ["enabled", "transport", "hostname", "port", "program", "level", "description"],
+    "gateway_group": ["name", "item", "item2", "item3", "trigger", "descr"],
+    "lagg": ["laggif", "members", "proto", "descr"],
+    "bridge": ["bridgeif", "members", "proto", "descr"],
+    "loopback": ["deviceId", "description"],
+    "gre": ["greif", "local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "descr"],
+    "dns_forward": ["enabled", "type", "domain", "server", "port", "description"],
+    "dhcp_range": ["interface", "start_addr", "end_addr", "subnet_mask", "lease_time", "description"],
+}
 # These change how the network is wired; the others (DNS/DHCP data) cannot cut the connection to the firewall.
-WIRING_KINDS = {"vlan", "vip", "gateway", "route", "interface"}
+WIRING_KINDS = {"vlan", "vip", "gateway", "route", "interface", "lagg", "bridge", "gre"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -135,7 +158,7 @@ def assess(kind: str, action: str, uuid: str | None, before: dict, after: dict,
     mgmt_iface = next((i for i in net.interfaces if i.device == mgmt_device), None)
     mgmt_ident = mgmt_iface.identifier if mgmt_iface else None
 
-    if SECTION[kind] in net.unavailable:
+    if SECTION.get(kind) in net.unavailable:
         blocks.append(_risk("api_unavailable", section=SECTION[kind]))
     if mgmt_device is None and kind in WIRING_KINDS:
         # We cannot tell what this change could cut, so treat every change to existing objects as risky.
@@ -159,6 +182,22 @@ def assess(kind: str, action: str, uuid: str | None, before: dict, after: dict,
                 risks.append(_risk("interface_rules_removed", count=len(rules), names=", ".join(rules[:5])))
         if action in ("set", "del") and uuid in ("wan", "lan") and uuid != mgmt_ident:
             warnings.append(_risk("core_interface", name=uuid))
+
+    if kind in ("lagg", "bridge"):
+        members = {m for side in (before, after) for m in side.get("members", "").split(",") if m}
+        if mgmt_device and mgmt_device in members:
+            risks.append(_risk("management_member", device=mgmt_device))
+        elif mgmt_device is None and action in ("set", "del"):
+            pass  # already covered by management_unknown above
+    if kind == "tunable":
+        # sysctl values can change how the whole system behaves (and some only apply after a reboot).
+        risks.append(_risk("tunable_change"))
+        if action in ("set", "del") and uuid and "-" not in uuid:
+            # A built-in default (its id is not a UUID): the firewall would create a new entry instead of
+            # changing it, so overriding one is an "add", not an edit.
+            blocks.append(_risk("tunable_default_row"))
+    if kind == "gateway_group" and action == "del":
+        warnings.append(_risk("gateway_group_in_use"))
 
     if kind == "vlan" and action in ("set", "del"):
         device = next((v.device for v in net.vlans if v.uuid == uuid), None)
@@ -229,6 +268,26 @@ async def _peers(db: AsyncSession, host: OpnsenseHost) -> list[str]:
     rows = await db.scalars(select(OpnsenseHost.name).where(
         OpnsenseHost.cluster_name == host.cluster_name, OpnsenseHost.id != host.id).order_by(OpnsenseHost.name))
     return list(rows.all())
+
+
+async def list_objects(host: OpnsenseHost, kind: str) -> dict:
+    """Rows of one generic object kind, reduced to the columns above (plus uuid) — never whole rows,
+    so nothing the list does not need (or must not show) leaves the server."""
+    columns = OBJECT_COLUMNS[kind]
+    try:
+        rows = await opnsense_client.search_network_objects(host, kind)
+    except OpnsenseAPIError as exc:
+        if "404" in str(exc):
+            return {"available": False, "columns": columns, "rows": []}   # this OPNsense version lacks the API
+        raise
+    out = []
+    for row in rows:
+        item = {"uuid": str(row.get("uuid", ""))}
+        for col in columns:
+            value = row.get(col)
+            item[col] = "" if value is None or isinstance(value, (dict, list)) else str(value)
+        out.append(item)
+    return {"available": True, "columns": columns, "rows": out}
 
 
 async def _rules_using(host: OpnsenseHost, identifier: str) -> list[str]:

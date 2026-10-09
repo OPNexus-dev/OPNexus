@@ -3129,10 +3129,52 @@ Vergabe von DHCP-Leases (Kea ist auf den Test-Firewalls deaktiviert).
 
 **Bekannte Grenzen:** Übernommene Regeln werden je Firewall einzeln übernommen. Wer
 eine übernommene Regel zusätzlich auf einen weiteren Host als Ziel setzt, legt dort
-eine zweite, doppelte Regel an (die Vorschau zeigt „create“). Keine Multi-Host-Vorlagen für Netzwerkobjekte, kein
-Rolling-Apply auf CARP-Paaren (die Vorschau weist auf den Partner hin), keine
-LAGG/Bridge/GRE/VXLAN-Verwaltung, keine dnsmasq-Bereiche, keine Kea-DDNS-Felder,
-Gateway-Gruppen nicht enthalten.
+eine zweite, doppelte Regel an (die Vorschau zeigt „create“). Keine Multi-Host-Vorlagen
+für Netzwerkobjekte, kein automatisches Rolling-Apply auf CARP-Paaren (nur das
+Übertragen auf den Partner per Klick), keine VXLAN-/GIF-Verwaltung, keine Kea-DDNS-Felder.
+
+### Erweiterung 1.13.0: Geräte, Host-System, Abgleich im Cluster
+
+Alles über dieselbe Engine (Vorschau, Backup, Anwenden, Zurücklesen, Audit, Guard):
+
+- **Netzwerk › Geräte:** LAGG, Bridge, Loopback und GRE. Ein LAGG oder eine Bridge, die
+  die Verwaltungs-Schnittstelle als Mitglied enthält, braucht die Bestätigung
+  (`management_member`). Beim Anlegen einer Bridge sind die Mitglieder Schnittstellen-
+  Kennungen (opt1, opt2), bei einem LAGG Gerätenamen.
+- **Gateways › Gateway-Gruppen**, **DNS › Weiterleitungen** (Unbound-Forwards) und
+  **DHCP › Bereiche** (dnsmasq).
+- **Host-System** (neue Gruppe): **Tunables** (jede Änderung braucht die Bestätigung; die
+  eingebauten Vorgaben lassen sich nicht bearbeiten, nur per „Überschreiben“ mit einem
+  eigenen Eintrag übersteuern), **Cron**, **Syslog** (entfernte Log-Ziele) und
+  **Snapshots** (ZFS: anlegen und löschen; das aktive Boot-Environment lässt sich nicht
+  löschen, das Aktivieren mit Neustart gibt es bewusst nicht). Snapshots haben eine
+  eigene, flache API und laufen deshalb über `services/snapshot_service.py`, nicht über
+  die Engine.
+- **Netzwerk › Abgleich:** vergleicht die Knoten jedes Clusters (Schnittstellen,
+  VLANs, VIPs, Gateways, Routen, DNS, DHCP). Adressen, CARP-Advskew/-Passwort und das
+  aktive Standard-Gateway sind pro Knoten verschieden und werden nicht verglichen; eine
+  Kategorie, die ein Knoten nicht liefern kann, wird übersprungen statt als Abweichung
+  gemeldet. Dazu ein neuer Alarm „Netzwerk-Abweichung im Cluster“
+  (`network_drift`, Einstellungen › Benachrichtigungen, Migration 0004), der sich nach
+  der Korrektur selbst auflöst und bei einem nicht erreichbaren Knoten offene Meldungen
+  stehen lässt.
+- **Auf den Partner übertragen:** Nach dem Anlegen eines Objekts auf einem Cluster-Knoten
+  bietet der Ergebnis-Schritt „Auf <Partner> übertragen“ an (Dialog mit denselben
+  Werten, mit eigener Vorschau, eigenem Backup und eigenem Guard). Empfohlene
+  Reihenfolge: zuerst der Backup-Knoten, dann der Master.
+- **Kopfzeile:** Bei acht Gruppen zeigt die Hauptnavigation die Namen ab 1150 px Breite,
+  darunter nur Icons mit Tooltip, damit Suche und Abmelden in einer Zeile bleiben.
+
+**Verifikation 1.13.0 (live auf test-fw-1/-2/-3):** je anlegen, ändern, in der Liste
+sehen und löschen mit Backup, Apply und Rücklesen für Tunable, Cron-Job, Syslog-Ziel,
+Gateway-Gruppe, Loopback, GRE, DNS-Forward und dnsmasq-Bereich auf test-fw-3, Bridge
+auf test-fw-1 (mit zwei dafür zugewiesenen, unbenutzten VLANs) und LAGG auf test-fw-3;
+Snapshots anlegen/löschen auf test-fw-1 und -3 (der aktive wird abgelehnt). Der Abgleich
+und sein Alarm wurden mit einem nur auf einem Knoten vorhandenen VLAN geprüft
+(Meldung geöffnet, nach dem Löschen aufgelöst). Browser: Übertragen auf den Partner,
+Abgleich vor und nach dem Angleichen, Überschreiben und Löschen eines Tunables,
+Snapshot anlegen/löschen, alle neuen Seiten in Deutsch und Englisch (Dark Mode),
+axe-core über die ganze App ohne Verstöße, Kopfzeile in einer Zeile ab 768 px.
 
 ## Definition of Done — Stand
 

@@ -496,3 +496,45 @@ async def test_verification_catches_a_field_that_changed_without_being_asked(cli
     plan = (await _preview(client, host_id, **change)).json()
     done = (await _execute(client, host_id, plan["token"], **change)).json()
     assert done["verified"] is False and done["mismatches"] == ["network"]
+
+
+# ── generic object kinds ─────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_objects_list_returns_only_the_display_columns(client, respx_mock):
+    host_id = await _setup(client, respx_mock, "fw-o1")
+    respx_mock.get(_url("/syslog/settings/searchDestinations")).mock(return_value=httpx.Response(200, json={"rows": [
+        {"uuid": "d1", "enabled": "1", "transport": "udp4", "hostname": "192.0.2.10", "port": "514", "program": "", "level": "info",
+         "facility": "daemon", "certificate": "SECRET-CERT-REF", "description": "central"}]}))
+    body = (await client.get(f"/api/hosts/{host_id}/network/objects/syslog_destination")).json()
+    assert body["available"] is True and body["rows"][0]["hostname"] == "192.0.2.10"
+    assert "certificate" not in body["rows"][0] and "facility" not in body["rows"][0]
+    assert (await client.get(f"/api/hosts/{host_id}/network/objects/vlan")).status_code == 404  # typed kinds have their own lists
+
+
+@pytest.mark.asyncio
+async def test_objects_list_reports_a_missing_api_instead_of_failing(client, respx_mock):
+    host_id = await _setup(client, respx_mock, "fw-o2")
+    respx_mock.get(_url("/interfaces/gre_settings/searchItem")).mock(return_value=httpx.Response(404, json={"errorMessage": "Endpoint not found"}))
+    body = (await client.get(f"/api/hosts/{host_id}/network/objects/gre")).json()
+    assert body == {"available": False, "columns": body["columns"], "rows": []}
+
+
+@pytest.mark.asyncio
+async def test_tunables_always_need_acknowledgement_and_defaults_cannot_be_edited(client, respx_mock):
+    host_id = await _setup(client, respx_mock, "fw-o3")
+    add = (await _preview(client, host_id, kind="tunable", action="add", fields={"tunable": "vfs.read_max", "value": "128"})).json()
+    assert [r["code"] for r in add["risks"]] == ["tunable_change"] and add["requires_acknowledgement"] is True
+    _item(respx_mock, "/core/tunables/getItem/0add3c58db981d0d24d5d4ab322e3695", "sysctl",
+          {"tunable": "net.inet.tcp.drop_synfin", "value": "1", "descr": "built in"})
+    default = (await _preview(client, host_id, kind="tunable", action="set", uuid="0add3c58db981d0d24d5d4ab322e3695", fields={"value": "0"})).json()
+    assert [b["code"] for b in default["blocks"]] == ["tunable_default_row"] and default["can_execute"] is False
+
+
+@pytest.mark.asyncio
+async def test_lagg_or_bridge_containing_the_management_device_needs_acknowledgement(client, respx_mock):
+    host_id = await _setup(client, respx_mock, "fw-o4")   # reached on vtnet0
+    mine = (await _preview(client, host_id, kind="lagg", action="add", fields={"members": "vtnet0,vtnet2", "proto": "failover"})).json()
+    assert [r["code"] for r in mine["risks"]] == ["management_member"]
+    other = (await _preview(client, host_id, kind="lagg", action="add", fields={"members": "vtnet2,vtnet3", "proto": "failover"})).json()
+    assert other["risks"] == []

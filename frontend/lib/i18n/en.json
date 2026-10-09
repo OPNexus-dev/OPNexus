@@ -62,7 +62,8 @@
         "maintenanceUnknown": "Maintenance outcome unclear",
         "carpHealth": "CARP state critical (split-brain / no master)",
         "natDrift": "NAT drift in the cluster",
-        "carpAutoRevertFailed": "CARP auto-revert failed"
+        "carpAutoRevertFailed": "CARP auto-revert failed",
+        "networkDrift": "Network differences in the cluster"
       },
       "pollInterval": "Check interval (seconds)",
       "pollHint": "At least 60s, so the firewalls are not loaded unnecessarily."
@@ -126,7 +127,8 @@
       "vpn": "VPN",
       "certificates": "Certificates",
       "monitoring": "Monitoring",
-      "system": "System"
+      "system": "System",
+      "hostsystem": "Host system"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -152,7 +154,13 @@
       "audit": "Audit",
       "updates": "Update Center",
       "settings": "Settings",
-      "users": "Users"
+      "users": "Users",
+      "network-devices": "Devices",
+      "network-compare": "Compare",
+      "hostsystem-tunables": "Tunables",
+      "hostsystem-cron": "Cron",
+      "hostsystem-syslog": "Syslog",
+      "hostsystem-snapshots": "Snapshots"
     }
   },
   "dashboard": {
@@ -1817,7 +1825,17 @@
       "dns_host": "DNS entry",
       "dhcp_host": "DHCP host (dnsmasq)",
       "kea_subnet": "DHCP subnet (Kea)",
-      "kea_reservation": "DHCP reservation (Kea)"
+      "kea_reservation": "DHCP reservation (Kea)",
+      "tunable": "Tunable",
+      "cron_job": "Cron job",
+      "syslog_destination": "Syslog target",
+      "gateway_group": "Gateway groups",
+      "lagg": "LAGG",
+      "bridge": "Bridge",
+      "loopback": "Loopback",
+      "gre": "GRE tunnel",
+      "dns_forward": "DNS forwards",
+      "dhcp_range": "DHCP ranges (dnsmasq)"
     },
     "field": {
       "if": "Parent interface",
@@ -1894,7 +1912,58 @@
         "domain_name_servers": "DNS servers",
         "domain_name": "Domain name",
         "ntp_servers": "NTP servers"
-      }
+      },
+      "tunable": "Tunable",
+      "value": "Value",
+      "default_value": "Default value",
+      "minutes": "Minute",
+      "hours": "Hour",
+      "days": "Day",
+      "months": "Month",
+      "weekdays": "Weekday",
+      "who": "User",
+      "command": "Command",
+      "parameters": "Parameters",
+      "transport": "Transport",
+      "program": "Programs",
+      "level": "Level",
+      "facility": "Facility",
+      "rfc5424": "RFC 5424",
+      "rfc5424Hint": "Use RFC 5424 format",
+      "item": "Gateways (tier 1)",
+      "item2": "Gateways (tier 2)",
+      "item3": "Gateways (tier 3)",
+      "item4": "Gateways (tier 4)",
+      "item5": "Gateways (tier 5)",
+      "trigger": "Trigger",
+      "poolopts": "Pool options",
+      "members": "Members",
+      "primary_member": "Primary member",
+      "lacp_fast_timeout": "LACP fast timeout",
+      "lagghash": "Hash algorithm",
+      "laggif": "Device",
+      "bridgeif": "Device",
+      "linklocal": "Link-local",
+      "linklocalHint": "Assign a link-local address automatically",
+      "enablestp": "STP",
+      "enablestpHint": "Enable spanning tree",
+      "deviceId": "Device no.",
+      "local-addr": "Local address",
+      "remote-addr": "Remote address",
+      "tunnel-local-addr": "Tunnel address (local)",
+      "tunnel-remote-addr": "Tunnel address (remote)",
+      "tunnel-remote-net": "Tunnel prefix",
+      "greif": "Device",
+      "type": "Type",
+      "verify": "Verify certificate",
+      "forward_tcp_upstream": "TCP to upstream",
+      "forward_tcp_upstreamHint": "Forward queries over TCP",
+      "forward_first": "Forward first",
+      "forward_firstHint": "Forward first, then resolve locally",
+      "start_addr": "From",
+      "end_addr": "To",
+      "subnet_mask": "Subnet mask",
+      "domain_type": "Domain type"
     },
     "risks": {
       "management_interface": "This change affects {device}, the interface OPNexus uses to reach the firewall. The connection may drop.",
@@ -1905,19 +1974,23 @@
       "management_gateway": "{name} sits on the interface OPNexus uses to reach the firewall.",
       "default_route": "A default route ({network}) changes the path for almost all traffic.",
       "route_covers_management": "The route {network} covers the firewall's own address. Replies to OPNexus may take a different path.",
-      "interface_rules_removed": "Removing it makes OPNsense itself delete {count} rule(s) that use this interface: {names}"
+      "interface_rules_removed": "Removing it makes OPNsense itself delete {count} rule(s) that use this interface: {names}",
+      "management_member": "{device} is the interface OPNexus uses to reach the firewall, and it is a member of this device. The connection may drop.",
+      "tunable_change": "Tunables change how the whole system behaves; some only apply after a reboot and some can make the firewall unusable."
     },
     "warnings": {
       "carp_change": "CARP changes can trigger a switch between master and backup.",
       "cluster_peers": "This firewall is part of a cluster. The same change may be needed on {hosts} as well. VIPs and gateways are not synchronised automatically.",
-      "core_interface": "{name} is a core interface of the firewall. Changes affect every rule and service on it."
+      "core_interface": "{name} is a core interface of the firewall. Changes affect every rule and service on it.",
+      "gateway_group_in_use": "Rules that use this gateway group lose their target."
     },
     "blocks": {
       "api_unavailable": "This firewall does not offer an API for this ({section}).",
       "nothing_to_change": "There is nothing to change.",
       "interface_api_unavailable": "This OPNsense version cannot configure interfaces through its API (from about 26.7.6).",
       "interface_changes_pending": "Interface changes are already staged on the firewall and waiting to be applied. Check and apply or discard them there first.",
-      "interface_locked": "The interface is locked. Remove the lock first, then delete."
+      "interface_locked": "The interface is locked. Remove the lock first, then delete.",
+      "tunable_default_row": "This is a built-in default of the firewall. To change it, create your own entry with “Override”."
     },
     "change": {
       "title": {
@@ -1948,7 +2021,9 @@
         "after": "After"
       },
       "invalidValue": "Invalid value.",
-      "unreachable": "The change was applied, but “{host}” no longer answers on its previous address. If the management address was changed, enter the new one under Hosts › Edit. The backup taken before the change is kept."
+      "unreachable": "The change was applied, but “{host}” no longer answers on its previous address. If the management address was changed, enter the new one under Hosts › Edit. The backup taken before the change is kept.",
+      "transferHint": "Apply the same change to the partner in the cluster as well? Backup node first, then the master.",
+      "transfer": "Transfer to {host}"
     },
     "rowAdd": "Add",
     "rowEdit": "Edit",
@@ -1960,6 +2035,59 @@
       "dnsmasq": "Hosts (dnsmasq: static DHCP and DNS)",
       "keaSubnets": "Subnets (Kea)",
       "keaReservations": "Reservations (Kea)"
+    },
+    "objectsUnavailable": "This OPNsense version offers no API for this.",
+    "override": "Override",
+    "compare": {
+      "loadFailed": "Could not load the comparison.",
+      "noClusters": "No cluster with at least two hosts.",
+      "intro": "Compares the network configuration of a cluster's nodes. Addresses, CARP advskew and the active default gateway may differ and are not compared.",
+      "unreachable": "Unreachable: {hosts}",
+      "same": "Identical",
+      "count": "{count} difference(s)",
+      "category": "Area",
+      "object": "Object",
+      "state": "State",
+      "missing": "Missing",
+      "different": "Differs",
+      "absent": "missing",
+      "categories": {
+        "interfaces": "Interface",
+        "vlans": "VLAN",
+        "vips": "Virtual IP",
+        "gateways": "Gateway",
+        "routes": "Route",
+        "dns_hosts": "DNS entry",
+        "dhcp_hosts": "DHCP host",
+        "kea_subnets": "DHCP subnet",
+        "kea_reservations": "DHCP reservation"
+      }
+    }
+  },
+  "hostsystem": {
+    "intro": {
+      "tunables": "System parameters of the firewall (sysctl). The firewall's own values stay untouched; your own entries override them.",
+      "cron": "Scheduled tasks the firewall runs itself.",
+      "syslog": "Remote log targets the firewall sends its messages to.",
+      "snapshots": "ZFS snapshots of the firewall as an extra safety net before bigger changes. Activating one (with a reboot) is deliberately left to OPNsense itself."
+    },
+    "snapshots": {
+      "create": "Create snapshot",
+      "createHint": "The snapshot captures the current system state. It does not replace a configuration backup.",
+      "name": "Name",
+      "nameHint": "Letters, digits, dot, underscore and hyphen.",
+      "note": "Note",
+      "state": "State",
+      "size": "Size",
+      "createdAt": "Created",
+      "activeNow": "active",
+      "activeNext": "active after reboot",
+      "unsupported": "This firewall does not support snapshots (no ZFS).",
+      "created": "Snapshot “{name}” created.",
+      "createFailed": "Could not create the snapshot.",
+      "deleted": "Snapshot “{name}” deleted.",
+      "deleteFailed": "Could not delete the snapshot.",
+      "deleteConfirm": "Really delete snapshot “{name}”?"
     }
   }
 }

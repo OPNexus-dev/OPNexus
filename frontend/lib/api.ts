@@ -224,7 +224,42 @@ export interface NetRoute {
   disabled: boolean;
 }
 
-export type NetworkKind = "vlan" | "vip" | "gateway" | "route" | "interface" | "dns_host" | "dhcp_host" | "kea_subnet" | "kea_reservation";
+export type NetworkKind =
+  | "vlan" | "vip" | "gateway" | "route" | "interface" | "dns_host" | "dhcp_host" | "kea_subnet" | "kea_reservation"
+  | "tunable" | "cron_job" | "syslog_destination" | "gateway_group" | "lagg" | "bridge" | "loopback" | "gre"
+  | "dns_forward" | "dhcp_range";
+
+export interface NetworkObjects {
+  available: boolean;
+  columns: string[];
+  rows: Record<string, string>[];
+}
+
+export interface NetworkDifference {
+  category: string;
+  key: string;
+  status: "missing" | "different";
+  present_on: string[];
+  missing_from: string[];
+  signatures: Record<string, string>;
+}
+
+export interface ClusterNetworkDrift {
+  name: string;
+  hosts: string[];
+  compared: string[];
+  unreachable: string[];
+  differences: NetworkDifference[];
+}
+
+export interface HostSnapshot {
+  uuid: string;
+  name: string;
+  active: string;
+  size: string;
+  created: string;
+  mountpoint: string;
+}
 export type NetworkAction = "add" | "set" | "del";
 
 export interface NetworkChangeRequest {
@@ -1071,6 +1106,12 @@ export const api = {
   deleteHost: (id: string) => request<void>(`/hosts/${id}`, { method: "DELETE" }),
   getLiveRules: (id: string) => request<LiveRule[]>(`/hosts/${id}/live-rules`),
   getHostNetwork: (id: string) => request<HostNetwork>(`/hosts/${id}/network`),
+  listNetworkObjects: (id: string, kind: NetworkKind) => request<NetworkObjects>(`/hosts/${id}/network/objects/${kind}`),
+  getNetworkDrift: () => request<{ clusters: ClusterNetworkDrift[] }>("/network/drift"),
+  listSnapshots: (id: string) => request<{ supported: boolean; rows: HostSnapshot[] }>(`/hosts/${id}/snapshots`),
+  createSnapshot: (id: string, name: string, note: string) =>
+    request<HostSnapshot>(`/hosts/${id}/snapshots`, { method: "POST", body: JSON.stringify({ name, note }) }),
+  deleteSnapshot: (id: string, uuid: string) => request<void>(`/hosts/${id}/snapshots/${uuid}`, { method: "DELETE" }),
   getNetworkItem: (id: string, kind: NetworkKind, uuid: string) => request<Record<string, string>>(`/hosts/${id}/network/item/${kind}/${uuid}`),
   getNetworkTemplate: (id: string, kind: NetworkKind) => request<NetworkTemplate>(`/hosts/${id}/network/template/${kind}`),
   previewNetworkChange: (id: string, data: NetworkChangeRequest) =>
@@ -1434,6 +1475,7 @@ export interface NotificationSettings {
   maintenance_unknown_enabled: boolean;
   carp_health_enabled: boolean;
   nat_drift_enabled: boolean;
+  network_drift_enabled: boolean;
   carp_auto_revert_failed_enabled: boolean;
   poll_interval_seconds: number;
   updated_at: string;
@@ -1460,6 +1502,7 @@ export interface NotificationSettingsUpdate {
   maintenance_unknown_enabled?: boolean;
   carp_health_enabled?: boolean;
   nat_drift_enabled?: boolean;
+  network_drift_enabled?: boolean;
   carp_auto_revert_failed_enabled?: boolean;
   poll_interval_seconds?: number;
 }
@@ -1483,7 +1526,7 @@ export interface LogSettingsUpdate {
 
 export type ProblemType =
   | "host_offline" | "cert_expiry" | "rule_drift" | "revert_failed" | "maintenance_unknown"
-  | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed";
+  | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed" | "network_drift";
 
 export interface CarpEvent {
   id: string;

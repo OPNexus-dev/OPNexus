@@ -76,3 +76,15 @@ async def current_item(host_id: uuid.UUID, kind: str, item_uuid: str, db: AsyncS
         return await network_change_service.item(host, kind, item_uuid)
     except OpnsenseAPIError as exc:
         raise _upstream_error(host, exc) from exc
+
+
+@router.get("/objects/{kind}")
+async def list_objects(host_id: uuid.UUID, kind: str, db: AsyncSession = Depends(get_db)):
+    """Rows of a generic object kind (tunables, cron jobs, LAGG, ...), reduced to their display columns."""
+    if kind not in network_change_service.OBJECT_COLUMNS:
+        raise api_error(404, ErrorCode.NETWORK_ITEM_NOT_FOUND)
+    host = await _host_or_404(db, host_id)
+    try:
+        return await network_change_service.list_objects(host, kind)
+    except OpnsenseAPIError as exc:
+        raise _upstream_error(host, exc) from exc

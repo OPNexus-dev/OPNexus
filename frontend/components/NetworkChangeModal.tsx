@@ -114,6 +114,92 @@ const FIELDS: Record<NetworkKind, FieldDef[]> = {
     { name: "next_server", type: "text" },
     { name: "description", type: "text" },
   ],
+  tunable: [
+    { name: "tunable", type: "text" },
+    { name: "value", type: "text" },
+    { name: "descr", type: "text" },
+  ],
+  cron_job: [
+    { name: "enabled", type: "check" },
+    { name: "minutes", type: "text" },
+    { name: "hours", type: "text" },
+    { name: "days", type: "text" },
+    { name: "months", type: "text" },
+    { name: "weekdays", type: "text" },
+    { name: "who", type: "text" },
+    { name: "command", type: "select" },
+    { name: "parameters", type: "text" },
+    { name: "description", type: "text" },
+  ],
+  syslog_destination: [
+    { name: "enabled", type: "check" },
+    { name: "transport", type: "select" },
+    { name: "hostname", type: "text" },
+    { name: "port", type: "text" },
+    { name: "program", type: "text" },
+    { name: "level", type: "text" },
+    { name: "facility", type: "text" },
+    { name: "rfc5424", type: "check" },
+    { name: "description", type: "text" },
+  ],
+  gateway_group: [
+    { name: "name", type: "text" },
+    { name: "item", type: "text" },
+    { name: "item2", type: "text" },
+    { name: "item3", type: "text" },
+    { name: "item4", type: "text" },
+    { name: "item5", type: "text" },
+    { name: "trigger", type: "select" },
+    { name: "poolopts", type: "select" },
+    { name: "descr", type: "text" },
+  ],
+  lagg: [
+    { name: "members", type: "text" },
+    { name: "proto", type: "select" },
+    { name: "primary_member", type: "text" },
+    { name: "lagghash", type: "select" },
+    { name: "mtu", type: "text" },
+    { name: "descr", type: "text" },
+  ],
+  bridge: [
+    { name: "members", type: "text" },
+    { name: "proto", type: "select" },
+    { name: "enablestp", type: "check" },
+    { name: "linklocal", type: "check" },
+    { name: "descr", type: "text" },
+  ],
+  loopback: [
+    { name: "deviceId", type: "text" },
+    { name: "description", type: "text" },
+  ],
+  gre: [
+    { name: "local-addr", type: "text" },
+    { name: "remote-addr", type: "text" },
+    { name: "tunnel-local-addr", type: "text" },
+    { name: "tunnel-remote-addr", type: "text" },
+    { name: "tunnel-remote-net", type: "text" },
+    { name: "descr", type: "text" },
+  ],
+  dns_forward: [
+    { name: "enabled", type: "check" },
+    { name: "type", type: "select" },
+    { name: "domain", type: "text" },
+    { name: "server", type: "text" },
+    { name: "port", type: "text" },
+    { name: "forward_tcp_upstream", type: "check" },
+    { name: "forward_first", type: "check" },
+    { name: "description", type: "text" },
+  ],
+  dhcp_range: [
+    { name: "interface", type: "select" },
+    { name: "start_addr", type: "text" },
+    { name: "end_addr", type: "text" },
+    { name: "subnet_mask", type: "text" },
+    { name: "lease_time", type: "text" },
+    { name: "domain_type", type: "select" },
+    { name: "domain", type: "text" },
+    { name: "description", type: "text" },
+  ],
   route: [
     { name: "network", type: "text" },
     { name: "gateway", type: "select" },
@@ -130,6 +216,9 @@ interface Props {
   uuid?: string;
   /** Values to start a new object with (e.g. the device being assigned). */
   preset?: Record<string, string>;
+  /** Other nodes of the same cluster; after an add the same object can be created there too. */
+  peers?: { id: string; name: string }[];
+  onTransfer?: (peer: { id: string; name: string }, fields: Record<string, string>) => void;
   onClose: () => void;
   onDone: () => void;
 }
@@ -142,7 +231,7 @@ function isVisible(f: FieldDef, values: Record<string, string>): boolean {
   return wanted.includes(values[f.when.field] ?? "");
 }
 
-export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, preset, onClose, onDone }: Props) {
+export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, preset, peers, onTransfer, onClose, onDone }: Props) {
   const { t, errorMessage } = useLanguage();
   const toast = useToast();
   const [step, setStep] = useState<Step>(action === "del" ? "review" : "form");
@@ -155,6 +244,7 @@ export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, prese
   const [acknowledged, setAcknowledged] = useState(false);
   const [typedHost, setTypedHost] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
   // The form starts from what the firewall itself offers for a new object (defaults + valid choices).
@@ -212,6 +302,7 @@ export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, prese
     setError(null);
     try {
       const fields = action === "del" ? {} : changedFields();
+      setSent(fields);
       const res = await api.executeNetworkChange(hostId, { kind, action, uuid, fields }, plan.token, acknowledged);
       setResult(res);
       setStep("done");
@@ -363,6 +454,18 @@ export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, prese
               </p>
             )}
             <p className="text-xs text-slate-500">{t("network.change.backupId", { id: result.backup_id })}</p>
+            {action === "add" && peers && peers.length > 0 && onTransfer && (
+              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                <p className="text-sm text-slate-600">{t("network.change.transferHint")}</p>
+                <div className="flex flex-wrap gap-2">
+                  {peers.map((peer) => (
+                    <Button key={peer.id} type="button" variant="outline" onClick={() => onTransfer(peer, sent)}>
+                      {t("network.change.transfer", { host: peer.name })}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="flex justify-end">
               <Button type="button" onClick={onClose}>{t("common.close")}</Button>
             </div>

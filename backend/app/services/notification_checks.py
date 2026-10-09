@@ -14,7 +14,7 @@ from app.models.one_to_one_deployment import OneToOneDeployment
 from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.rule_deployment import RuleDeployment
-from app.services import nat_drift_service, rule_drift_service
+from app.services import nat_drift_service, network_drift_service, rule_drift_service
 from app.services.notification_dedup import Problems
 from app.services.host_status_service import get_statuses
 from app.services.live_certificates_service import get_live_certificates
@@ -145,6 +145,40 @@ async def check_nat_drift(db: AsyncSession) -> dict[str, dict]:
                     "present_on": present_names,
                     "missing_from": missing_names,
                 }
+    return problems
+
+
+_NETWORK_LABELS = {
+    "interfaces": "Schnittstelle", "vlans": "VLAN", "vips": "Virtuelle IP", "gateways": "Gateway", "routes": "Route",
+    "dns_hosts": "DNS-Eintrag", "dhcp_hosts": "DHCP-Host", "kea_subnets": "DHCP-Subnetz", "kea_reservations": "DHCP-Reservierung",
+}
+
+
+async def check_network_drift(db: AsyncSession) -> dict[str, dict]:
+    hosts = await _enabled_hosts(db)
+    by_cluster: dict[str, list[OpnsenseHost]] = defaultdict(list)
+    for host in hosts:
+        if host.cluster_name:
+            by_cluster[host.cluster_name].append(host)
+
+    problems = Problems()
+    for cluster_name, cluster_hosts in by_cluster.items():
+        if len(cluster_hosts) < 2:
+            continue
+        differences, compared, _unreachable = await network_drift_service.compute_cluster(cluster_hosts)
+        if len(compared) < 2:
+            # Not evaluable right now (a node is down, which check_host_offline reports): keep what is open.
+            problems.preserve_prefixes.add(f"{cluster_name}:")
+            continue
+        for row in differences:
+            key = f"{cluster_name}:{row['category']}:{row['key']}"
+            problems[key] = {
+                "cluster_name": cluster_name,
+                "object": f"{_NETWORK_LABELS.get(row['category'], row['category'])} {row['key']}",
+                "status": "fehlt auf einem Knoten" if row["status"] == "missing" else "Einstellungen weichen ab",
+                "present_on": row["present_on"],
+                "missing_from": row["missing_from"],
+            }
     return problems
 
 

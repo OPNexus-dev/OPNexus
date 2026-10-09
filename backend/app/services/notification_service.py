@@ -28,6 +28,7 @@ _CHECKS = [
     ("maintenance_unknown", "maintenance_unknown_enabled", notification_checks.check_maintenance_unknown),
     ("carp_split_brain", "carp_health_enabled", notification_checks.check_carp_health),
     ("nat_drift", "nat_drift_enabled", notification_checks.check_nat_drift),
+    ("network_drift", "network_drift_enabled", notification_checks.check_network_drift),
     ("carp_auto_revert_failed", "carp_auto_revert_failed_enabled", notification_checks.check_carp_auto_revert_failed),
 ]
 

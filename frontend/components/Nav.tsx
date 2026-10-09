@@ -8,6 +8,12 @@ import {
   FolderTree,
   Globe,
   GitBranch,
+  HardDrive,
+  Clock,
+  Camera,
+  Sliders,
+  GitCompare,
+  Boxes,
   KeyRound,
   LayoutDashboard,
   Layers,
@@ -74,7 +80,20 @@ export const navGroups: NavGroup[] = [
       { href: "/network/gateways", label: "Gateways", icon: Router, keywords: ["Standard-Gateway", "Uplink"] },
       { href: "/network/routes", label: "Routen", icon: Route, keywords: ["Routing", "Statische Routen"] },
       { href: "/network/dns", label: "DNS", icon: Globe, keywords: ["Unbound", "Host-Override", "Hostnamen"] },
-      { href: "/network/dhcp", label: "DHCP", icon: Server, keywords: ["Kea", "dnsmasq", "Reservierung", "Statische Zuweisung", "Subnetz"] },
+      { href: "/network/dhcp", label: "DHCP", icon: Server, keywords: ["Kea", "dnsmasq", "Reservierung", "Statische Zuweisung", "Subnetz", "Bereich", "Range"] },
+      { href: "/network/devices", label: "Geräte", icon: Boxes, keywords: ["LAGG", "Link Aggregation", "Bridge", "Brücke", "Loopback", "GRE", "Tunnel"] },
+      { href: "/network/compare", label: "Abgleich", icon: GitCompare, keywords: ["Vergleich", "Cluster", "HA", "Abweichung", "Drift", "Unterschiede"] },
+    ],
+  },
+  {
+    key: "hostsystem",
+    label: "Host-System",
+    icon: HardDrive,
+    items: [
+      { href: "/hostsystem/tunables", label: "Tunables", icon: Sliders, keywords: ["sysctl", "Kernel", "kTLS", "Systemparameter"] },
+      { href: "/hostsystem/cron", label: "Cron", icon: Clock, keywords: ["Zeitplan", "Aufgaben", "Jobs", "geplante Aufgaben"] },
+      { href: "/hostsystem/syslog", label: "Syslog", icon: ScrollText, keywords: ["Remote-Logging", "Log-Ziel", "Logserver"] },
+      { href: "/hostsystem/snapshots", label: "Snapshots", icon: Camera, keywords: ["ZFS", "Boot-Umgebung", "Sicherung vor Änderung"] },
     ],
   },
   {
@@ -169,11 +188,11 @@ export function Nav() {
 
   return (
     <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-3 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6">
         <Link href="/about" title={t("nav.aboutTitle")} className="shrink-0">
           <Logo className="h-6 w-auto sm:h-7" />
         </Link>
-        <nav aria-label={t("nav.mainNavigation")} className="order-3 flex w-full min-w-0 gap-0.5 overflow-x-auto sm:order-none sm:w-auto sm:gap-1">
+        <nav aria-label={t("nav.mainNavigation")} className="order-3 flex w-full min-w-0 gap-0.5 overflow-x-auto sm:order-none sm:w-auto">
           {navGroups.map(({ key, icon: Icon, items }) => {
             const active = activeGroup?.key === key;
             return (
@@ -184,12 +203,12 @@ export function Nav() {
                 aria-label={t(`nav.groups.${key}`)}
                 aria-current={active ? "true" : undefined}
                 className={clsx(
-                  "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors sm:px-3",
+                  "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors",
                   active ? "bg-brand-50 text-brand-600" : "text-slate-600 hover:bg-slate-100"
                 )}
               >
                 <Icon size={16} aria-hidden="true" />
-                <span className="hidden sm:inline">{t(`nav.groups.${key}`)}</span>
+                <span className="hidden min-[1150px]:inline">{t(`nav.groups.${key}`)}</span>
               </Link>
             );
           })}

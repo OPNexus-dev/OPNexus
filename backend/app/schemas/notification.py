@@ -9,7 +9,7 @@ from app.config import settings
 SmtpSecurity = Literal["none", "starttls", "ssl"]
 ProblemType = Literal[
     "host_offline", "cert_expiry", "rule_drift", "revert_failed", "maintenance_unknown",
-    "carp_split_brain", "nat_drift", "carp_auto_revert_failed",
+    "carp_split_brain", "nat_drift", "carp_auto_revert_failed", "network_drift",
 ]
 
 
@@ -36,6 +36,7 @@ class NotificationSettingsRead(BaseModel):
     maintenance_unknown_enabled: bool
     carp_health_enabled: bool
     nat_drift_enabled: bool
+    network_drift_enabled: bool = True
     carp_auto_revert_failed_enabled: bool
 
     poll_interval_seconds: int
@@ -71,6 +72,7 @@ class NotificationSettingsUpdate(BaseModel):
     maintenance_unknown_enabled: bool | None = None
     carp_health_enabled: bool | None = None
     nat_drift_enabled: bool | None = None
+    network_drift_enabled: bool | None = None
     carp_auto_revert_failed_enabled: bool | None = None
 
     poll_interval_seconds: int | None = Field(

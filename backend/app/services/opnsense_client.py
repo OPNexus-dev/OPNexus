@@ -1101,6 +1101,30 @@ NETWORK_ITEM_APIS = {
     "kea_subnet": {"body_key": "subnet4", "base": "/kea/dhcpv4", "add": "addSubnet", "set": "setSubnet",
                    "del": "delSubnet", "get": "getSubnet", "search": "searchSubnet",
                    "reconfigure": "/kea/service/reconfigure"},
+    # System / interface devices / DNS+DHCP extras (same controllers pattern; read 2026-10-09).
+    "tunable": {"body_key": "sysctl", "base": "/core/tunables", "add": "addItem", "set": "setItem", "del": "delItem",
+                "get": "getItem", "search": "searchItem", "reconfigure": "/core/tunables/reconfigure"},
+    "cron_job": {"body_key": "job", "base": "/cron/settings", "add": "addJob", "set": "setJob", "del": "delJob",
+                 "get": "getJob", "search": "searchJobs", "reconfigure": "/cron/service/reconfigure"},
+    "syslog_destination": {"body_key": "destination", "base": "/syslog/settings", "add": "addDestination",
+                           "set": "setDestination", "del": "delDestination", "get": "getDestination",
+                           "search": "searchDestinations", "reconfigure": "/syslog/service/reconfigure"},
+    "gateway_group": {"body_key": "gateway_group", "base": "/routing/group_settings", "add": "add", "set": "set",
+                      "del": "del", "get": "get", "search": "search", "reconfigure": "/routing/group_settings/reconfigure"},
+    "lagg": {"body_key": "lagg", "base": "/interfaces/lagg_settings", "add": "addItem", "set": "setItem",
+             "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/lagg_settings/reconfigure"},
+    "bridge": {"body_key": "bridge", "base": "/interfaces/bridge_settings", "add": "addItem", "set": "setItem",
+               "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/bridge_settings/reconfigure"},
+    "loopback": {"body_key": "loopback", "base": "/interfaces/loopback_settings", "add": "addItem", "set": "setItem",
+                 "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/loopback_settings/reconfigure"},
+    "gre": {"body_key": "gre", "base": "/interfaces/gre_settings", "add": "addItem", "set": "setItem",
+            "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/gre_settings/reconfigure"},
+    "dns_forward": {"body_key": "dot", "base": "/unbound/settings", "add": "addForward", "set": "setForward",
+                    "del": "delForward", "get": "getForward", "search": "searchForward",
+                    "reconfigure": "/unbound/service/reconfigure"},
+    "dhcp_range": {"body_key": "range", "base": "/dnsmasq/settings", "add": "addRange", "set": "setRange",
+                   "del": "delRange", "get": "getRange", "search": "searchRange",
+                   "reconfigure": "/dnsmasq/service/reconfigure"},
     "kea_reservation": {"body_key": "reservation", "base": "/kea/dhcpv4", "add": "addReservation",
                         "set": "setReservation", "del": "delReservation", "get": "getReservation",
                         "search": "searchReservation", "reconfigure": "/kea/service/reconfigure"},
@@ -1178,3 +1202,31 @@ async def search_kea_subnets(host: OpnsenseHost) -> dict:
 
 async def search_kea_reservations(host: OpnsenseHost) -> dict:
     return await _search_all(host, "/kea/dhcpv4/searchReservation")
+
+
+async def search_network_objects(host: OpnsenseHost, kind: str) -> list[dict]:
+    api = NETWORK_ITEM_APIS[kind]
+    data = await _request(host, "GET", f"{api['base']}/{api['search']}", params={"rowCount": -1})
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+# ── ZFS snapshots (Core/Api/SnapshotsController, read 2026-10-09) ────────
+# Not a config object: flat form fields instead of {body_key: {...}}, no reconfigure, and the answers are
+# free-form ("OK" strings / {"status": ...}), so callers confirm by listing again.
+async def list_snapshots(host: OpnsenseHost) -> list[dict]:
+    data = await _request(host, "GET", "/core/snapshots/search", params={"rowCount": -1})
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+async def create_snapshot(host: OpnsenseHost, name: str, note: str = "") -> None:
+    data = await _request(host, "POST", "/core/snapshots/add", json={"name": name, "note": note})
+    if isinstance(data, dict) and (data.get("validations") or str(data.get("status", "")).lower() == "failed"):
+        raise OpnsenseAPIError(f"Snapshot anlegen von Firewall nicht bestätigt: {redact_data(data)}")
+
+
+async def delete_snapshot(host: OpnsenseHost, uuid: str) -> None:
+    data = await _request(host, "POST", f"/core/snapshots/del/{uuid}")
+    if isinstance(data, dict) and (data.get("validations") or str(data.get("status", "")).lower() == "failed"):
+        raise OpnsenseAPIError(f"Snapshot löschen von Firewall nicht bestätigt: {redact_data(data)}")

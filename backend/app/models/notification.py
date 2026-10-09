@@ -48,6 +48,7 @@ class NotificationSettings(Base):
     maintenance_unknown_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     carp_health_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     nat_drift_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    network_drift_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     carp_auto_revert_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=300)

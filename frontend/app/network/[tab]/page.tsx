@@ -7,6 +7,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
 import { NetworkChangeModal } from "@/components/NetworkChangeModal";
+import { NetworkCompare } from "@/components/NetworkCompare";
+import { NetworkObjectSection } from "@/components/NetworkObjectSection";
 import { Button } from "@/components/ui/Button";
 import { api, Host, HostNetwork, NetworkAction, NetworkKind } from "@/lib/api";
 import { useReadOnly } from "@/lib/useReadOnly";
@@ -14,11 +16,25 @@ import { AlertTriangle, Cable, Pencil, Plus, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-type Section = "interfaces" | "vlans" | "vips" | "gateways" | "routes" | "dns" | "dhcp";
-type Change = { kind: NetworkKind; action: NetworkAction; uuid?: string; preset?: Record<string, string> };
+type Section = "interfaces" | "vlans" | "vips" | "gateways" | "routes" | "dns" | "dhcp" | "devices" | "compare";
+// hostId/hostName are set when the dialog targets another node than the one on screen (transfer to a cluster partner).
+type Change = { kind: NetworkKind; action: NetworkAction; uuid?: string; preset?: Record<string, string>; hostId?: string; hostName?: string };
 type OpenChange = (change: Change) => void;
 
 const HOST_KEY = "opnexus-network-host";
+
+// Extra generic object lists shown below the main table of a page (and the whole "devices" page).
+const EXTRA_SECTIONS: Partial<Record<Section, { kind: NetworkKind; titleKey: string }[]>> = {
+  gateways: [{ kind: "gateway_group", titleKey: "network.kinds.gateway_group" }],
+  dns: [{ kind: "dns_forward", titleKey: "network.kinds.dns_forward" }],
+  dhcp: [{ kind: "dhcp_range", titleKey: "network.kinds.dhcp_range" }],
+  devices: [
+    { kind: "lagg", titleKey: "network.kinds.lagg" },
+    { kind: "bridge", titleKey: "network.kinds.bridge" },
+    { kind: "loopback", titleKey: "network.kinds.loopback" },
+    { kind: "gre", titleKey: "network.kinds.gre" },
+  ],
+};
 
 const SECTION_KIND: Partial<Record<Section, NetworkKind>> = { interfaces: "interface", vlans: "vlan", vips: "vip", gateways: "gateway", routes: "route", dns: "dns_host" };
 
@@ -37,7 +53,7 @@ export default function NetworkPage() {
   const [error, setError] = useState<string | null>(null);
   // The sub-navigation in the header picks the section; the path is the single source of truth.
   const { tab } = useParams<{ tab: string }>();
-  const section: Section = (["interfaces", "vlans", "vips", "gateways", "routes", "dns", "dhcp"].includes(tab) ? tab : "interfaces") as Section;
+  const section: Section = (["interfaces", "vlans", "vips", "gateways", "routes", "dns", "dhcp", "devices", "compare"].includes(tab) ? tab : "interfaces") as Section;
   const [change, setChange] = useState<Change | null>(null);
   const readOnly = useReadOnly();
   const [reloadKey, setReloadKey] = useState(0);
@@ -57,7 +73,7 @@ export default function NetworkPage() {
   }, [errorMessage]);
 
   useEffect(() => {
-    if (!hostId) return;
+    if (!hostId || section === "compare") return;
     let cancelled = false;
     setError(null);
     // Switching host clears the view; a reload after a change keeps it so an open dialog is not torn down.
@@ -72,7 +88,23 @@ export default function NetworkPage() {
     return () => {
       cancelled = true;
     };
-  }, [hostId, errorMessage, reloadKey]);
+  }, [hostId, errorMessage, reloadKey, section]);
+
+  if (section === "compare") {
+    return (
+      <div>
+        <h1 className="mb-6 text-2xl font-semibold text-slate-900">{t("nav.items.network-compare")}</h1>
+        <NetworkCompare />
+      </div>
+    );
+  }
+
+  const modalHostId = change?.hostId ?? hostId;
+  const modalHost = hosts?.find((h) => h.id === modalHostId);
+  const current = hosts?.find((h) => h.id === modalHostId);
+  const peers = current?.cluster_name
+    ? (hosts ?? []).filter((h) => h.cluster_name === current.cluster_name && h.id !== current.id).map((h) => ({ id: h.id, name: h.name }))
+    : [];
 
   if (hosts && hosts.length === 0) {
     return (
@@ -134,13 +166,29 @@ export default function NetworkPage() {
               {section === "dns" && <DnsTable network={network} onChange={setChange} />}
               {section === "dhcp" && <DhcpSections network={network} onChange={setChange} />}
             </fieldset>
+            {(EXTRA_SECTIONS[section] ?? []).map((extra) => (
+              <NetworkObjectSection
+                key={extra.kind}
+                hostId={hostId}
+                kind={extra.kind}
+                title={t(extra.titleKey)}
+                reloadKey={reloadKey}
+                readOnly={readOnly}
+                onChange={setChange}
+              />
+            ))}
           </Card>
         </>
       )}
       {change && (
         <NetworkChangeModal
-          hostId={hostId}
-          hostName={hosts?.find((h) => h.id === hostId)?.name ?? ""}
+          key={`${modalHostId}:${change.kind}:${change.action}:${change.uuid ?? ""}`}
+          hostId={modalHostId}
+          hostName={modalHost?.name ?? ""}
+          peers={peers}
+          onTransfer={(peer, fields) =>
+            setChange({ kind: change.kind, action: "add", preset: fields, hostId: peer.id, hostName: peer.name })
+          }
           kind={change.kind}
           action={change.action}
           uuid={change.uuid}

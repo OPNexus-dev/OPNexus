@@ -62,7 +62,8 @@
         "maintenanceUnknown": "Wartungsergebnis unklar",
         "carpHealth": "CARP-Zustand kritisch (Split-Brain / kein Master)",
         "natDrift": "NAT-Drift im Cluster",
-        "carpAutoRevertFailed": "CARP-Auto-Revert fehlgeschlagen"
+        "carpAutoRevertFailed": "CARP-Auto-Revert fehlgeschlagen",
+        "networkDrift": "Netzwerk-Abweichung im Cluster"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
       "pollHint": "Mindestens 60s, um die Firewalls nicht unnötig zu belasten."
@@ -126,7 +127,8 @@
       "vpn": "VPN",
       "certificates": "Zertifikate",
       "monitoring": "Monitoring",
-      "system": "System"
+      "system": "System",
+      "hostsystem": "Host-System"
     },
     "items": {
       "dashboard": "Dashboard",
@@ -152,7 +154,13 @@
       "audit": "Audit",
       "updates": "Update Center",
       "settings": "Einstellungen",
-      "users": "Benutzer"
+      "users": "Benutzer",
+      "network-devices": "Geräte",
+      "network-compare": "Abgleich",
+      "hostsystem-tunables": "Tunables",
+      "hostsystem-cron": "Cron",
+      "hostsystem-syslog": "Syslog",
+      "hostsystem-snapshots": "Snapshots"
     }
   },
   "dashboard": {
@@ -1817,7 +1825,17 @@
       "dns_host": "DNS-Eintrag",
       "dhcp_host": "DHCP-Host (dnsmasq)",
       "kea_subnet": "DHCP-Subnetz (Kea)",
-      "kea_reservation": "DHCP-Reservierung (Kea)"
+      "kea_reservation": "DHCP-Reservierung (Kea)",
+      "tunable": "Tunable",
+      "cron_job": "Cron-Job",
+      "syslog_destination": "Syslog-Ziel",
+      "gateway_group": "Gateway-Gruppen",
+      "lagg": "LAGG",
+      "bridge": "Bridge",
+      "loopback": "Loopback",
+      "gre": "GRE-Tunnel",
+      "dns_forward": "DNS-Weiterleitungen",
+      "dhcp_range": "DHCP-Bereiche (dnsmasq)"
     },
     "field": {
       "if": "Eltern-Schnittstelle",
@@ -1894,7 +1912,58 @@
         "domain_name_servers": "DNS-Server",
         "domain_name": "Domain-Name",
         "ntp_servers": "NTP-Server"
-      }
+      },
+      "tunable": "Tunable",
+      "value": "Wert",
+      "default_value": "Standardwert",
+      "minutes": "Minute",
+      "hours": "Stunde",
+      "days": "Tag",
+      "months": "Monat",
+      "weekdays": "Wochentag",
+      "who": "Benutzer",
+      "command": "Befehl",
+      "parameters": "Parameter",
+      "transport": "Transport",
+      "program": "Programme",
+      "level": "Level",
+      "facility": "Facility",
+      "rfc5424": "RFC 5424",
+      "rfc5424Hint": "RFC-5424-Format verwenden",
+      "item": "Gateways (Stufe 1)",
+      "item2": "Gateways (Stufe 2)",
+      "item3": "Gateways (Stufe 3)",
+      "item4": "Gateways (Stufe 4)",
+      "item5": "Gateways (Stufe 5)",
+      "trigger": "Auslöser",
+      "poolopts": "Pool-Optionen",
+      "members": "Mitglieder",
+      "primary_member": "Primäres Mitglied",
+      "lacp_fast_timeout": "LACP Fast-Timeout",
+      "lagghash": "Hash-Verfahren",
+      "laggif": "Gerät",
+      "bridgeif": "Gerät",
+      "linklocal": "Link-Local",
+      "linklocalHint": "Link-Local-Adresse automatisch vergeben",
+      "enablestp": "STP",
+      "enablestpHint": "Spanning Tree aktivieren",
+      "deviceId": "Geräte-Nr.",
+      "local-addr": "Lokale Adresse",
+      "remote-addr": "Gegenstelle",
+      "tunnel-local-addr": "Tunnel-Adresse lokal",
+      "tunnel-remote-addr": "Tunnel-Adresse Gegenstelle",
+      "tunnel-remote-net": "Tunnel-Präfix",
+      "greif": "Gerät",
+      "type": "Typ",
+      "verify": "Zertifikat prüfen",
+      "forward_tcp_upstream": "TCP zum Upstream",
+      "forward_tcp_upstreamHint": "Anfragen per TCP weiterleiten",
+      "forward_first": "Zuerst weiterleiten",
+      "forward_firstHint": "Erst weiterleiten, danach selbst auflösen",
+      "start_addr": "Von",
+      "end_addr": "Bis",
+      "subnet_mask": "Subnetzmaske",
+      "domain_type": "Domain-Art"
     },
     "risks": {
       "management_interface": "Diese Änderung betrifft {device}, die Schnittstelle, über die OPNexus die Firewall erreicht. Die Verbindung kann abbrechen.",
@@ -1905,19 +1974,23 @@
       "management_gateway": "{name} hängt an der Schnittstelle, über die OPNexus die Firewall erreicht.",
       "default_route": "Eine Standardroute ({network}) verändert den Weg für fast den gesamten Verkehr.",
       "route_covers_management": "Die Route {network} deckt die Adresse der Firewall ab. Die Antworten an OPNexus können einen anderen Weg nehmen.",
-      "interface_rules_removed": "Beim Entfernen löscht OPNsense selbst {count} Regel(n), die diese Schnittstelle nutzen: {names}"
+      "interface_rules_removed": "Beim Entfernen löscht OPNsense selbst {count} Regel(n), die diese Schnittstelle nutzen: {names}",
+      "management_member": "{device} ist die Schnittstelle, über die OPNexus die Firewall erreicht, und gehört zu diesem Gerät. Die Verbindung kann abbrechen.",
+      "tunable_change": "Tunables ändern das Verhalten des gesamten Systems; manche greifen erst nach einem Neustart und manche können die Firewall unbrauchbar machen."
     },
     "warnings": {
       "carp_change": "CARP-Änderungen können einen Wechsel zwischen Master und Backup auslösen.",
       "cluster_peers": "Diese Firewall gehört zu einem Cluster. Dieselbe Änderung muss ggf. auch auf {hosts} erfolgen. VIPs und Gateways werden nicht automatisch synchronisiert.",
-      "core_interface": "{name} ist eine Kern-Schnittstelle der Firewall. Änderungen wirken sich auf alle Regeln und Dienste darauf aus."
+      "core_interface": "{name} ist eine Kern-Schnittstelle der Firewall. Änderungen wirken sich auf alle Regeln und Dienste darauf aus.",
+      "gateway_group_in_use": "Regeln, die diese Gateway-Gruppe nutzen, verlieren ihr Ziel."
     },
     "blocks": {
       "api_unavailable": "Diese Firewall stellt dafür keine API bereit ({section}).",
       "nothing_to_change": "Es gibt nichts zu ändern.",
       "interface_api_unavailable": "Diese OPNsense-Version kann Schnittstellen nicht per API konfigurieren (ab ca. 26.7.6).",
       "interface_changes_pending": "Auf der Firewall warten bereits vorgemerkte Schnittstellen-Änderungen auf das Anwenden. Zuerst dort prüfen und anwenden oder verwerfen.",
-      "interface_locked": "Die Schnittstelle ist gesperrt. Zuerst die Sperre aufheben, dann löschen."
+      "interface_locked": "Die Schnittstelle ist gesperrt. Zuerst die Sperre aufheben, dann löschen.",
+      "tunable_default_row": "Das ist eine Vorgabe der Firewall. Zum Ändern einen eigenen Eintrag mit „Überschreiben“ anlegen."
     },
     "change": {
       "title": {
@@ -1948,7 +2021,9 @@
         "after": "Nachher"
       },
       "invalidValue": "Ungültiger Wert.",
-      "unreachable": "Die Änderung wurde angewendet, aber „{host}“ antwortet unter der bisherigen Adresse nicht mehr. Wurde die Verwaltungs-Adresse geändert, die neue Adresse unter Hosts › Bearbeiten eintragen. Das Backup vor der Änderung bleibt gespeichert."
+      "unreachable": "Die Änderung wurde angewendet, aber „{host}“ antwortet unter der bisherigen Adresse nicht mehr. Wurde die Verwaltungs-Adresse geändert, die neue Adresse unter Hosts › Bearbeiten eintragen. Das Backup vor der Änderung bleibt gespeichert.",
+      "transferHint": "Dieselbe Änderung auch auf den Partner im Cluster anwenden? Zuerst den Backup-Knoten, dann den Master.",
+      "transfer": "Auf {host} übertragen"
     },
     "rowAdd": "Hinzufügen",
     "rowEdit": "Bearbeiten",
@@ -1960,6 +2035,59 @@
       "dnsmasq": "Hosts (dnsmasq: statisches DHCP und DNS)",
       "keaSubnets": "Subnetze (Kea)",
       "keaReservations": "Reservierungen (Kea)"
+    },
+    "objectsUnavailable": "Diese OPNsense-Version bietet dafür keine API.",
+    "override": "Überschreiben",
+    "compare": {
+      "loadFailed": "Der Abgleich konnte nicht geladen werden.",
+      "noClusters": "Kein Cluster mit mindestens zwei Hosts vorhanden.",
+      "intro": "Vergleicht die Netzwerk-Konfiguration der Knoten eines Clusters. Adressen, CARP-Advskew und das aktive Standard-Gateway dürfen sich unterscheiden und werden nicht verglichen.",
+      "unreachable": "Nicht erreichbar: {hosts}",
+      "same": "Identisch",
+      "count": "{count} Abweichung(en)",
+      "category": "Bereich",
+      "object": "Objekt",
+      "state": "Zustand",
+      "missing": "Fehlt",
+      "different": "Weicht ab",
+      "absent": "fehlt",
+      "categories": {
+        "interfaces": "Schnittstelle",
+        "vlans": "VLAN",
+        "vips": "Virtuelle IP",
+        "gateways": "Gateway",
+        "routes": "Route",
+        "dns_hosts": "DNS-Eintrag",
+        "dhcp_hosts": "DHCP-Host",
+        "kea_subnets": "DHCP-Subnetz",
+        "kea_reservations": "DHCP-Reservierung"
+      }
+    }
+  },
+  "hostsystem": {
+    "intro": {
+      "tunables": "Systemparameter der Firewall (sysctl). Die Werte der Firewall selbst bleiben unberührt, eigene Einträge überschreiben sie.",
+      "cron": "Zeitgesteuerte Aufgaben, die die Firewall selbst ausführt.",
+      "syslog": "Entfernte Log-Ziele, an die die Firewall ihre Meldungen schickt.",
+      "snapshots": "ZFS-Snapshots der Firewall als zusätzliches Sicherheitsnetz vor größeren Änderungen. Aktivieren (mit Neustart) geschieht bewusst nur in OPNsense selbst."
+    },
+    "snapshots": {
+      "create": "Snapshot anlegen",
+      "createHint": "Der Snapshot hält den aktuellen Systemzustand fest. Er ersetzt kein Konfigurations-Backup.",
+      "name": "Name",
+      "nameHint": "Buchstaben, Ziffern, Punkt, Unterstrich und Bindestrich.",
+      "note": "Notiz",
+      "state": "Zustand",
+      "size": "Größe",
+      "createdAt": "Erstellt",
+      "activeNow": "aktiv",
+      "activeNext": "aktiv nach Neustart",
+      "unsupported": "Diese Firewall unterstützt keine Snapshots (kein ZFS).",
+      "created": "Snapshot „{name}“ angelegt.",
+      "createFailed": "Snapshot konnte nicht angelegt werden.",
+      "deleted": "Snapshot „{name}“ gelöscht.",
+      "deleteFailed": "Snapshot konnte nicht gelöscht werden.",
+      "deleteConfirm": "Snapshot „{name}“ wirklich löschen?"
     }
   }
 }

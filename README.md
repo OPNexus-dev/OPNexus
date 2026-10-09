@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](website/assets/screenshots/en/rules-light-desktop.webp)
 
-> **Status:** `1.12.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.13.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -16,7 +16,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Safe changes** — every change goes *preview → deploy → confirm*; without your confirmation inside the time window OPNexus rolls it back.
 - **Hierarchical policies** — pre/post rulebases with inheritance across group trees.
 - **VPN** — IPsec site-to-site, OpenVPN and WireGuard, defined once and rolled out.
-- **Network** — interfaces, VLANs, virtual IPs, gateways, routes, DNS and DHCP per firewall, with a diff preview, a backup before every change and a guard against cutting your own connection; rules created by hand on a firewall can be adopted.
+- **Network** — interfaces, VLANs, virtual IPs, gateways, routes, LAGG/bridge/GRE, DNS and DHCP per firewall, plus tunables, cron, syslog and snapshots, a comparison of cluster nodes, with a diff preview, a backup before every change and a guard against cutting your own connection; rules created by hand on a firewall can be adopted.
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
 - **Update center** — firmware updates for the fleet, aware of HA order and maintenance mode.
@@ -49,7 +49,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.12.0
+OPNEXUS_VERSION=1.13.0
 ```
 
 ```bash

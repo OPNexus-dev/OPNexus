@@ -31,6 +31,25 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.13.0] "Buzzard" — 2026-10-09
+
+Mehr Verwaltung pro Firewall und ein Abgleich der Cluster-Knoten. Alles über
+dieselbe abgesicherte Engine wie in 1.12.0 und live auf drei Test-Firewalls
+geprüft, siehe Handbuch „Erweiterung 1.13.0“:
+
+- **Netzwerk › Geräte:** LAGG, Bridge, Loopback und GRE. Dazu Gateway-Gruppen,
+  DNS-Weiterleitungen (Unbound) und DHCP-Bereiche (dnsmasq).
+- **Neue Gruppe „Host-System“:** Tunables (immer mit Bestätigung, Vorgaben nur per
+  „Überschreiben“), Cron, Syslog-Ziele und ZFS-Snapshots (anlegen und löschen; der
+  aktive Snapshot ist geschützt, das Aktivieren bleibt OPNsense selbst überlassen).
+- **Netzwerk › Abgleich:** zeigt Unterschiede in der Netzwerk-Konfiguration zwischen den
+  Knoten eines Clusters. Neuer Alarm „Netzwerk-Abweichung im Cluster“ (Einstellungen ›
+  Benachrichtigungen, Migration 0004).
+- **Auf den Partner übertragen:** Nach dem Anlegen eines Objekts lässt es sich mit
+  einem Klick auch auf dem anderen Cluster-Knoten anlegen (eigene Vorschau, eigenes Backup).
+- **Kopfzeile:** Mit acht Gruppen zeigt die Navigation die Namen ab 1150 px, darunter
+  nur Icons, damit Suche und Abmelden in einer Zeile bleiben.
+
 ## [1.12.0] "Condor" — 2026-10-09
 
 Netzwerk-Verwaltung und Übernahme von Hand angelegter Regeln. Alles gegen die
