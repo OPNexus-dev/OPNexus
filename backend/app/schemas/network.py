@@ -136,7 +136,7 @@ class HostNetwork(BaseModel):
 
 class NetworkChangeRequest(BaseModel):
     kind: Literal["vlan", "vip", "gateway", "route", "interface", "dns_host", "dhcp_host", "kea_subnet", "kea_reservation",
-                  "tunable", "cron_job", "syslog_destination", "gateway_group", "lagg", "bridge", "loopback", "gre", "dns_forward", "dhcp_range"]
+                  "tunable", "cron_job", "syslog_destination", "gateway_group", "lagg", "bridge", "loopback", "gre", "gif", "vxlan", "dns_forward", "dhcp_range"]
     action: Literal["add", "set", "del"]
     # Goes into a URL path, so only plain identifiers.
     uuid: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.:-]{1,64}$")

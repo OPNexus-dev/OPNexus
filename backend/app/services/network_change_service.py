@@ -56,6 +56,8 @@ FIELDS: dict[str, set[str]] = {
     "bridge": {"members", "linklocal", "enablestp", "proto", "descr"},
     "loopback": {"deviceId", "description"},
     "gre": {"local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "tunnel-remote-net", "descr"},
+    "gif": {"local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "tunnel-remote-net", "descr"},
+    "vxlan": {"deviceId", "vxlanid", "vxlanlocal", "vxlanlocalport", "vxlanremote", "vxlanremoteport", "vxlangroup", "vxlandev"},
     "dns_forward": {"enabled", "type", "domain", "server", "port", "verify", "forward_tcp_upstream", "forward_first", "description"},
     "dhcp_range": {"interface", "start_addr", "end_addr", "subnet_mask", "lease_time", "domain_type", "domain", "description"},
     "interface": {"if", "descr", "enable", "type4", "ipaddr", "gateway", "type6", "ipaddrv6", "gatewayv6", "mtu",
@@ -76,11 +78,13 @@ OBJECT_COLUMNS: dict[str, list[str]] = {
     "bridge": ["bridgeif", "members", "proto", "descr"],
     "loopback": ["deviceId", "description"],
     "gre": ["greif", "local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "descr"],
+    "gif": ["gifif", "local-addr", "remote-addr", "tunnel-local-addr", "tunnel-remote-addr", "descr"],
+    "vxlan": ["deviceId", "vxlanid", "vxlanlocal", "vxlanremote", "vxlangroup", "vxlandev"],
     "dns_forward": ["enabled", "type", "domain", "server", "port", "description"],
     "dhcp_range": ["interface", "start_addr", "end_addr", "subnet_mask", "lease_time", "description"],
 }
 # These change how the network is wired; the others (DNS/DHCP data) cannot cut the connection to the firewall.
-WIRING_KINDS = {"vlan", "vip", "gateway", "route", "interface", "lagg", "bridge", "gre"}
+WIRING_KINDS = {"vlan", "vip", "gateway", "route", "interface", "lagg", "bridge", "gre", "gif", "vxlan"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 
 

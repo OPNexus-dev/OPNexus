@@ -10,7 +10,7 @@ import { APP_CODENAME, APP_VERSION } from "@/lib/version";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
-import { navGroups, navLabelKey } from "@/components/Nav";
+import { matchesNav, navGroups, navLabelKey } from "@/components/Nav";
 
 /**
  * Single-role auth guard — there's exactly one protected "area" (everything
@@ -40,7 +40,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // The app is a client-rendered SPA with one static metadata title; screen reader users rely on
   // the title (and its change) to know a navigation happened and where they are. A rendered
   // <title> is hoisted into <head> by React 19 and wins over the static metadata one.
-  const item = navGroups.flatMap((g) => g.items).find((i) => pathname?.startsWith(i.href));
+  const item = navGroups.flatMap((g) => g.items).find((i) => matchesNav(pathname, i.href));
   const pageName = item ? t(navLabelKey(item.href)) : pathname === "/login" ? t("login.signIn") : pathname?.startsWith("/about") ? t("settings.about") : null;
   const title = <title>{pageName ? pageName.includes("OPNexus") ? pageName : `${pageName} · OPNexus` : "OPNexus"}</title>;
 

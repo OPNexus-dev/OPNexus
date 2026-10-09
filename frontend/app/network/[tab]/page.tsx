@@ -33,6 +33,8 @@ const EXTRA_SECTIONS: Partial<Record<Section, { kind: NetworkKind; titleKey: str
     { kind: "bridge", titleKey: "network.kinds.bridge" },
     { kind: "loopback", titleKey: "network.kinds.loopback" },
     { kind: "gre", titleKey: "network.kinds.gre" },
+    { kind: "gif", titleKey: "network.kinds.gif" },
+    { kind: "vxlan", titleKey: "network.kinds.vxlan" },
   ],
 };
 

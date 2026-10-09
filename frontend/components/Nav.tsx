@@ -9,6 +9,7 @@ import {
   Globe,
   GitBranch,
   HardDrive,
+  Activity,
   Clock,
   Camera,
   Sliders,
@@ -94,6 +95,7 @@ export const navGroups: NavGroup[] = [
       { href: "/hostsystem/cron", label: "Cron", icon: Clock, keywords: ["Zeitplan", "Aufgaben", "Jobs", "geplante Aufgaben"] },
       { href: "/hostsystem/syslog", label: "Syslog", icon: ScrollText, keywords: ["Remote-Logging", "Log-Ziel", "Logserver"] },
       { href: "/hostsystem/snapshots", label: "Snapshots", icon: Camera, keywords: ["ZFS", "Boot-Umgebung", "Sicherung vor Änderung"] },
+      { href: "/hostsystem/diagnostics", label: "Diagnose", icon: Activity, keywords: ["Ping", "Traceroute", "Port prüfen", "Portprobe", "DNS-Abfrage", "Erreichbarkeit", "Fehlersuche"] },
     ],
   },
   {
@@ -169,13 +171,18 @@ export function navLabelKey(href: string): string {
   return `nav.items.${href.slice(1).replace(/\//g, "-")}`;
 }
 
+/** True when pathname is the nav item's page or below it ("/hostsystem/x" must NOT match "/hosts"). */
+export function matchesNav(pathname: string | null | undefined, href: string): boolean {
+  return !!pathname && (pathname === href || pathname.startsWith(href + "/"));
+}
+
 export function Nav() {
   const { t } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
   const [readOnly, setReadOnly] = useState(false);
 
-  const activeGroup = navGroups.find((g) => g.items.some((i) => pathname?.startsWith(i.href))) ?? null;
+  const activeGroup = navGroups.find((g) => g.items.some((i) => matchesNav(pathname, i.href))) ?? null;
 
   useEffect(() => {
     api.me().then((state) => setReadOnly(state.role === "read_only")).catch(() => {});
@@ -246,7 +253,7 @@ export function Nav() {
         <div className="border-t border-slate-100 bg-slate-50">
           <nav aria-label={t("nav.subNavigation")} className="mx-auto flex max-w-6xl items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:px-6 sm:gap-1">
             {activeGroup.items.map(({ href, icon: Icon }) => {
-              const active = pathname?.startsWith(href);
+              const active = matchesNav(pathname, href);
               return (
                 <Link
                   key={href}

@@ -3131,7 +3131,7 @@ Vergabe von DHCP-Leases (Kea ist auf den Test-Firewalls deaktiviert).
 eine übernommene Regel zusätzlich auf einen weiteren Host als Ziel setzt, legt dort
 eine zweite, doppelte Regel an (die Vorschau zeigt „create“). Keine Multi-Host-Vorlagen
 für Netzwerkobjekte, kein automatisches Rolling-Apply auf CARP-Paaren (nur das
-Übertragen auf den Partner per Klick), keine VXLAN-/GIF-Verwaltung, keine Kea-DDNS-Felder.
+Übertragen auf den Partner per Klick), keine Kea-DDNS-Felder.
 
 ### Erweiterung 1.13.0: Geräte, Host-System, Abgleich im Cluster
 
@@ -3175,6 +3175,37 @@ und sein Alarm wurden mit einem nur auf einem Knoten vorhandenen VLAN geprüft
 Abgleich vor und nach dem Angleichen, Überschreiben und Löschen eines Tunables,
 Snapshot anlegen/löschen, alle neuen Seiten in Deutsch und Englisch (Dark Mode),
 axe-core über die ganze App ohne Verstöße, Kopfzeile in einer Zeile ab 768 px.
+
+### Erweiterung 1.14.0: Diagnose, VXLAN, GIF
+
+- **Netzwerk › Geräte** kennt jetzt auch **VXLAN** und **GIF** (gleiche Engine wie LAGG, Bridge
+  und GRE: Vorschau, Backup, Anwenden, Zurücklesen, Audit).
+- **Host-System › Diagnose:** Ping, Traceroute, Port-Prüfung (TCP) und DNS-Abfrage, die die
+  ausgewählte Firewall selbst ausführt (`/api/hosts/{id}/diagnostics/{ping|traceroute|portprobe|dns}`,
+  `services/diagnostics_service.py`). Sicherheitsmerkmale:
+  - nur für Admins (alles sind POSTs, die Nur-Lesen-Rolle bekommt 403),
+  - das Ziel wird vor dem Senden streng geprüft (nur Hostname-/IP-Zeichen, Quelladresse nur als IP,
+    Anzahl 1–10, Port 1–65535); die Firewall prüft zusätzlich selbst und lehnt Ungültiges mit 422 ab,
+  - jeder Lauf steht mit Tool und Ziel im Audit-Log (`kind=diagnostic`), Ergebnisse werden nicht gespeichert,
+  - höchstens vier Abfragen gleichzeitig pro OPNexus-Prozess,
+  - die Port-Prüfung gibt nie den Banner/Payload der Gegenstelle weiter, nur „offen/nicht erreichbar“,
+  - ein Ping läuft als kurzer Job und wird **immer** wieder gestoppt und entfernt, auch wenn das Abfragen
+    der Zwischenstände scheitert (live geprüft: danach keine Jobs auf den Firewalls).
+  Ein Port-Test auf einen geschlossenen oder blockierten Port dauert bei OPNsense 10 Sekunden; die
+  Diagnose-Aufrufe haben deshalb ein Zeitlimit von 40 s.
+- **Bewusst nicht gebaut: Packet-Capture.** Mitschnitte enthalten Nutzdaten fremder Verbindungen und
+  Zugangsdaten im Klartext; das gehört nicht in eine Verwaltungsoberfläche ohne eigenes Aufbewahrungs-
+  und Berechtigungskonzept.
+- **Fehlerkorrektur:** Die neue Route `/hostsystem` beginnt mit `/hosts`; die Navigation markierte
+  dadurch „Übersicht › Hosts“ und der Seitentitel zeigte „Hosts“. Der Pfadvergleich prüft jetzt auf
+  die ganze Seite oder Unterseiten.
+
+**Verifikation 1.14.0 (live):** VXLAN und GIF auf test-fw-3 (anlegen, ändern, auflisten, löschen, Geräteliste
+danach unverändert). Alle vier Diagnose-Werkzeuge auf test-fw-1 und -3 gegen das Gateway im Management-Netz
+(Ping 4/4 und 3/3 verloren zu einer nicht erreichbaren Adresse, Traceroute, Port 443 offen und Port 1 nach
+10 s „nicht erreichbar“, DNS mit mehreren Record-Typen, ungültige Eingabe → 422). Browser (1440 und 375 px):
+alle vier Werkzeuge, VXLAN und GIF über die Geräteseite, Englisch/Dark Mode ohne deutsche Reste,
+axe-core über die ganze App ohne Verstöße. 560 Backend-Tests grün.
 
 ## Definition of Done — Stand
 

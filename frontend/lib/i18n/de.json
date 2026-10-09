@@ -160,7 +160,8 @@
       "hostsystem-tunables": "Tunables",
       "hostsystem-cron": "Cron",
       "hostsystem-syslog": "Syslog",
-      "hostsystem-snapshots": "Snapshots"
+      "hostsystem-snapshots": "Snapshots",
+      "hostsystem-diagnostics": "Diagnose"
     }
   },
   "dashboard": {
@@ -1835,7 +1836,9 @@
       "loopback": "Loopback",
       "gre": "GRE-Tunnel",
       "dns_forward": "DNS-Weiterleitungen",
-      "dhcp_range": "DHCP-Bereiche (dnsmasq)"
+      "dhcp_range": "DHCP-Bereiche (dnsmasq)",
+      "gif": "GIF-Tunnel",
+      "vxlan": "VXLAN"
     },
     "field": {
       "if": "Eltern-Schnittstelle",
@@ -1963,7 +1966,15 @@
       "start_addr": "Von",
       "end_addr": "Bis",
       "subnet_mask": "Subnetzmaske",
-      "domain_type": "Domain-Art"
+      "domain_type": "Domain-Art",
+      "vxlanid": "VNI",
+      "vxlanlocal": "Lokale Adresse",
+      "vxlanlocalport": "Lokaler Port",
+      "vxlanremote": "Gegenstelle",
+      "vxlanremoteport": "Port der Gegenstelle",
+      "vxlangroup": "Multicast-Gruppe",
+      "vxlandev": "Gerät",
+      "gifif": "Gerät"
     },
     "risks": {
       "management_interface": "Diese Änderung betrifft {device}, die Schnittstelle, über die OPNexus die Firewall erreicht. Die Verbindung kann abbrechen.",
@@ -2069,7 +2080,8 @@
       "tunables": "Systemparameter der Firewall (sysctl). Die Werte der Firewall selbst bleiben unberührt, eigene Einträge überschreiben sie.",
       "cron": "Zeitgesteuerte Aufgaben, die die Firewall selbst ausführt.",
       "syslog": "Entfernte Log-Ziele, an die die Firewall ihre Meldungen schickt.",
-      "snapshots": "ZFS-Snapshots der Firewall als zusätzliches Sicherheitsnetz vor größeren Änderungen. Aktivieren (mit Neustart) geschieht bewusst nur in OPNsense selbst."
+      "snapshots": "ZFS-Snapshots der Firewall als zusätzliches Sicherheitsnetz vor größeren Änderungen. Aktivieren (mit Neustart) geschieht bewusst nur in OPNsense selbst.",
+      "diagnostics": "Netzwerk-Abfragen, die die ausgewählte Firewall selbst ausführt (Erreichbarkeit, Wege, Ports, Namensauflösung). Ergebnisse werden nur angezeigt; jeder Lauf steht mit Ziel im Audit-Log."
     },
     "snapshots": {
       "create": "Snapshot anlegen",
@@ -2088,6 +2100,38 @@
       "deleted": "Snapshot „{name}“ gelöscht.",
       "deleteFailed": "Snapshot konnte nicht gelöscht werden.",
       "deleteConfirm": "Snapshot „{name}“ wirklich löschen?"
+    },
+    "diag": {
+      "tools": {
+        "ping": "Ping",
+        "traceroute": "Traceroute",
+        "portprobe": "Port prüfen",
+        "dns": "DNS-Abfrage"
+      },
+      "target": "Ziel (Host oder IP)",
+      "name": "Name",
+      "ipproto": "IP-Version",
+      "source": "Quelladresse (optional)",
+      "sourceHint": "Eigene Adresse der Firewall, von der aus abgefragt wird. Leer = automatisch.",
+      "count": "Anzahl (1–10)",
+      "packetsize": "Paketgröße (optional)",
+      "protocol": "Protokoll",
+      "port": "Port",
+      "server": "DNS-Server (optional)",
+      "serverHint": "Leer = die Resolver der Firewall.",
+      "run": "Ausführen",
+      "running": "Läuft…",
+      "auditNote": "Wird im Audit-Log festgehalten.",
+      "failed": "Die Abfrage ist fehlgeschlagen.",
+      "reachable": "Erreichbar",
+      "unreachable": "Nicht erreichbar",
+      "pingSummary": "{sent} gesendet, {received} empfangen, {loss} Verlust",
+      "hop": "Hop",
+      "hostname": "Name",
+      "time": "Zeit",
+      "open": "Port {port} offen",
+      "closed": "Port {port} nicht erreichbar",
+      "noRecords": "Keine Antwort für „{name}“."
     }
   }
 }

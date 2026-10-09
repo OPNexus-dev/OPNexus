@@ -538,3 +538,22 @@ async def test_lagg_or_bridge_containing_the_management_device_needs_acknowledge
     assert [r["code"] for r in mine["risks"]] == ["management_member"]
     other = (await _preview(client, host_id, kind="lagg", action="add", fields={"members": "vtnet2,vtnet3", "proto": "failover"})).json()
     assert other["risks"] == []
+
+
+@pytest.mark.asyncio
+async def test_vxlan_and_gif_are_listed_and_changed_like_the_other_devices(client, respx_mock):
+    host_id = await _setup(client, respx_mock, "fw-o5")
+    respx_mock.get(_url("/interfaces/vxlan_settings/searchItem")).mock(return_value=httpx.Response(200, json={"rows": [
+        {"uuid": "x1", "vxlanif": "vxlan1", "vxlanid": "100", "vxlanlocal": "10.20.30.57", "vxlanremote": "10.20.30.58",
+         "vxlangroup": "", "vxlandev": "lan", "secret_like": "dropped"}]}))
+    body = (await client.get(f"/api/hosts/{host_id}/network/objects/vxlan")).json()
+    assert body["rows"][0]["vxlanid"] == "100" and "secret_like" not in body["rows"][0]
+    _backup(respx_mock)
+    add = respx_mock.post(_url("/interfaces/gif_settings/addItem")).mock(return_value=httpx.Response(200, json={"result": "saved", "uuid": "g1"}))
+    respx_mock.post(_url("/interfaces/gif_settings/reconfigure")).mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    _item(respx_mock, "/interfaces/gif_settings/getItem/g1", "gif", {"local-addr": "10.20.30.57", "remote-addr": "198.51.100.9", "descr": "t"})
+    change = {"kind": "gif", "action": "add", "fields": {"local-addr": "10.20.30.57", "remote-addr": "198.51.100.9", "descr": "t"}}
+    plan = (await _preview(client, host_id, **change)).json()
+    done = await _execute(client, host_id, plan["token"], **change)
+    assert done.status_code == 200 and done.json()["verified"] is True, done.text
+    assert _body(add.calls.last) == {"gif": change["fields"]}

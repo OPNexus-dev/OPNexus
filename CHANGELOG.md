@@ -31,6 +31,20 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.14.0] "Eagle" — 2026-10-09
+
+Diagnose von der Firewall aus sowie VXLAN und GIF. Gegen die OPNsense-Core-Quellen
+geprüft und live auf den Test-Firewalls getestet, siehe Handbuch „Erweiterung 1.14.0“:
+
+- **Host-System › Diagnose:** Ping, Traceroute, Port-Prüfung und DNS-Abfrage, ausgeführt von der
+  ausgewählten Firewall. Nur für Admins, strenge Eingabeprüfung, jeder Lauf im Audit-Log,
+  Ping-Jobs werden immer wieder aufgeräumt, der Banner der Gegenstelle wird nicht weitergegeben.
+  Packet-Capture gibt es bewusst nicht (Mitschnitte enthalten fremde Nutzdaten).
+- **Netzwerk › Geräte:** VXLAN und GIF-Tunnel (anlegen, ändern, löschen) über dieselbe abgesicherte
+  Engine wie die übrigen Geräte.
+- **Fehlerkorrektur:** Auf den Host-System-Seiten war „Übersicht › Hosts“ markiert und der Seitentitel
+  falsch, weil `/hostsystem` mit `/hosts` beginnt.
+
 ## [1.13.0] "Buzzard" — 2026-10-09
 
 Mehr Verwaltung pro Firewall und ein Abgleich der Cluster-Knoten. Alles über

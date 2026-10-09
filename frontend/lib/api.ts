@@ -226,8 +226,38 @@ export interface NetRoute {
 
 export type NetworkKind =
   | "vlan" | "vip" | "gateway" | "route" | "interface" | "dns_host" | "dhcp_host" | "kea_subnet" | "kea_reservation"
-  | "tunable" | "cron_job" | "syslog_destination" | "gateway_group" | "lagg" | "bridge" | "loopback" | "gre"
+  | "tunable" | "cron_job" | "syslog_destination" | "gateway_group" | "lagg" | "bridge" | "loopback" | "gre" | "gif" | "vxlan"
   | "dns_forward" | "dhcp_range";
+
+export interface PingResult {
+  target: string;
+  sent: number;
+  received: number;
+  loss: string;
+  min: number | null;
+  avg: number | null;
+  max: number | null;
+  stddev: number | null;
+  error: string | null;
+}
+
+export interface TracerouteResult {
+  target: string;
+  notice: string;
+  hops: { ttl: string; address: string; host: string; as: string; probes: string }[];
+}
+
+export interface PortprobeResult {
+  target: string;
+  port: number;
+  open: boolean;
+  message: string;
+}
+
+export interface DnsLookupResult {
+  name: string;
+  records: Record<string, { answers: string[]; query_time: string; server: string }>;
+}
 
 export interface NetworkObjects {
   available: boolean;
@@ -1106,6 +1136,14 @@ export const api = {
   deleteHost: (id: string) => request<void>(`/hosts/${id}`, { method: "DELETE" }),
   getLiveRules: (id: string) => request<LiveRule[]>(`/hosts/${id}/live-rules`),
   getHostNetwork: (id: string) => request<HostNetwork>(`/hosts/${id}/network`),
+  runPing: (id: string, data: { target: string; ipproto: string; count: number; packetsize?: number | null; source?: string }) =>
+    request<PingResult>(`/hosts/${id}/diagnostics/ping`, { method: "POST", body: JSON.stringify(data) }),
+  runTraceroute: (id: string, data: { target: string; ipproto: string; protocol: string; source?: string }) =>
+    request<TracerouteResult>(`/hosts/${id}/diagnostics/traceroute`, { method: "POST", body: JSON.stringify(data) }),
+  runPortprobe: (id: string, data: { target: string; port: number; ipproto: string; source?: string }) =>
+    request<PortprobeResult>(`/hosts/${id}/diagnostics/portprobe`, { method: "POST", body: JSON.stringify(data) }),
+  runDnsLookup: (id: string, data: { name: string; server?: string }) =>
+    request<DnsLookupResult>(`/hosts/${id}/diagnostics/dns`, { method: "POST", body: JSON.stringify(data) }),
   listNetworkObjects: (id: string, kind: NetworkKind) => request<NetworkObjects>(`/hosts/${id}/network/objects/${kind}`),
   getNetworkDrift: () => request<{ clusters: ClusterNetworkDrift[] }>("/network/drift"),
   listSnapshots: (id: string) => request<{ supported: boolean; rows: HostSnapshot[] }>(`/hosts/${id}/snapshots`),

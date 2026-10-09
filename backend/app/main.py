@@ -39,6 +39,7 @@ from app.routers import certificates as certificates_router
 from app.routers import network as network_router
 from app.routers import snapshots as snapshots_router
 from app.routers import network_drift as network_drift_router
+from app.routers import diagnostics as diagnostics_router
 from app.routers import restore as restore_router
 from app.version import APP_VERSION
 from app.routers import dashboard as dashboard_router
@@ -396,5 +397,6 @@ app.include_router(services_router.router, prefix="/api")
 app.include_router(network_router.router, prefix="/api")
 app.include_router(snapshots_router.router, prefix="/api")
 app.include_router(network_drift_router.router, prefix="/api")
+app.include_router(diagnostics_router.router, prefix="/api")
 app.include_router(resource_samples_router.router, prefix="/api")
 app.include_router(scheduled_maintenance_router.router, prefix="/api")

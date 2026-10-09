@@ -13,6 +13,7 @@ import { useToast } from "@/components/ui/Toast";
 import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
 import { api, Host, HostSnapshot, NetworkKind } from "@/lib/api";
 import { useReadOnly } from "@/lib/useReadOnly";
+import { HostDiagnostics } from "@/components/HostDiagnostics";
 import { HardDrive, Plus, Trash2 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -24,7 +25,7 @@ const KIND_BY_TAB: Record<string, NetworkKind> = { tunables: "tunable", cron: "c
 export default function HostSystemPage() {
   const { t, errorMessage } = useLanguage();
   const { tab } = useParams<{ tab: string }>();
-  const section = ["tunables", "cron", "syslog", "snapshots"].includes(tab) ? tab : "tunables";
+  const section = ["tunables", "cron", "syslog", "snapshots", "diagnostics"].includes(tab) ? tab : "tunables";
   const readOnly = useReadOnly();
   const [hosts, setHosts] = useState<Host[] | null>(null);
   const [hostId, setHostId] = useState("");
@@ -91,6 +92,8 @@ export default function HostSystemPage() {
               readOnly={readOnly}
               onChange={setChange}
             />
+          ) : section === "diagnostics" ? (
+            <HostDiagnostics hostId={hostId} readOnly={readOnly} />
           ) : (
             <Snapshots hostId={hostId} readOnly={readOnly} />
           )}

@@ -1119,6 +1119,10 @@ NETWORK_ITEM_APIS = {
                  "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/loopback_settings/reconfigure"},
     "gre": {"body_key": "gre", "base": "/interfaces/gre_settings", "add": "addItem", "set": "setItem",
             "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/gre_settings/reconfigure"},
+    "vxlan": {"body_key": "vxlan", "base": "/interfaces/vxlan_settings", "add": "addItem", "set": "setItem",
+              "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/vxlan_settings/reconfigure"},
+    "gif": {"body_key": "gif", "base": "/interfaces/gif_settings", "add": "addItem", "set": "setItem",
+            "del": "delItem", "get": "getItem", "search": "searchItem", "reconfigure": "/interfaces/gif_settings/reconfigure"},
     "dns_forward": {"body_key": "dot", "base": "/unbound/settings", "add": "addForward", "set": "setForward",
                     "del": "delForward", "get": "getForward", "search": "searchForward",
                     "reconfigure": "/unbound/service/reconfigure"},
@@ -1230,3 +1234,54 @@ async def delete_snapshot(host: OpnsenseHost, uuid: str) -> None:
     data = await _request(host, "POST", f"/core/snapshots/del/{uuid}")
     if isinstance(data, dict) and (data.get("validations") or str(data.get("status", "")).lower() == "failed"):
         raise OpnsenseAPIError(f"Snapshot löschen von Firewall nicht bestätigt: {redact_data(data)}")
+
+
+# ── Diagnostics (Diagnostics/Api/{Ping,Traceroute,Portprobe,DnsDiagnostics}Controller, read + live 2026-10-09) ──
+# Traceroute/portprobe/DNS answer synchronously to the same "set" call that validates the form:
+#   {"result": "ok", "response": {...}} or {"result": "failed", "validations": {"<model>.settings.<field>": "..."}}.
+# Ping is a job: set (returns a uuid) -> start -> searchJobs shows live counters -> stop -> remove.
+# A probe to a closed/blackholed port takes the firewall 10 s, so these calls need a longer timeout.
+DIAGNOSTIC_TIMEOUT = 40.0
+
+
+async def diagnostic_set(host: OpnsenseHost, path: str, model: str, settings: dict) -> dict:
+    data = await _request(host, "POST", path, json={model: {"settings": settings}}, timeout=DIAGNOSTIC_TIMEOUT)
+    if not isinstance(data, dict):
+        raise OpnsenseAPIError("Diagnose: keine auswertbare Antwort der Firewall")
+    if data.get("result") != "ok":
+        raise OpnsenseDiagnosticRejected(data.get("validations") or {})
+    return data
+
+
+class OpnsenseDiagnosticRejected(OpnsenseAPIError):
+    """The firewall refused the input (its own validation); carries {field: message}."""
+
+    def __init__(self, validations: dict):
+        super().__init__("Eingabe von der Firewall abgelehnt")
+        self.validations = validations
+
+
+async def ping_job_start(host: OpnsenseHost, settings: dict) -> str:
+    data = await diagnostic_set(host, "/diagnostics/ping/set", "ping", settings)
+    job = data.get("uuid")
+    if not job:
+        raise OpnsenseAPIError("Ping: die Firewall hat keine Job-ID geliefert")
+    started = await _request(host, "POST", f"/diagnostics/ping/start/{job}", timeout=DIAGNOSTIC_TIMEOUT)
+    if not isinstance(started, dict) or started.get("status") != "ok":
+        await ping_job_remove(host, job)
+        raise OpnsenseAPIError("Ping: der Job konnte nicht gestartet werden")
+    return job
+
+
+async def ping_job_state(host: OpnsenseHost, job: str) -> dict | None:
+    data = await _request(host, "GET", "/diagnostics/ping/searchJobs", params={"rowCount": -1})
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    return next((r for r in rows if isinstance(r, dict) and r.get("id") == job), None)
+
+
+async def ping_job_stop(host: OpnsenseHost, job: str) -> None:
+    await _request(host, "POST", f"/diagnostics/ping/stop/{job}")
+
+
+async def ping_job_remove(host: OpnsenseHost, job: str) -> None:
+    await _request(host, "POST", f"/diagnostics/ping/remove/{job}")
