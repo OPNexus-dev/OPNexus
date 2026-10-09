@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Baut die drei Release-Images (backend, frontend, proxy) aus dem Stand eines
+# Baut die Release-Images (backend, frontend, proxy, updater) aus dem Stand eines
 # Tags und pusht sie optional — für den Fall, dass (noch) kein CI-Runner
 # existiert. Tags und Namen entsprechen .github/workflows/release.yml:
-#   <REPO>/opnexus-{backend,frontend,proxy}:X.Y.Z, :X.Y, :X (+ :latest bei stabilen Versionen)
+#   <REPO>/opnexus-{backend,frontend,proxy,updater}:X.Y.Z, :X.Y, :X (+ :latest bei stabilen Versionen)
 #
 #   scripts/build_release_images.sh v1.10.0                    # nur bauen (Architektur dieses Hosts)
 #   docker login git.opnexus.dev
@@ -35,7 +35,7 @@ if [[ "$version" != *-* ]]; then   # nur stabile Versionen bekommen Kurz-Tags un
   tags+=("$major.$minor" "$major" latest)
 fi
 
-for svc in backend frontend proxy; do
+for svc in backend frontend proxy updater; do
   image="$repo/opnexus-$svc"
   targs=(); for t in "${tags[@]}"; do targs+=(-t "$image:$t"); done
   echo "==> $image  (${tags[*]})"

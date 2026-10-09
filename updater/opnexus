@@ -1,0 +1,278 @@
+#!/usr/bin/env bash
+# opnexus — Update, Rollback und Backup für eine OPNexus-Installation aus
+# fertigen Release-Images (siehe README, "Release-Images & CI").
+#
+#   opnexus status            Version, Container, Datenbank-Revision
+#   opnexus update [VERSION]  Neue Images ziehen, wechseln, auf "gesund" warten;
+#                             bei Fehler automatisch zurückrollen
+#   opnexus rollback          Letztes Update rückgängig machen
+#   opnexus backup            Sofort-Backup der OPNexus-Datenbank
+#   opnexus status --porcelain  Zustand als key=value-Zeilen (für den Updater)
+#
+# Läuft im Verzeichnis mit docker-compose.yml und .env (oder OPNEXUS_DIR=...).
+# Braucht: docker (compose v2), bash. OPNEXUS_IMAGE_REPO muss in .env stehen.
+#
+# Exit-Codes von `update`: 0 = läuft auf der neuen Version, 3 = Update ist
+# fehlgeschlagen und wurde sauber zurückgerollt, 1 = sonstiger Fehler.
+#
+# Umgebung (nur für den Updater-Container, siehe updater/server.py):
+#   OPNEXUS_UPDATER=1        `up` fasst nur backend/frontend/proxy an — der
+#                            Updater-Container selbst wird nie aus seinem
+#                            eigenen Lauf heraus neu gestartet.
+#   OPNEXUS_PHASE_FILE=PATH  hängt bei jedem Schritt eine Zeile "phase" an.
+set -euo pipefail
+
+here="$(dirname "$(readlink -f "$0")")"
+# Im Release-Bundle liegt das Skript neben docker-compose.yml, im Repo in scripts/.
+if [ -f "$here/docker-compose.yml" ]; then default_dir="$here"; else default_dir="$here/.."; fi
+cd "${OPNEXUS_DIR:-$default_dir}"
+
+ENV_FILE=".env"
+STATE_FILE=".opnexus-update-state"
+SERVICES=(backend frontend proxy)
+TIMEOUT="${OPNEXUS_UPDATE_TIMEOUT:-240}"
+
+c() { docker compose "$@" 2> >(grep -v 'level=warning' >&2); }
+say() { printf '\033[1m==>\033[0m %s\n' "$*"; }
+# Schritt für den Updater-Container (Fortschrittsanzeige im Webinterface).
+phase() { [ -z "${OPNEXUS_PHASE_FILE:-}" ] || echo "$1" >> "$OPNEXUS_PHASE_FILE"; }
+die() { printf '\033[31mFehler:\033[0m %s\n' "$*" >&2; exit 1; }
+
+env_get() { sed -n "s/^$1=//p" "$ENV_FILE" 2>/dev/null | tail -n1; }
+
+DB_USER="$(env_get POSTGRES_USER)"; DB_USER="${DB_USER:-opnexus}"
+DB_NAME="$(env_get POSTGRES_DB)"; DB_NAME="${DB_NAME:-opnexus}"
+
+env_set() {
+  if grep -q "^$1=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^$1=.*|$1=$2|" "$ENV_FILE"
+  else
+    printf '%s=%s\n' "$1" "$2" >> "$ENV_FILE"
+  fi
+}
+
+# Postgres-Client-Tools aus dem Backend-Image (Client 17): Die Pre-Upgrade-
+# Dumps schreibt das Backend mit pg_dump 17 — das kann pg_restore 16 (Sidecar)
+# NICHT lesen. Also Dump UND Restore immer mit diesen Tools.
+pgtool() {
+  local tool="$1"; shift
+  # Passwort über die Umgebung durchreichen (`-e PGPASSWORD` ohne Wert), nicht als
+  # Argument — sonst stünde es in der Prozessliste.
+  PGPASSWORD="$(env_get POSTGRES_PASSWORD)" c run --rm --no-deps -T -e PGPASSWORD --entrypoint "$tool" backend "$@"
+}
+
+# Der Updater-Container ist ein optionaler Dienst (Compose-Profil "updater"):
+# nur wenn er aktiv ist, wird sein Image mitgezogen — sonst würde ein Update
+# daran scheitern, dass es für eine ältere Version noch kein Updater-Image gibt.
+updater_enabled() {
+  local profiles
+  profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
+  [[ ",$profiles," == *",updater,"* ]]
+}
+
+# Welche Dienste `up` anfasst: im Updater-Container nur die Anwendung, auf dem
+# Host (CLI) alles — dort darf sich auch der Updater selbst erneuern.
+up_targets() {
+  if [ -n "${OPNEXUS_UPDATER:-}" ]; then printf '%s\n' "${SERVICES[@]}"; fi
+}
+
+psql_db() { c exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" -Atq "$@"; }
+
+db_revision() {
+  psql_db -c "SELECT version_num FROM alembic_version" 2>/dev/null || true
+}
+
+running_version() {
+  c exec -T backend python -c 'from app.version import APP_VERSION; print(APP_VERSION)' 2>/dev/null || true
+}
+
+service_state() {  # healthy | unhealthy | starting | running | (leer)
+  local h
+  h=$(c ps "$1" --format '{{.Health}}' 2>/dev/null || true)
+  if [ -n "$h" ]; then echo "$h"; else c ps "$1" --format '{{.State}}' 2>/dev/null || true; fi
+}
+
+wait_healthy() {
+  local deadline=$((SECONDS + TIMEOUT)) all svc st
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    all=1
+    for svc in "${SERVICES[@]}"; do
+      st=$(service_state "$svc")
+      case "$st" in healthy|running) ;; *) all=0 ;; esac
+    done
+    [ "$all" = 1 ] && return 0
+    sleep 3
+  done
+  return 1
+}
+
+require_release_mode() {
+  [ -f docker-compose.yml ] || die "docker-compose.yml nicht gefunden (OPNEXUS_DIR setzen?)"
+  [ -f "$ENV_FILE" ] || die "$ENV_FILE nicht gefunden"
+  [ -n "$(env_get OPNEXUS_IMAGE_REPO)" ] || die "OPNEXUS_IMAGE_REPO ist in $ENV_FILE nicht gesetzt — dieses Kommando arbeitet mit fertigen Release-Images (lokale Builds: git pull && docker compose up -d --build)."
+}
+
+cmd_status_porcelain() {
+  require_release_mode
+  echo "repo=$(env_get OPNEXUS_IMAGE_REPO)"
+  echo "version_setting=$(env_get OPNEXUS_VERSION)"
+  echo "running_version=$(running_version)"
+  echo "db_revision=$(db_revision)"
+  for svc in "${SERVICES[@]}"; do echo "service.$svc=$(service_state "$svc")"; done
+  if [ -f "$STATE_FILE" ]; then
+    # Nur bekannte Schlüssel durchlassen — die Datei wird vom Skript selbst geschrieben.
+    grep -E '^(started|prev_version|prev_setting|prev_db_revision|target)=' "$STATE_FILE" | sed 's/^/last_update./'
+  fi
+}
+
+cmd_status() {
+  require_release_mode
+  echo "Image-Repo:        $(env_get OPNEXUS_IMAGE_REPO)"
+  echo "OPNEXUS_VERSION:   $(env_get OPNEXUS_VERSION)"
+  echo "Laufende Version:  $(running_version)"
+  echo "DB-Revision:       $(db_revision)"
+  for svc in "${SERVICES[@]}"; do echo "$svc: $(service_state "$svc")"; done
+  [ -f "$STATE_FILE" ] && { echo; echo "Letztes Update (für 'rollback'):"; sed 's/^/  /' "$STATE_FILE"; }
+  return 0
+}
+
+cmd_backup() {
+  local name="manual-$(date -u +%Y%m%d-%H%M%S).dump"
+  pgtool pg_dump -h postgres -U "$DB_USER" -d "$DB_NAME" -F c \
+    --exclude-table-data=firewall_log_entries --exclude-table-data=host_resource_samples \
+    -f "/backups/$name"
+  say "Backup geschrieben: /backups/$name (Volume postgres_backups)"
+}
+
+cmd_update() {
+  require_release_mode
+  local target="${1:-$(env_get OPNEXUS_VERSION)}"
+  target="${target:-latest}"
+  # Landet in .env und in Image-Tags: nur Zeichen, die ein Tag enthalten darf.
+  [[ "$target" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || die "Ungültige Version '$target' (erlaubt: Buchstaben, Ziffern, . _ -)."
+  local prev_setting prev_version prev_rev started
+  prev_setting=$(env_get OPNEXUS_VERSION)
+  prev_version=$(running_version)
+  [ -n "$prev_version" ] || die "Backend läuft nicht oder antwortet nicht — erst reparieren, dann updaten."
+  prev_rev=$(db_revision)
+
+  say "Aktuell: $prev_version (DB-Revision ${prev_rev:-keine}) — Ziel: $target"
+  say "Ziehe neue Images (am laufenden System ändert sich dabei nichts) …"
+  phase pulling
+  local pull_services=("${SERVICES[@]}")
+  if updater_enabled; then pull_services+=(updater); fi
+  OPNEXUS_VERSION="$target" c pull "${pull_services[@]}" || die "Pull fehlgeschlagen — nichts wurde verändert."
+
+  started=$(date -u +%Y%m%dT%H%M%SZ)
+  cat > "$STATE_FILE" <<STATE
+started=$started
+prev_version=$prev_version
+prev_setting=$prev_setting
+prev_db_revision=$prev_rev
+target=$target
+STATE
+
+  env_set OPNEXUS_VERSION "$target"
+  say "Wechsle auf $target (das Backend sichert die Datenbank selbst vor einer Migration) …"
+  phase switching
+  local targets=()
+  mapfile -t targets < <(up_targets)
+  # `up` selbst scheitert, sobald das Backend nicht gesund wird (depends_on) —
+  # das ist der Fehlerfall, nicht das Ende des Skripts.
+  if c up -d --no-build "${targets[@]}" && { phase waiting; wait_healthy; }; then
+    say "Fertig: läuft jetzt auf $(running_version) (DB-Revision $(db_revision))."
+    phase done
+    return 0
+  fi
+
+  printf '\033[31mUpdate nicht gesund geworden.\033[0m Backend-Log:\n' >&2
+  c logs --tail 25 backend >&2 || true
+  if [ "${OPNEXUS_NO_AUTO_ROLLBACK:-}" = 1 ]; then
+    die "Automatisches Zurückrollen ist aus. Manuell: opnexus rollback"
+  fi
+  say "Rolle automatisch zurück …"
+  cmd_rollback
+  phase rolled_back
+  printf '\033[31mFehler:\033[0m Update auf %s fehlgeschlagen und zurückgerollt auf %s.\n' "$target" "$prev_version" >&2
+  exit 3
+}
+
+latest_pre_upgrade_dump() {
+  c exec -T postgres-backup sh -c 'ls -1t /backups/pre-upgrade-*.dump 2>/dev/null | head -n1' | tr -d '\r'
+}
+
+cmd_rollback() {
+  require_release_mode
+  [ -f "$STATE_FILE" ] || die "Kein Update-Zustand ($STATE_FILE) — es gibt nichts zurückzurollen."
+  # shellcheck disable=SC1090
+  . "./$STATE_FILE"
+  [ -n "${prev_version:-}" ] || die "$STATE_FILE ist unvollständig."
+
+  # Rollback target = the exact image tag that was configured before the update.
+  # The version the backend REPORTS only matches the tag for final releases: an
+  # rc image reports its final version (rc1 images say 1.11.0), so rolling back
+  # to that would land on a different, newer image. Floating tags ("latest",
+  # "1.11") cannot be restored by name, so those fall back to the reported version.
+  if [[ "${prev_setting:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+    prev_version="$prev_setting"
+  fi
+  say "Rolle zurück auf $prev_version …"
+  phase stopping
+  c stop "${SERVICES[@]}"
+
+  local now_rev dump
+  now_rev=$(db_revision)
+  if [ "$now_rev" != "$prev_db_revision" ]; then
+    dump=$(latest_pre_upgrade_dump)
+    [ -n "$dump" ] || die "Datenbank wurde migriert ($prev_db_revision → $now_rev), aber es gibt kein pre-upgrade-Backup. Backend bleibt gestoppt."
+    # Nur ein Backup, das nach dem Start DIESES Updates entstanden ist, darf
+    # zurückgespielt werden — ein älteres würde stillschweigend Daten verwerfen.
+    dump_ts=$(echo "$dump" | sed -E 's/.*-([0-9]{8})-([0-9]{6})\.dump$/\1\2/')
+    [ "$dump_ts" -ge "${started//[-:TZ]/}" ] 2>/dev/null \
+      || die "Neuestes pre-upgrade-Backup ($dump) ist älter als dieses Update (SKIP_MIGRATION_BACKUP gesetzt?). Backend bleibt gestoppt — manuell eingreifen."
+    say "Datenbank wurde migriert ($prev_db_revision → $now_rev): spiele $dump zurück."
+    phase restoring
+    say "Hinweis: Log-Historie und Ressourcen-Messwerte sind im Backup nicht enthalten und danach leer; alles andere steht auf dem Stand vor dem Update."
+    # Erst prüfen, dass das Backup lesbar ist — BEVOR irgendetwas gelöscht wird.
+    pgtool pg_restore --list "$dump" > /dev/null \
+      || die "Backup $dump ist nicht lesbar. Datenbank unverändert, Backend bleibt gestoppt."
+    local safety="pre-rollback-$(date -u +%Y%m%d-%H%M%S).dump"
+    pgtool pg_dump -h postgres -U "$DB_USER" -d "$DB_NAME" -F c \
+      --exclude-table-data=firewall_log_entries --exclude-table-data=host_resource_samples \
+      -f "/backups/$safety"
+    say "Sicherheitskopie des jetzigen Zustands: /backups/$safety"
+    reset_schema() {
+      pgtool psql -h postgres -U "$DB_USER" -d "$DB_NAME" -v ON_ERROR_STOP=1 -q \
+        -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public' 2>&1 | grep -v '^NOTICE\|^DETAIL\|^drop cascades' || true
+    }
+    reset_schema
+    if ! pgtool pg_restore -h postgres -U "$DB_USER" -d "$DB_NAME" --no-owner --exit-on-error "$dump"; then
+      say "Zurückspielen fehlgeschlagen — stelle den Zustand vor dem Rollback aus /backups/$safety wieder her …"
+      reset_schema
+      pgtool pg_restore -h postgres -U "$DB_USER" -d "$DB_NAME" --no-owner --exit-on-error "/backups/$safety" \
+        || die "Auch die Wiederherstellung schlug fehl. Backups liegen in /backups ($dump, $safety). Backend bleibt gestoppt."
+      die "Rollback der Datenbank fehlgeschlagen; Zustand vor dem Rollback wiederhergestellt. Backend bleibt gestoppt."
+    fi
+  else
+    say "Datenbank-Revision unverändert ($now_rev) — kein Zurückspielen nötig."
+  fi
+
+  env_set OPNEXUS_VERSION "$prev_version"
+  phase switching
+  local rb_targets=()
+  mapfile -t rb_targets < <(up_targets)
+  c up -d --no-build "${rb_targets[@]}" || true
+  phase waiting
+  wait_healthy || die "Nach dem Rollback sind nicht alle Dienste gesund — 'docker compose logs' prüfen."
+  say "Fertig: läuft wieder auf $(running_version) (DB-Revision $(db_revision)). OPNEXUS_VERSION in $ENV_FILE ist jetzt fest auf $prev_version gesetzt."
+  rm -f "$STATE_FILE"
+  phase done
+}
+
+case "${1:-}" in
+  status)   if [ "${2:-}" = "--porcelain" ]; then cmd_status_porcelain; else cmd_status; fi ;;
+  update)   shift; cmd_update "${1:-}" ;;
+  rollback) cmd_rollback ;;
+  backup)   cmd_backup ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

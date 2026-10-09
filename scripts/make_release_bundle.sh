@@ -43,6 +43,10 @@ OPNexus $version
    Zurück:    ./opnexus rollback
    Sichern:   ./opnexus backup
 
+Optional: Updates per Klick im Webinterface (Einstellungen › "OPNexus aktualisieren"):
+   in .env  COMPOSE_PROFILES=updater  und UPDATE_CHECK_URL setzen, dann
+   docker compose up -d --no-build     (Hinweise zur Sicherheit: Handbuch)
+
 Vollständige Anleitung: README.md im Repository, Abschnitt "Release-Images & CI".
 TXT
 

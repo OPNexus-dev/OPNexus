@@ -110,7 +110,61 @@
     "about": "About OPNexus",
     "version": "Version",
     "development": "Development",
-    "changelogNote": "The change history and version scheme are in {file}."
+    "changelogNote": "The change history and version scheme are in {file}.",
+    "update": {
+      "title": "Update OPNexus",
+      "hint": "Pulls the new images, switches the services and checks that everything is healthy. If that fails, OPNexus rolls back to the previous version automatically.",
+      "installed": "Installed",
+      "latest": "Latest version",
+      "upToDate": "OPNexus is up to date.",
+      "notes": "Release notes",
+      "checked": "Last checked: {time}",
+      "feedOff": "The version check is off. Set UPDATE_CHECK_URL in the server's .env so OPNexus can detect new versions.",
+      "feedError": "The release feed is currently unreachable.",
+      "notEnabledTitle": "Updates from the web interface are not enabled.",
+      "notEnabledBody": "They need a small separate service (the updater) with access to Docker — deliberately optional. To enable it:",
+      "notEnabledStep1": "Add to the .env on the server:",
+      "notEnabledStep2": "Then run:",
+      "notEnabledCli": "Until then, update on the server with “opnexus update”.",
+      "unreachable": "The updater does not respond. Check on the server: docker compose ps updater",
+      "localMode": "This installation builds OPNexus locally from source (no release image). Update on the server with git pull and docker compose up -d --build.",
+      "majorChange": "Version {latest} is a major version jump. Please read the release notes first, then update on the server with “opnexus update {latest}”.",
+      "button": "Update to {latest}",
+      "confirmTitle": "Update to {latest}?",
+      "confirmBody": "OPNexus pulls the new images and restarts itself. The interface is unavailable for about one to two minutes; the managed firewalls are not affected.",
+      "confirmSafety": "A backup is taken automatically before a database migration. If the new version does not become healthy, OPNexus rolls back to the previous version on its own.",
+      "confirm": "Update now",
+      "startFailed": "Could not start the update",
+      "running": "Updating to {target} …",
+      "rollingBack": "Rolling back …",
+      "reconnecting": "Reconnecting — this is normal while the services restart.",
+      "phase": {
+        "pulling": "Pulling new images",
+        "switching": "Switching services",
+        "waiting": "Waiting for healthy services",
+        "stopping": "Stopping services",
+        "restoring": "Restoring the database",
+        "rolled_back": "Rolled back",
+        "done": "Done"
+      },
+      "result": {
+        "succeededUpdate": "OPNexus is now running {version}. Reloading the page …",
+        "succeededRollback": "OPNexus was rolled back to {version}. Reloading the page …",
+        "rolledBack": "The update to {target} failed. OPNexus was rolled back to the previous version automatically.",
+        "failed": "The operation failed. Check the log and the server state (on the server: opnexus status)."
+      },
+      "showLog": "Log",
+      "rollback": {
+        "button": "Roll back to previous version",
+        "hint": "Undoes the last update (back to {version}).",
+        "confirmTitle": "Roll back to {version}?",
+        "dataLoss": "The update migrated the database. Rolling back restores the state from before the update: changes made since the update and the log history are lost.",
+        "noDataLoss": "The database was not migrated — no data is lost.",
+        "confirm": "Roll back"
+      },
+      "badge": "Update available",
+      "resultTime": "Result from {time}"
+    }
   },
   "nav": {
     "aboutTitle": "About OPNexus — fleet status & versions",
@@ -509,7 +563,13 @@
     "NETWORK_BACKUP_FAILED": "Backup of “{host}” before the change failed – nothing was changed",
     "NETWORK_CHANGE_BLOCKED": "The change is not possible ({reasons})",
     "NETWORK_FIELD_INVALID": "Invalid field: {field}",
-    "NETWORK_ITEM_NOT_FOUND": "The object does not exist on the firewall (any more)"
+    "NETWORK_ITEM_NOT_FOUND": "The object does not exist on the firewall (any more)",
+    "UPDATER_UNAVAILABLE": "The updater is not enabled or not reachable.",
+    "UPDATER_BUSY": "An update or rollback is already running.",
+    "UPDATER_REJECTED": "The updater rejected the request ({reason}).",
+    "UPDATE_NOT_OFFERED": "This version is not offered for installation — only the latest stable version.",
+    "UPDATE_MAJOR_CHANGE": "Please run major version jumps deliberately on the server with “opnexus update”.",
+    "ADMIN_REQUIRED": "This function requires the “Admin” role."
   },
   "workflow": {
     "attention": "Check errors",
@@ -561,8 +621,9 @@
   "updateBanner": {
     "title": "OPNexus {latest} is available (installed: {current}).",
     "notes": "Release notes",
-    "how": "Update on the server with “opnexus update”.",
-    "dismiss": "Hide this notice for this version"
+    "how": "Update in the settings or on the server with “opnexus update”.",
+    "dismiss": "Hide this notice for this version",
+    "settings": "Go to settings"
   },
   "acme": {
     "externalCaWarning": "Contacts the real certificate authority (e.g. Let's Encrypt) over the internet — not a purely local change. Counts against its rate limits (e.g. issuances per domain per week). Use a *_test CA (e.g. letsencrypt_test) for testing.",
@@ -1452,7 +1513,8 @@
       "wireguard_tunnel": "WireGuard",
       "certificate": "Certificates",
       "acme": "ACME",
-      "notification": "Notifications"
+      "notification": "Notifications",
+      "system": "OPNexus system"
     },
     "action": {
       "deploy": "Push",

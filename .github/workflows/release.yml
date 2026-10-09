@@ -12,7 +12,7 @@
 #                                 Berechtigung "write:package" eintragen)
 # Wer auf mehrere Registries veröffentlichen will, pusht den Tag einfach zu
 # mehreren Remotes — jeder Remote baut mit seiner eigenen Konfiguration.
-# Ergebnis: <REGISTRY>/<IMAGE_NAMESPACE>/opnexus-{backend,frontend,proxy}:<version>
+# Ergebnis: <REGISTRY>/<IMAGE_NAMESPACE>/opnexus-{backend,frontend,proxy,updater}:<version>
 # (flache Namen, weil verschachtelte Pfade je Registry unterschiedlich gehen).
 #
 # Der Publish-Job braucht einen Runner mit Docker-Zugriff, der QEMU-
@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        service: [backend, frontend, proxy]
+        service: [backend, frontend, proxy, updater]
     steps:
       - uses: actions/checkout@v4
 

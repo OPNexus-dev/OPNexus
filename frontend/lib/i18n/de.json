@@ -110,7 +110,61 @@
     "about": "Über OPNexus",
     "version": "Version",
     "development": "Entwicklung",
-    "changelogNote": "Änderungsverlauf und Versionsschema stehen in {file}."
+    "changelogNote": "Änderungsverlauf und Versionsschema stehen in {file}.",
+    "update": {
+      "title": "OPNexus aktualisieren",
+      "hint": "Lädt die neuen Images, wechselt die Dienste und prüft, ob alles gesund ist. Schlägt das fehl, wird automatisch auf die vorherige Version zurückgerollt.",
+      "installed": "Installiert",
+      "latest": "Neueste Version",
+      "upToDate": "OPNexus ist auf dem neuesten Stand.",
+      "notes": "Release-Notes",
+      "checked": "Zuletzt geprüft: {time}",
+      "feedOff": "Die Versionsprüfung ist aus. Trage UPDATE_CHECK_URL in der .env des Servers ein, damit OPNexus neue Versionen erkennt.",
+      "feedError": "Der Release-Feed ist gerade nicht erreichbar.",
+      "notEnabledTitle": "Updates aus dem Webinterface sind nicht aktiviert.",
+      "notEnabledBody": "Dafür läuft ein eigener kleiner Dienst (Updater) mit Zugriff auf Docker — er ist bewusst optional. Aktivieren:",
+      "notEnabledStep1": "In der .env auf dem Server eintragen:",
+      "notEnabledStep2": "Dann ausführen:",
+      "notEnabledCli": "Bis dahin geht das Update auf dem Server mit „opnexus update“.",
+      "unreachable": "Der Updater antwortet nicht. Auf dem Server prüfen: docker compose ps updater",
+      "localMode": "Diese Installation baut OPNexus lokal aus dem Quellcode (kein Release-Image). Aktualisieren auf dem Server mit git pull und docker compose up -d --build.",
+      "majorChange": "Version {latest} ist ein Hauptversions-Sprung. Bitte erst die Release-Notes lesen und dann auf dem Server mit „opnexus update {latest}“ aktualisieren.",
+      "button": "Auf {latest} aktualisieren",
+      "confirmTitle": "Auf {latest} aktualisieren?",
+      "confirmBody": "OPNexus lädt die neuen Images und startet sich neu. Die Oberfläche ist dabei etwa ein bis zwei Minuten nicht erreichbar; die verwalteten Firewalls sind nicht betroffen.",
+      "confirmSafety": "Vor einer Datenbank-Migration wird automatisch ein Backup angelegt. Wird die neue Version nicht gesund, setzt OPNexus selbst auf die vorherige Version zurück.",
+      "confirm": "Jetzt aktualisieren",
+      "startFailed": "Update konnte nicht gestartet werden",
+      "running": "Update auf {target} läuft …",
+      "rollingBack": "Rollback läuft …",
+      "reconnecting": "Verbindung wird neu aufgebaut — beim Neustart der Dienste ist das normal.",
+      "phase": {
+        "pulling": "Neue Images laden",
+        "switching": "Dienste wechseln",
+        "waiting": "Auf gesunde Dienste warten",
+        "stopping": "Dienste anhalten",
+        "restoring": "Datenbank zurückspielen",
+        "rolled_back": "Zurückgerollt",
+        "done": "Fertig"
+      },
+      "result": {
+        "succeededUpdate": "OPNexus läuft jetzt auf {version}. Die Seite wird neu geladen …",
+        "succeededRollback": "OPNexus wurde auf {version} zurückgesetzt. Die Seite wird neu geladen …",
+        "rolledBack": "Das Update auf {target} ist fehlgeschlagen. OPNexus wurde automatisch auf die vorherige Version zurückgesetzt.",
+        "failed": "Der Vorgang ist fehlgeschlagen. Protokoll und Serverzustand prüfen (auf dem Server: opnexus status)."
+      },
+      "showLog": "Protokoll",
+      "rollback": {
+        "button": "Auf Vorversion zurücksetzen",
+        "hint": "Macht das letzte Update rückgängig (zurück auf {version}).",
+        "confirmTitle": "Auf {version} zurücksetzen?",
+        "dataLoss": "Das Update hat die Datenbank migriert. Beim Zurücksetzen wird der Stand vor dem Update wiederhergestellt: Änderungen seit dem Update und die Log-Historie gehen verloren.",
+        "noDataLoss": "Die Datenbank wurde nicht migriert — es gehen keine Daten verloren.",
+        "confirm": "Zurücksetzen"
+      },
+      "badge": "Update verfügbar",
+      "resultTime": "Ergebnis vom {time}"
+    }
   },
   "nav": {
     "aboutTitle": "Über OPNexus — Fleet-Status & Versionen",
@@ -509,7 +563,13 @@
     "NETWORK_BACKUP_FAILED": "Backup von „{host}“ vor der Änderung fehlgeschlagen – es wurde nichts geändert",
     "NETWORK_CHANGE_BLOCKED": "Die Änderung ist nicht möglich ({reasons})",
     "NETWORK_FIELD_INVALID": "Ungültiges Feld: {field}",
-    "NETWORK_ITEM_NOT_FOUND": "Das Objekt existiert auf der Firewall nicht (mehr)"
+    "NETWORK_ITEM_NOT_FOUND": "Das Objekt existiert auf der Firewall nicht (mehr)",
+    "UPDATER_UNAVAILABLE": "Der Updater ist nicht aktiviert oder nicht erreichbar.",
+    "UPDATER_BUSY": "Es läuft bereits ein Update oder Rollback.",
+    "UPDATER_REJECTED": "Der Updater hat die Anfrage abgelehnt ({reason}).",
+    "UPDATE_NOT_OFFERED": "Diese Version wird nicht zur Installation angeboten — nur die neueste stabile Version.",
+    "UPDATE_MAJOR_CHANGE": "Hauptversions-Sprünge bitte bewusst auf dem Server mit „opnexus update“ ausführen.",
+    "ADMIN_REQUIRED": "Diese Funktion erfordert die Rolle „Admin“."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -561,8 +621,9 @@
   "updateBanner": {
     "title": "OPNexus {latest} ist verfügbar (installiert: {current}).",
     "notes": "Release-Notes",
-    "how": "Aktualisieren auf dem Server mit „opnexus update“.",
-    "dismiss": "Hinweis für diese Version ausblenden"
+    "how": "Aktualisieren in den Einstellungen oder auf dem Server mit „opnexus update“.",
+    "dismiss": "Hinweis für diese Version ausblenden",
+    "settings": "Zu den Einstellungen"
   },
   "acme": {
     "externalCaWarning": "Kontaktiert die echte Zertifizierungsstelle (z. B. Let's Encrypt) über das Internet — keine rein lokale Änderung. Zählt gegen deren Rate-Limits (z. B. Ausstellungen pro Domain und Woche). Für Tests eine *_test-CA (z. B. letsencrypt_test) verwenden.",
@@ -1452,7 +1513,8 @@
       "wireguard_tunnel": "WireGuard",
       "certificate": "Zertifikate",
       "acme": "ACME",
-      "notification": "Benachrichtigungen"
+      "notification": "Benachrichtigungen",
+      "system": "OPNexus-System"
     },
     "action": {
       "deploy": "Push",

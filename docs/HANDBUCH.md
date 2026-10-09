@@ -2578,7 +2578,78 @@ einzelnes GET mit dem User-Agent `OPNexus/<Version>` hinaus, ohne Instanz- oder
 Nutzerdaten. Ein unerreichbarer Feed bleibt unauffällig (der letzte bekannte
 Stand bleibt, Neuversuch frühestens nach 15 Minuten); Vorabversionen
 (`-rc1`) werden nie vorgeschlagen. Der Hinweis lässt sich pro Version
-wegklicken und installiert nichts — dafür gibt es `opnexus update`.
+wegklicken und installiert nichts — dafür gibt es den optionalen Updater
+(nächster Abschnitt) oder `opnexus update`.
+
+#### Update aus dem Webinterface (optional)
+
+Statt `opnexus update` auf dem Server kann ein Administrator OPNexus auch in
+den **Einstellungen › „OPNexus aktualisieren“** aktualisieren: Version und
+Release-Notes ansehen, „Auf X.Y.Z aktualisieren“ klicken, bestätigen,
+Fortschritt verfolgen. Die Seite überbrückt den kurzen Neustart der Dienste
+selbst und lädt sich danach neu. Ein fehlgeschlagenes Update rollt wie auf der
+Kommandozeile automatisch zurück und zeigt das Ergebnis samt Protokoll an;
+„Auf Vorversion zurücksetzen“ macht das letzte Update rückgängig (mit Hinweis,
+ob dabei Daten verloren gehen — nur wenn das Update die Datenbank migriert hat).
+
+**Das ist bewusst abgeschaltet und muss aktiviert werden**, weil es Docker-Zugriff
+braucht. Dafür gibt es einen eigenen kleinen Dienst, den **Updater**
+(`updater/`, Compose-Profil `updater`):
+
+```bash
+# .env auf dem Server
+COMPOSE_PROFILES=updater
+```
+
+```bash
+docker compose pull && docker compose up -d --no-build
+```
+
+Sicherheitsmodell:
+
+- Der Updater ist der **einzige** Container mit dem Docker-Socket. Das
+  entspricht root-gleichen Rechten auf dem Host — deshalb ist er optional und
+  winzig gehalten (`updater/server.py`, nur Standardbibliothek). Das Backend
+  bekommt den Socket nie.
+- Er hat **keinen veröffentlichten Port** und ist nur aus dem Compose-Netz
+  erreichbar, nur mit einem Token, den er beim ersten Start selbst erzeugt
+  und in sein Volume `updater_state` schreibt (das Backend hängt es
+  schreibgeschützt ein). Von außen kommt man nicht heran.
+- Er kann **nur** „aktualisieren auf X.Y.Z“, „zurückrollen“ und „Status“ — es
+  gibt keinen Weg, einen eigenen Befehl auszuführen. Eine Zielversion muss
+  eine stabile `X.Y.Z` sein, neuer als die laufende, mit derselben
+  Hauptversion.
+- Das Backend leitet nur Admin-Anfragen weiter und nimmt als Ziel
+  ausschließlich die Version an, die der Release-Feed (`UPDATE_CHECK_URL`)
+  als neueste stabile meldet. Jede Anfrage steht im Audit-Log (Typ
+  „OPNexus-System“). Nur-Lese-Konten sehen den Abschnitt nicht.
+- **Hauptversions-Sprünge** (z. B. 1.x → 2.0) lassen sich bewusst nicht per
+  Klick auslösen: Release-Notes lesen, dann auf dem Server `opnexus update 2.0.0`.
+
+Voraussetzungen und Grenzen:
+
+- Nur für **Release-Images** (`OPNEXUS_IMAGE_REPO` gesetzt) und mit aktivem
+  Release-Feed (`UPDATE_CHECK_URL`). Installationen, die lokal aus dem
+  Quellcode bauen, aktualisieren weiter mit `git pull && docker compose up -d --build`;
+  die Einstellungen sagen das an.
+- Der Updater arbeitet im Verzeichnis mit `docker-compose.yml` und `.env`
+  (als `/project` eingehängt, schreibend — er setzt `OPNEXUS_VERSION` und
+  legt `.opnexus-update-state` ab) und führt dieselbe Logik aus wie
+  `opnexus update`: Images zuerst ziehen, wechseln, auf „gesund“ warten,
+  sonst Rollback. Ein Update wechselt die Images, aber **nicht** die
+  Compose-Datei; braucht eine Version neue Compose-Einträge, steht das in
+  den Release-Notes und ist dann einmal von Hand zu tun.
+- Der Updater erneuert sich nach einem erfolgreichen Update selbst (aus einem
+  kurzlebigen Hilfs-Container heraus); schlägt das fehl, läuft er weiter und
+  wird beim nächsten `docker compose up -d` erneuert.
+- Läuft kein Updater, ist die Weboberfläche trotzdem voll nutzbar — der
+  Abschnitt erklärt dann nur, wie man ihn aktiviert.
+
+**Verifikation 1.15.0:** Update, Rollback mit Datenbank-Wiederherstellung und ein kaputtes
+Update mit automatischem Rollback liefen über die Oberfläche gegen einen isolierten Stack mit
+echten Release-Images und lokaler Registry (inklusive Selbsterneuerung des Updaters und
+Neuladen der Seite); Backend-API-Tests, Updater-Tests ohne Docker und die Browser-Prüfung
+(1440 px hell/dunkel, 375 px, alle Zustände, axe ohne Verstöße) sind grün.
 
 #### Update und Rollback mit `opnexus`
 

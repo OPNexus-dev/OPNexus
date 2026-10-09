@@ -59,3 +59,5 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 scripts/check_i18n.py
       - run: bash -n scripts/opnexus && bash -n scripts/check_version.sh && bash -n scripts/make_release_bundle.sh
+      # Updater-Container (Zustandsübergänge, Ablehnungen, Auth) ohne Docker-Daemon.
+      - run: python3 -m unittest discover -s updater -p 'test_*.py'

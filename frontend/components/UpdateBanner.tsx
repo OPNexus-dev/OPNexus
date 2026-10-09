@@ -65,7 +65,10 @@ export function UpdateBanner() {
         <div className="flex-1">
           <p className="font-medium">{t("updateBanner.title", { latest: check.latest, current: check.current })}</p>
           <p className="text-xs">
-            {t("updateBanner.how")}
+            {t("updateBanner.how")}{" "}
+            <a href="/settings#opnexus-update" className="font-medium underline">
+              {t("updateBanner.settings")}
+            </a>
             {releaseUrl && (
               <>
                 {" "}

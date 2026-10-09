@@ -92,7 +92,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 user = await auth_service.resolve_session(db, token)
             if user is not None:
                 parts = request.url.path.strip("/").split("/")
-                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user"}
+                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system"}
                 writing = request.method in ("POST", "PUT", "PATCH", "DELETE")
                 if len(parts) > 1 and parts[1] in _SECURITY_KINDS:
                     event = {**_security_event(parts, request.method), "details": {"method": request.method, "path": request.url.path}}

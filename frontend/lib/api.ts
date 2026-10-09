@@ -1061,6 +1061,40 @@ export interface VersionCheck {
   error: string | null;
 }
 
+export interface UpdaterJob {
+  id: string;
+  action: "update" | "rollback";
+  target: string | null;
+  state: "running" | "succeeded" | "failed" | "rolled_back";
+  started_at: string;
+  finished_at: string | null;
+  exit_code: number | null;
+  from_version: string | null;
+}
+
+export interface UpdaterStatus {
+  /** false = Updater nicht aktiviert/erreichbar (`reason` sagt warum). */
+  available: boolean;
+  reason: "not_enabled" | "unreachable" | "unauthorized" | null;
+  mode: "release" | "local" | null;
+  current: string;
+  latest: string | null;
+  update_available: boolean;
+  release_url: string | null;
+  feed_enabled: boolean;
+  feed_error: string | null;
+  checked_at: string | null;
+  can_update: boolean;
+  major_change: boolean;
+  job: UpdaterJob | null;
+  phases: string[];
+  log: string[];
+  services: Record<string, string>;
+  rollback_available: boolean;
+  rollback_loses_data: boolean;
+  rollback_version: string | null;
+}
+
 export const api = {
   search: (q: string, options?: RequestInit) => request<SearchHit[]>(`/search?${new URLSearchParams({ q })}`, options),
   settings: () => request<AppSettings>("/settings"),
@@ -1093,6 +1127,9 @@ export const api = {
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
   versionCheck: () => request<VersionCheck>("/system/version-check"),
+  updaterStatus: () => request<UpdaterStatus>("/system/updater"),
+  updaterUpdate: (version: string) => request<{ job: UpdaterJob }>("/system/updater/update", { method: "POST", body: JSON.stringify({ version }) }),
+  updaterRollback: () => request<{ job: UpdaterJob }>("/system/updater/rollback", { method: "POST" }),
   getOutboundMode: (id: string) => request<OutboundMode>(`/outbound-nat/hosts/${id}/mode`),
   listPortForwards: () => request<PortForward[]>(`/port-forward`),
   createPortForward: (data: PortForwardCreate) => request<PortForward>(`/port-forward`, { method: "POST", body: JSON.stringify(data) }),

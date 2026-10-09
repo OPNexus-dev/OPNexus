@@ -31,6 +31,28 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.15.0] "Gyrfalcon" — 2026-10-10
+
+Updates aus dem Webinterface. Auf Klick, mit Fortschritt und automatischem Rollback; ein eigener,
+optionaler Container erledigt die Arbeit. Ende-zu-Ende mit echten Images getestet, siehe Handbuch
+„Update aus dem Webinterface (optional)“:
+
+- **Updates aus dem Webinterface (optional):** Einstellungen › „OPNexus aktualisieren“ zeigt die
+  neueste Version samt Release-Notes und aktualisiert auf Klick — mit Fortschrittsanzeige,
+  automatischem Rollback bei einem fehlgeschlagenen Update und „Auf Vorversion zurücksetzen“
+  (mit Hinweis, ob dabei Daten verloren gehen). Dahinter arbeitet ein eigener, kleiner
+  **Updater-Container** (`updater/`, Compose-Profil `updater`, mit `COMPOSE_PROFILES=updater`
+  in `.env` aktivieren), der dieselbe Logik wie `opnexus update` ausführt. Er ist standardmäßig
+  **aus** und der einzige Container mit Docker-Socket; das Backend bekommt ihn nie. Der Updater
+  hat keinen veröffentlichten Port, ist nur mit einem selbst erzeugten Token ansprechbar und kann
+  ausschließlich „aktualisieren auf die vom Release-Feed gemeldete neueste stabile Version“,
+  „zurückrollen“ und „Status“. Hauptversions-Sprünge bleiben der Kommandozeile vorbehalten.
+  Anfragen stehen im Audit-Log (neuer Typ „OPNexus-System“). Gilt nur für Release-Images.
+- `opnexus` (jetzt in `updater/opnexus`, `scripts/opnexus` ist ein Symlink): `status --porcelain`,
+  Exit-Code 3 für „fehlgeschlagen und sauber zurückgerollt“. Release-Images und -Bundle enthalten
+  zusätzlich `opnexus-updater`.
+- Der Banner „Neue Version verfügbar“ verlinkt auf den neuen Abschnitt in den Einstellungen.
+
 ## [1.14.0] "Eagle" — 2026-10-09
 
 Diagnose von der Firewall aus sowie VXLAN und GIF. Gegen die OPNsense-Core-Quellen

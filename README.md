@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](website/assets/screenshots/en/rules-light-desktop.webp)
 
-> **Status:** `1.14.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.15.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -20,11 +20,19 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
 - **Update center** — firmware updates for the fleet, aware of HA order and maintenance mode.
+- **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Access** — HTTPS with pinned firewall certificates, optional two-factor sign-in, roles (admin / read-only), keyboard operation, dark mode, German and English UI.
 
 ![Cluster view](website/assets/screenshots/en/cluster-light-desktop.webp)
 
 All screenshots show fictitious sample data.
+
+## Guides
+
+- [Manage OPNsense firewalls centrally](https://opnexus.dev/en/manage-opnsense-centrally/) – when central management pays off and how it works
+- [Manage OPNsense HA clusters with CARP](https://opnexus.dev/en/opnsense-ha-cluster-carp/) – roles, alerts, ordered updates, comparing both nodes
+- [Roll out OPNsense rules safely](https://opnexus.dev/en/roll-out-opnsense-rules-safely/) – preview, confirmation window and automatic rollback
+- [The `opnexus` command-line tool](https://opnexus.dev/en/docs/cli/) – update, roll back and back up an installation
 
 ## Quick start
 
@@ -49,7 +57,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.14.0
+OPNEXUS_VERSION=1.15.0
 ```
 
 ```bash
@@ -57,6 +65,8 @@ docker compose pull && docker compose up -d --no-build
 ```
 
 `scripts/opnexus update` / `rollback` then update the installation (pull first, database backup before migrations, automatic rollback if the services do not become healthy).
+
+**Updating from the web interface** is available as an opt-in: set `COMPOSE_PROFILES=updater` in `.env` and an administrator can update (and roll back) under *Settings › Update OPNexus*. It runs as a separate small container that is the only one with Docker access — see the [handbook](docs/HANDBUCH.md#update-aus-dem-webinterface-optional) (German) for the security model.
 
 ## Privacy
 

@@ -16,3 +16,6 @@ services:
 
   proxy:
     build: ./proxy
+
+  updater:
+    build: ./updater

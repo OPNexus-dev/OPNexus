@@ -120,6 +120,9 @@ services:
       ALLOW_INSECURE_SMTP_AUTH: ${ALLOW_INSECURE_SMTP_AUTH:-false}
       SMTP_CA_FILE: ${SMTP_CA_FILE:-}
       UPDATE_CHECK_INTERVAL_HOURS: ${UPDATE_CHECK_INTERVAL_HOURS:-12}
+      # Optionaler Updater-Dienst (Profil "updater", siehe unten). Ohne ihn
+      # zeigt das Webinterface nur an, wie man ihn aktiviert.
+      UPDATER_URL: ${UPDATER_URL:-http://updater:8080}
     volumes:
       - secrets:/data/opnsense-secrets
       - backups:/data/opnsense-backups
@@ -133,6 +136,9 @@ services:
       # Gleiches Volume wie der postgres-backup-Service: hier landet das
       # automatische Sicherheits-Backup vor einer Schema-Migration.
       - postgres_backups:/backups
+      # Zugriffstoken des Updaters (nur lesen). Leer, solange der Updater
+      # nicht aktiviert ist.
+      - updater_state:/updater:ro
     # Bound to loopback only by default — reachable from this host, not
     # the network. Set BIND_ADDRESS in .env (e.g. to 0.0.0.0, or a
     # specific interface IP) for network-wide access instead of editing
@@ -195,7 +201,34 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # ── Optional: Updates aus dem Webinterface ──────────────────────────
+  # Standardmäßig NICHT gestartet. Aktivieren mit COMPOSE_PROFILES=updater in
+  # .env und `docker compose up -d`. Dies ist der einzige Container mit
+  # Zugriff auf den Docker-Socket (= root-gleiche Rechte auf diesem Host): er
+  # hat keine veröffentlichten Ports, ist nur mit seinem Token ansprechbar
+  # und kann nur "aktualisieren"/"zurückrollen" (updater/server.py). Das
+  # Backend selbst bekommt den Socket nie. Nur für Release-Images
+  # (OPNEXUS_IMAGE_REPO gesetzt).
+  updater:
+    profiles: ["updater"]
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-updater:${OPNEXUS_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Das Verzeichnis mit docker-compose.yml und .env (der Updater schreibt
+      # nur OPNEXUS_VERSION und .opnexus-update-state hinein).
+      - .:/project
+      - updater_state:/state
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
 volumes:
+  updater_state:
   postgres_data:
   postgres_backups:
   secrets:

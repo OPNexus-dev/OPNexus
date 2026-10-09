@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     update_check_url: str = ""
     update_check_interval_hours: int = 12
 
+    # ── Updates aus dem Webinterface (app/services/updater_client.py) ─────
+    # Optionaler Updater-Container (Compose-Profil "updater"). Das Backend hat
+    # nie Zugriff auf den Docker-Socket; es reicht nur "aktualisieren" /
+    # "zurückrollen" an diesen Dienst weiter, authentifiziert mit dem Token,
+    # den der Updater in sein Zustands-Volume schreibt.
+    updater_url: str = "http://updater:8080"
+    updater_token_file: str = "/updater/token"
+
     # Cookies now carry the session, so this can no longer be a bare "*"
     # (the Fetch spec forbids credentialed requests against a wildcard
     # response) — see main.py's allow_origin_regex. Default only matches
