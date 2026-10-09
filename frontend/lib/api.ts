@@ -242,6 +242,7 @@ export type CertStatus = "valid" | "expiring_soon" | "expired" | "unknown";
 
 export interface HostCertificate {
   uuid: string;
+  refid: string;
   descr: string;
   common_name: string | null;
   issuer: string;
@@ -254,6 +255,7 @@ export interface HostCertificate {
 
 export interface HostCa {
   uuid: string;
+  refid: string;
   descr: string;
   common_name: string | null;
   valid_from: string | null;

@@ -6,6 +6,8 @@ denormalized `servers` field on the Peer payload) and to WireGuard's OWN
 reconfigure response shape ({"result": "ok"}, matching OpenVPN's shape,
 NOT IPsec's {"status": "ok"}), which this suite checks explicitly rather
 than assuming symmetry with either sibling feature."""
+import json
+
 import httpx
 import pytest
 from sqlalchemy import select
@@ -16,7 +18,15 @@ from tests.test_wireguard import _create_host, _tunnel_payload
 from tests.helpers import deploy_approved
 
 
-def _mock_full_success(respx_mock, base_url: str):
+def _mock_general(respx_mock, base_url: str, enabled: str = "1"):
+    # The service-wide switch (General.enabled) is checked before every deploy.
+    respx_mock.get(f"{base_url}/api/wireguard/general/get").mock(
+        return_value=httpx.Response(200, json={"general": {"enabled": enabled}})
+    )
+
+
+def _mock_full_success(respx_mock, base_url: str, general_enabled: str = "1"):
+    _mock_general(respx_mock, base_url, general_enabled)
     respx_mock.post(f"{base_url}/api/wireguard/server/addServer").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "server-1"})
     )
@@ -68,6 +78,7 @@ async def test_peer_payload_carries_injected_server_uuid(client, respx_mock):
     add_peer = respx_mock.post("https://fw1.test/api/wireguard/client/addClient").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "peer-1"})
     )
+    _mock_general(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/wireguard/service/reconfigure").mock(
         return_value=httpx.Response(200, json={"result": "ok"})
     )
@@ -134,6 +145,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     respx_mock.post("https://fw1.test/api/wireguard/client/addClient").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "peer-1"})
     )
+    _mock_general(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/wireguard/service/reconfigure").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
@@ -173,6 +185,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
     respx_mock.post("https://fw1.test/api/wireguard/client/addClient").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "peer-1"})
     )
+    _mock_general(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/wireguard/service/reconfigure").mock(
         return_value=httpx.Response(200, json={"result": "failed"})
     )
@@ -282,3 +295,22 @@ async def test_secrets_never_persisted_and_rotation_is_not_a_no_op(client, respx
     assert add_server_route.call_count == 1, "unchanged from the first deploy — the rotation must go through setServer, not addServer"
     assert set_server_route.call_count == 1, "the rotated key must actually be re-pushed, not silently no-op'd"
     assert rotated_key.encode() in set_server_route.calls.last.request.content
+
+
+@pytest.mark.asyncio
+async def test_deploy_switches_on_the_global_wireguard_service_when_disabled(client, respx_mock):
+    """Live 26.7.5: with General.enabled=0 the config is written but no wg
+    interface exists, so the deploy must enable the switch first."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
+    tunnel_id = resp.json()["id"]
+
+    _mock_full_success(respx_mock, "https://fw1.test", general_enabled="0")
+    set_route = respx_mock.post("https://fw1.test/api/wireguard/general/set").mock(
+        return_value=httpx.Response(200, json={"result": "saved"})
+    )
+    resp = await deploy_approved(client, f"/api/wireguard/tunnels/{tunnel_id}/deploy")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deployments"][0]["status"] == "success"
+    assert json.loads(set_route.calls.last.request.content) == {"general": {"enabled": "1"}}

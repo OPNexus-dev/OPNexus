@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.carp_maintenance_window import CarpMaintenanceWindow
 from app.models.host import OpnsenseHost
+from app.models.host_operation import HostOperation
 from app.services import audit_service, host_status_service
 from app.services import opnsense_client as client
 
@@ -63,6 +64,26 @@ async def close_windows_for_manual_leave(db: AsyncSession, host: OpnsenseHost) -
     await db.commit()
 
 
+async def _close_enter_operations(db: AsyncSession, host: OpnsenseHost, message: str) -> None:
+    """Closes the host's still-open `carp_enter` maintenance record once the
+    window has been resolved by the timer. Without this the record stays
+    "submitted" forever: acknowledge cannot succeed (the host is no longer in
+    maintenance) and `ensure_no_maintenance` keeps blocking every deploy and
+    update in the cluster until someone cancels it by hand."""
+    result = await db.execute(
+        select(HostOperation).where(
+            HostOperation.host_id == host.id, HostOperation.action == "carp_enter", HostOperation.status == "submitted",
+        )
+    )
+    for op in result.scalars().all():
+        op.status = "cancelled"
+        op.message = message
+        await audit_service.persist(
+            kind="host", action="carp_enter", status="cancelled",
+            host_id=str(host.id), host_name=host.name, entity_id=str(op.id), message=message,
+        )
+
+
 async def sweep_expired(db: AsyncSession) -> list[CarpMaintenanceWindow]:
     result = await db.execute(
         select(CarpMaintenanceWindow).where(
@@ -88,6 +109,7 @@ async def sweep_expired(db: AsyncSession) -> list[CarpMaintenanceWindow]:
                 window.status = "cancelled_manual"
                 window.resolved_at = _now()
                 window.message = "Host war beim Ablauf bereits nicht mehr im CARP-Wartungsmodus."
+                await _close_enter_operations(db, host, window.message)
                 resolved.append(window)
                 continue
             result_payload = await client.toggle_carp_maintenance(host)
@@ -96,6 +118,7 @@ async def sweep_expired(db: AsyncSession) -> list[CarpMaintenanceWindow]:
             window.status = "reverted"
             window.resolved_at = _now()
             window.message = "Automatisch nach Ablauf des Zeitfensters in den Normalbetrieb zurückgeschaltet."
+            await _close_enter_operations(db, host, window.message)
             await audit_service.persist(
                 kind="host", action="carp_auto_revert", status="submitted",
                 host_id=str(host.id), host_name=host.name, entity_id=str(window.id),

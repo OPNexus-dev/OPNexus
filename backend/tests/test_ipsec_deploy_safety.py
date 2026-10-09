@@ -18,7 +18,16 @@ from tests.test_ipsec import _create_host, _tunnel_payload
 from tests.helpers import deploy_approved
 
 
-def _mock_full_success(respx_mock, base_url: str):
+def _mock_ipsec_enabled(respx_mock, base_url: str, enabled: bool = True):
+    # The service-wide switch is checked before every deploy (live 26.7.6:
+    # off by default, and reconfigure still answers ok while it is off).
+    respx_mock.get(f"{base_url}/api/ipsec/connections/is_enabled").mock(
+        return_value=httpx.Response(200, json={"enabled": enabled})
+    )
+
+
+def _mock_full_success(respx_mock, base_url: str, enabled: bool = True):
+    _mock_ipsec_enabled(respx_mock, base_url, enabled)
     respx_mock.post(f"{base_url}/api/ipsec/connections/addConnection").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "conn-1"})
     )
@@ -134,6 +143,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     respx_mock.post("https://fw1.test/api/ipsec/preSharedKeys/addItem").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "psk-1"})
     )
+    _mock_ipsec_enabled(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/ipsec/service/reconfigure").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
@@ -203,3 +213,20 @@ async def test_undeploy_deletes_child_local_remote_connection_then_psk(client, r
     resp = await client.delete(f"/api/ipsec/tunnels/{tunnel_id}")
     assert resp.status_code == 204, resp.text
     assert del_child.called and del_local.called and del_remote.called and del_conn.called and del_psk.called
+
+
+@pytest.mark.asyncio
+async def test_deploy_switches_on_the_global_ipsec_service_when_disabled(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
+    tunnel_id = resp.json()["id"]
+
+    _mock_full_success(respx_mock, "https://fw1.test", enabled=False)
+    toggle = respx_mock.post("https://fw1.test/api/ipsec/connections/toggle/1").mock(
+        return_value=httpx.Response(200, json={"status": "ok"})
+    )
+    resp = await deploy_approved(client, f"/api/ipsec/tunnels/{tunnel_id}/deploy")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["deployments"][0]["status"] == "success"
+    assert toggle.call_count == 1

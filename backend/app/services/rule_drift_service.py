@@ -38,6 +38,10 @@ async def _live_rules_or_none(host: OpnsenseHost) -> list[LiveRule] | None:
 
 
 async def compute_cluster_drift(hosts: list[OpnsenseHost]) -> list[dict]:
+    return (await compute_cluster_drift_with_reachable(hosts))[0]
+
+
+async def compute_cluster_drift_with_reachable(hosts: list[OpnsenseHost]) -> tuple[list[dict], set]:
     """Returns one row per fingerprint that isn't present on every reachable
     host in the cluster: {"fingerprint": str, "sample": LiveRule,
     "present_on": set[host_id], "reachable_host_ids": set[host_id]}.
@@ -58,4 +62,4 @@ async def compute_cluster_drift(hosts: list[OpnsenseHost]) -> list[dict]:
     for entry in by_fingerprint.values():
         entry["reachable_host_ids"] = reachable_ids
 
-    return [entry for entry in by_fingerprint.values() if len(entry["present_on"]) < len(reachable_ids)]
+    return [entry for entry in by_fingerprint.values() if len(entry["present_on"]) < len(reachable_ids)], reachable_ids

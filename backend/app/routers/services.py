@@ -31,6 +31,19 @@ async def _control(host_id: uuid.UUID, name: str, action: str, fn, db: AsyncSess
     await policy_lock(db)
     host = await host_or_404(db, host_id)
     await ensure_no_maintenance(db, [host])
+    # The UI greys out locked services, but the API must not rely on that:
+    # unknown names are accepted by the firewall with "ok", and locked ones
+    # (pf, webgui, routing, ...) can be stopped through it.
+    try:
+        listing = await client.search_services(host)
+    except client.OpnsenseAPIError as exc:
+        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+    rows = listing.get("rows", []) if isinstance(listing, dict) else []
+    row = next((r for r in rows if name in (r.get("id"), r.get("name"))), None)
+    if row is None:
+        raise api_error(404, ErrorCode.SERVICE_NOT_FOUND, service=name)
+    if row.get("locked") in (1, "1", True):
+        raise api_error(409, ErrorCode.SERVICE_LOCKED, service=name)
     await audit_service.persist(
         kind="host", action=action, status="requested",
         host_id=str(host.id), host_name=host.name,

@@ -176,7 +176,7 @@ async def delete_instance(instance_id: uuid.UUID, db: AsyncSession = Depends(get
     try:
         await undeploy_instance(db, instance)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
     await db.refresh(instance, attribute_names=["deployments"])
     openvpn_key_store.delete_secret(instance.id)
     await db.delete(instance)

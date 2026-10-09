@@ -309,7 +309,7 @@ export default function UpdatesPage() {
     setPageError(null);
     try {
       const progress = await api.hostUpdateProgress(host.id);
-      setLog({ host, text: progress.log || progress.status });
+      setLog({ host, text: progress.log || t("updates.logEmpty") });
     } catch (error) {
       setPageError(errorMessage(error, "updates.logFailed"));
     } finally {

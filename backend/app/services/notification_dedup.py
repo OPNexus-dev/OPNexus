@@ -13,6 +13,17 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class Problems(dict):
+    """The result of a check ({dedup_key: context}) plus the key prefixes the
+    check could NOT evaluate this round (e.g. a cluster member is offline, so
+    drift is not computable). Open problems under such a prefix are left alone
+    instead of being resolved and re-opened on the next round."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.preserve_prefixes: set[str] = set()
+
+
 async def diff_and_update(
     db: AsyncSession, problem_type: str, current: dict[str, dict]
 ) -> tuple[list[NotificationProblem], list[NotificationProblem]]:
@@ -74,8 +85,9 @@ async def diff_and_update(
             existing.last_seen_at = now
             existing.context = context
 
+    preserve = tuple(getattr(current, "preserve_prefixes", ()))
     for key, row in open_rows.items():
-        if key not in current:
+        if key not in current and not (preserve and key.startswith(preserve)):
             row.status = "resolved"
             row.resolved_at = now
             resolved.append(row)

@@ -254,6 +254,9 @@ async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseH
 
     try:
         await _write_config(host, payloads, deployment)
+        # Same trap as WireGuard: with the global IPsec switch off the config
+        # is stored but nothing runs, and reconfigure still answers ok.
+        await opnsense_client.ensure_ipsec_enabled(host)
     except OpnsenseAPIError as exc:
         deployment.status = "error"
         deployment.message = str(exc)
@@ -324,7 +327,7 @@ async def undeploy_tunnel(db: AsyncSession, tunnel: IpsecTunnel) -> None:
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = str(exc)
-            failures.append(host.name)
+            failures.append(f"{host.name} ({str(exc)[:200]})")
             continue
         await db.delete(deployment)
     await db.flush()

@@ -159,6 +159,14 @@ cmd_rollback() {
   . "./$STATE_FILE"
   [ -n "${prev_version:-}" ] || die "$STATE_FILE ist unvollständig."
 
+  # Rollback target = the exact image tag that was configured before the update.
+  # The version the backend REPORTS only matches the tag for final releases: an
+  # rc image reports its final version (rc1 images say 1.11.0), so rolling back
+  # to that would land on a different, newer image. Floating tags ("latest",
+  # "1.11") cannot be restored by name, so those fall back to the reported version.
+  if [[ "${prev_setting:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]; then
+    prev_version="$prev_setting"
+  fi
   say "Rolle zurück auf $prev_version …"
   c stop "${SERVICES[@]}"
 

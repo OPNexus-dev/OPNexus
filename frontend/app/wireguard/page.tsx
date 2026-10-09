@@ -160,7 +160,7 @@ function WireguardContent() {
             <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-medium text-slate-900">{tunnel.server_name} → {tunnel.peer_name}</h3>
+                  <h2 className="font-medium text-slate-900">{tunnel.server_name} → {tunnel.peer_name}</h2>
                   <WorkflowBadge state={tunnel.workflow_state} />
                   {!tunnel.server_private_key_set && (
                     <Badge tone="warning">

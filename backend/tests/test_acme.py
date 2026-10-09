@@ -75,7 +75,7 @@ async def test_push_acme_account_with_eab(client, respx_mock):
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]), )
     account_id = resp.json()["id"]
 
-    add_route = respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    add_route = respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     resp = await client.post(f"/api/acme/accounts/{account_id}/push")
@@ -97,7 +97,7 @@ async def test_register_account_regression_response_shape(client, respx_mock):
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
@@ -118,7 +118,7 @@ async def test_register_account_failed_precheck_shape(client, respx_mock):
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
@@ -175,7 +175,7 @@ async def test_push_certificate_request_injects_account_uuid(client, respx_mock)
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
@@ -183,7 +183,7 @@ async def test_push_certificate_request_injects_account_uuid(client, respx_mock)
     resp = await client.post("/api/acme/certificates", json=_cert_request_payload(host["id"], account_id))
     request_id = resp.json()["id"]
 
-    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/addAction$").mock(
+    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     resp = await client.post(f"/api/acme/certificates/{request_id}/push")
@@ -202,14 +202,14 @@ async def test_push_certificate_request_is_noop_when_unchanged(client, respx_moc
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
 
     resp = await client.post("/api/acme/certificates", json=_cert_request_payload(host["id"], account_id))
     request_id = resp.json()["id"]
-    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/addAction$").mock(
+    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     resp1 = await client.post(f"/api/acme/certificates/{request_id}/push")
@@ -230,7 +230,7 @@ async def test_push_certificate_request_repushes_after_account_switch(client, re
 
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"], name="Account A"))
     account_a = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         side_effect=[
             httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-a"}),
             httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-b"}),
@@ -243,7 +243,7 @@ async def test_push_certificate_request_repushes_after_account_switch(client, re
 
     resp = await client.post("/api/acme/certificates", json=_cert_request_payload(host["id"], account_a))
     request = resp.json()
-    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/addAction$").mock(
+    add_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     push_resp = await client.post(f"/api/acme/certificates/{request['id']}/push")
@@ -257,7 +257,7 @@ async def test_push_certificate_request_repushes_after_account_switch(client, re
     resp = await client.put(f"/api/acme/certificates/{request['id']}", json=edit_payload)
     assert resp.status_code == 200, resp.text
 
-    set_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/updateAction/.*").mock(
+    set_route = respx_mock.post(url__regex=r".*/acmeclient/certificates/update/.*").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     resp = await client.post(f"/api/acme/certificates/{request['id']}/push")
@@ -272,14 +272,14 @@ async def test_sign_is_async_trigger_not_a_success_claim(client, respx_mock):
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
 
     resp = await client.post("/api/acme/certificates", json=_cert_request_payload(host["id"], account_id))
     request_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/certificates/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     await client.post(f"/api/acme/certificates/{request_id}/push")
@@ -302,14 +302,14 @@ async def test_poll_certificate_status_updates_remote_fields(client, respx_mock)
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/accounts/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"})
     )
     await client.post(f"/api/acme/accounts/{account_id}/push")
 
     resp = await client.post("/api/acme/certificates", json=_cert_request_payload(host["id"], account_id))
     request_id = resp.json()["id"]
-    respx_mock.post(url__regex=r".*/acmeclient/certificates/addAction$").mock(
+    respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-req-uuid-1"})
     )
     await client.post(f"/api/acme/certificates/{request_id}/push")

@@ -15,7 +15,8 @@ citations):
   Instances.Instance: vpnid (VPNIdField, Required, MinimumValue 1, NO
   <Default> — never sent by this app; OPNsense's own UI never prompts for
   one either, so its field-type presumably auto-assigns one the same way
-  on addAction — NOT independently verified, flagged rather than guessed),
+  on addAction — VERIFIED LIVE 2026-10-09 on 26.7.5: it is NOT auto-assigned, add() fails
+  with "instance.vpnid: A value is required." — see _next_vpnid),
   enabled (BooleanField, Default 1), dev_type (OptionValues
   tun/tap/ovpn(DCO), Default "tun" — never sent, relies on the model
   default exactly like IPsec relies on Child.mode defaulting to "tunnel"),
@@ -27,7 +28,8 @@ citations):
   section below, this is the key finding that reshaped v1), server
   (NetworkField, NetMaskRequired Y — server-role tunnel network), cert /
   ca (CertificateField, i.e. ModelRelationField into OPNsense's own
-  Trust\\Cert store), tls_key (ModelRelationField -> this SAME model's
+  Trust\\Cert store; values are the Trust-Store REFIDs, not row UUIDs —
+  verified live 2026-10-09), tls_key (ModelRelationField -> this SAME model's
   StaticKeys.StaticKey, display "description,mode"), auth/data-ciphers
   (cipher suite OptionFields — v1 always omits these, relying on
   OPNsense's own defaults, exactly like IPsec's proposals default to
@@ -238,6 +240,18 @@ def build_payloads(instance: OpenVpnInstance, host_id: uuid.UUID) -> dict:
     }
 
 
+async def _next_vpnid(host: OpnsenseHost) -> str:
+    data = await opnsense_client.search_openvpn_instances(host)
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    used = []
+    for row in rows:
+        try:
+            used.append(int(row.get("vpnid")))
+        except (TypeError, ValueError):
+            continue
+    return str(max(used, default=0) + 1)
+
+
 async def _write_config(host: OpnsenseHost, payloads: dict, deployment: OpenVpnInstanceDeployment) -> None:
     """Writes the StaticKey (if enabled) then the Instance, in that
     dependency order, persisting each UUID onto `deployment` as soon as
@@ -270,6 +284,10 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: OpenVpnI
     if deployment.opnsense_instance_uuid:
         await opnsense_client.set_openvpn_instance(host, deployment.opnsense_instance_uuid, instance_wire)
     else:
+        # vpnid is Required and the firewall does NOT assign it (verified live
+        # on 26.7: "instance.vpnid: A value is required."), so pick the next
+        # free one. It stays untouched on later set() calls.
+        instance_wire["vpnid"] = await _next_vpnid(host)
         result = await opnsense_client.add_openvpn_instance(host, instance_wire)
         deployment.opnsense_instance_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_instance_uuid:
@@ -370,7 +388,7 @@ async def undeploy_instance(db: AsyncSession, instance: OpenVpnInstance) -> None
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = str(exc)
-            failures.append(host.name)
+            failures.append(f"{host.name} ({str(exc)[:200]})")
             continue
         await db.delete(deployment)
     await db.flush()

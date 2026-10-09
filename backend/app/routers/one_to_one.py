@@ -168,7 +168,7 @@ async def delete_one_to_one_rule(rule_id: uuid.UUID, db: AsyncSession = Depends(
     try:
         await undeploy_one_to_one(db, rule)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
     await db.refresh(rule, attribute_names=["deployments"])
     await db.delete(rule)
     await db.commit()
@@ -268,4 +268,4 @@ async def live_rules(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     try:
         return split_rows(await opnsense_client.search_one_to_one_rules(host))
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc

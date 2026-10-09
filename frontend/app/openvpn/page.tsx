@@ -197,7 +197,7 @@ function OpenVpnContent() {
             <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-medium text-slate-900">{instance.description}</h3>
+                  <h2 className="font-medium text-slate-900">{instance.description}</h2>
                   <WorkflowBadge state={instance.workflow_state} />
                   {instance.tls_key_enabled && !instance.tls_key_material_set && (
                     <Badge tone="warning">
@@ -367,7 +367,7 @@ function OpenVpnContent() {
                             ) : (
                               <Select required value={form.cert_refs[hostId] ?? ""} onChange={(e) => setCertRef(hostId, e.target.value)}>
                                 <option value="" disabled>{t("ovpn.pleaseChoose")}</option>
-                                {store.certs.map((c) => <option key={c.uuid} value={c.uuid}>{c.descr}{c.common_name ? ` (${c.common_name})` : ""}</option>)}
+                                {store.certs.map((c) => <option key={c.uuid} value={c.refid}>{c.descr}{c.common_name ? ` (${c.common_name})` : ""}</option>)}
                               </Select>
                             )}
                           </FieldGroup>
@@ -377,7 +377,7 @@ function OpenVpnContent() {
                             ) : (
                               <Select required value={form.ca_refs[hostId] ?? ""} onChange={(e) => setCaRef(hostId, e.target.value)}>
                                 <option value="" disabled>{t("ovpn.pleaseChoose")}</option>
-                                {store.cas.map((c) => <option key={c.uuid} value={c.uuid}>{c.descr}{c.common_name ? ` (${c.common_name})` : ""}</option>)}
+                                {store.cas.map((c) => <option key={c.uuid} value={c.refid}>{c.descr}{c.common_name ? ` (${c.common_name})` : ""}</option>)}
                               </Select>
                             )}
                           </FieldGroup>

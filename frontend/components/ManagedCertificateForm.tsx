@@ -3,9 +3,9 @@
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { api, CertAction, CertDigest, CertKeyType, Host, ManagedCertificate, ManagedCertificateCreate } from "@/lib/api";
+import { api, CertAction, CertDigest, CertKeyType, Host, HostCa, ManagedCertificate, ManagedCertificateCreate } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 const certActions: CertAction[] = ["import", "internal", "external", "sign_csr", "import_csr", "reissue", "manual"];
 
@@ -47,6 +47,17 @@ export function ManagedCertificateForm({ hosts, editing, onClose, onSaved }: {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The firewall expects the CA's refid in caref (not its row UUID), so the
+  // CAs of the selected host are offered as a list; if that lookup fails the
+  // field stays a free text input.
+  const [cas, setCas] = useState<HostCa[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setCas(null);
+    if (!form.host_id) return;
+    api.getHostCas(form.host_id).then((list) => { if (!cancelled) setCas(list); }).catch(() => { if (!cancelled) setCas(null); });
+    return () => { cancelled = true; };
+  }, [form.host_id]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -135,12 +146,23 @@ export function ManagedCertificateForm({ hosts, editing, onClose, onSaved }: {
 
         {(form.action === "internal" || form.action === "sign_csr") && (
           <FieldGroup label={form.action === "sign_csr" ? t("certForm.carefRequired") : t("certForm.carefOptional")}>
-            <Input
-              value={form.caref ?? ""}
-              onChange={(e) => setForm({ ...form, caref: e.target.value || null })}
-              required={form.action === "sign_csr"}
-              placeholder={t("certForm.carefPlaceholder")}
-            />
+            {cas && cas.length > 0 ? (
+              <Select
+                value={form.caref ?? ""}
+                onChange={(e) => setForm({ ...form, caref: e.target.value || null })}
+                required={form.action === "sign_csr"}
+              >
+                <option value="">{form.action === "sign_csr" ? t("certForm.carefChoose") : t("certForm.carefSelfSigned")}</option>
+                {cas.map((c) => <option key={c.uuid} value={c.refid}>{c.descr}{c.common_name ? ` (${c.common_name})` : ""}</option>)}
+              </Select>
+            ) : (
+              <Input
+                value={form.caref ?? ""}
+                onChange={(e) => setForm({ ...form, caref: e.target.value || null })}
+                required={form.action === "sign_csr"}
+                placeholder={t("certForm.carefPlaceholder")}
+              />
+            )}
           </FieldGroup>
         )}
 

@@ -15,6 +15,7 @@ from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.rule_deployment import RuleDeployment
 from app.services import nat_drift_service, rule_drift_service
+from app.services.notification_dedup import Problems
 from app.services.host_status_service import get_statuses
 from app.services.live_certificates_service import get_live_certificates
 from app.services.opnsense_client import OpnsenseAPIError
@@ -53,13 +54,15 @@ async def check_host_offline(db: AsyncSession) -> dict[str, dict]:
 
 async def check_certificates(db: AsyncSession) -> dict[str, dict]:
     hosts = await _enabled_hosts(db)
-    problems: dict[str, dict] = {}
+    problems = Problems()
     for host in hosts:
         try:
             certs = await get_live_certificates(host)
         except OpnsenseAPIError:
             # Unreachable — already reported by check_host_offline, no need
-            # to double-report it here as a certificate problem.
+            # to double-report it here as a certificate problem. Its open
+            # certificate problems stay as they are (not evaluable now).
+            problems.preserve_prefixes.add(f"{host.id}:")
             continue
         for cert in certs:
             if cert.status not in ("expiring_soon", "expired"):
@@ -83,12 +86,18 @@ async def check_rule_drift(db: AsyncSession) -> dict[str, dict]:
         if host.cluster_name:
             by_cluster[host.cluster_name].append(host)
 
-    problems: dict[str, dict] = {}
+    problems = Problems()
     for cluster_name, cluster_hosts in by_cluster.items():
         if len(cluster_hosts) < 2:
             continue
         names_by_id = {h.id: h.name for h in cluster_hosts}
-        for row in await rule_drift_service.compute_cluster_drift(cluster_hosts):
+        rows, reachable = await rule_drift_service.compute_cluster_drift_with_reachable(cluster_hosts)
+        if len(reachable) < 2:
+            # A member is down (reboot/update): drift cannot be judged, so keep
+            # what is open instead of resolving it and re-opening it later.
+            problems.preserve_prefixes.add(f"{cluster_name}:")
+            continue
+        for row in rows:
             key = f"{cluster_name}:{row['fingerprint']}"
             present_names = sorted(names_by_id[hid] for hid in row["present_on"])
             missing_names = sorted(
@@ -113,13 +122,17 @@ async def check_nat_drift(db: AsyncSession) -> dict[str, dict]:
         if host.cluster_name:
             by_cluster[host.cluster_name].append(host)
 
-    problems: dict[str, dict] = {}
+    problems = Problems()
     for cluster_name, cluster_hosts in by_cluster.items():
         if len(cluster_hosts) < 2:
             continue
         names_by_id = {h.id: h.name for h in cluster_hosts}
         for nat_type in _NAT_TYPE_LABELS:
-            for row in await nat_drift_service.compute_cluster_drift(cluster_hosts, nat_type):
+            rows, reachable = await nat_drift_service.compute_cluster_drift_with_reachable(cluster_hosts, nat_type)
+            if len(reachable) < 2:
+                problems.preserve_prefixes.add(f"{cluster_name}:{nat_type}:")
+                continue
+            for row in rows:
                 key = f"{cluster_name}:{nat_type}:{row['fingerprint']}"
                 present_names = sorted(names_by_id[hid] for hid in row["present_on"])
                 missing_names = sorted(

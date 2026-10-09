@@ -5,6 +5,12 @@
 /* Visible keyboard focus everywhere. Mouse clicks do not trigger :focus-visible, so this
    only shows for keyboard users. Inputs keep their own ring via the focus: utilities. */
 @layer base {
+  /* A scroll container must also be the containing block of absolutely
+     positioned content inside it. Otherwise the table header's `sr-only` span
+     (position:absolute, static position in the right-most column) escapes the
+     clip, widens the whole document and makes phones zoom the page out
+     (found live on /hosts and /users at 375px). */
+  .overflow-x-auto { position: relative; }
   :focus-visible {
     outline: 2px solid rgb(var(--focus-ring));
     outline-offset: 2px;

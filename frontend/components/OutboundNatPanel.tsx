@@ -450,7 +450,7 @@ function OutboundNatContent() {
               <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="font-medium text-slate-900">{rule.description}</h3>
+                    <h2 className="font-medium text-slate-900">{rule.description}</h2>
                     <WorkflowBadge state={rule.workflow_state} />
                   </div>
                   <p className="mt-1 text-sm text-slate-500">

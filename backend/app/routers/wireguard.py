@@ -187,7 +187,7 @@ async def delete_tunnel(tunnel_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     try:
         await undeploy_tunnel(db, tunnel)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
     await db.refresh(tunnel, attribute_names=["deployments"])
     wireguard_key_store.delete_private_key(tunnel.id)
     wireguard_key_store.delete_psk(tunnel.id)

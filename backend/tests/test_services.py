@@ -8,6 +8,17 @@ def _mock_vip(respx_mock):
     respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
+def _mock_service_list(respx_mock):
+    respx_mock.get("https://fw1.test/api/core/service/search").respond(
+        200,
+        json={"rows": [
+            {"id": "unbound", "name": "unbound", "locked": 0, "running": 1},
+            {"id": "ntpd", "name": "ntpd", "locked": 0, "running": 1},
+            {"id": "pf", "name": "pf", "locked": 1, "running": 1},
+        ]},
+    )
+
+
 @pytest.mark.asyncio
 async def test_list_services(client, respx_mock):
     _mock_vip(respx_mock)
@@ -24,6 +35,7 @@ async def test_list_services(client, respx_mock):
 async def test_restart_service_success(client, respx_mock):
     _mock_vip(respx_mock)
     h = await _create_host(client, "fw1", "https://fw1.test")
+    _mock_service_list(respx_mock)
     restart = respx_mock.post("https://fw1.test/api/core/service/restart/unbound").respond(200, json={"result": "ok"})
     r = await client.post(f"/api/hosts/{h['id']}/services/unbound/restart")
     assert r.status_code == 200, r.text
@@ -35,6 +47,7 @@ async def test_restart_service_success(client, respx_mock):
 async def test_start_and_stop_service(client, respx_mock):
     _mock_vip(respx_mock)
     h = await _create_host(client, "fw1", "https://fw1.test")
+    _mock_service_list(respx_mock)
     start = respx_mock.post("https://fw1.test/api/core/service/start/ntpd").respond(200, json={"result": "ok"})
     stop = respx_mock.post("https://fw1.test/api/core/service/stop/ntpd").respond(200, json={"result": "ok"})
     r1 = await client.post(f"/api/hosts/{h['id']}/services/ntpd/start")
@@ -47,6 +60,7 @@ async def test_start_and_stop_service(client, respx_mock):
 async def test_restart_service_failure_result_is_rejected(client, respx_mock):
     _mock_vip(respx_mock)
     h = await _create_host(client, "fw1", "https://fw1.test")
+    _mock_service_list(respx_mock)
     respx_mock.post("https://fw1.test/api/core/service/restart/unbound").respond(200, json={"result": "failed"})
     r = await client.post(f"/api/hosts/{h['id']}/services/unbound/restart")
     assert r.status_code == 502, r.text
@@ -66,3 +80,27 @@ async def test_read_only_user_can_list_but_not_restart(client, respx_mock):
         assert blocked.status_code == 403
     finally:
         await viewer.aclose()
+
+
+@pytest.mark.asyncio
+async def test_unknown_service_is_rejected_without_calling_the_firewall(client, respx_mock):
+    _mock_vip(respx_mock)
+    h = await _create_host(client, "fw1", "https://fw1.test")
+    _mock_service_list(respx_mock)
+    start = respx_mock.post(url__regex=r".*/api/core/service/start/.*").respond(200, json={"result": "ok"})
+    r = await client.post(f"/api/hosts/{h['id']}/services/doesnotexist/start")
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"]["code"] == "SERVICE_NOT_FOUND"
+    assert start.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_locked_service_cannot_be_controlled_via_api(client, respx_mock):
+    _mock_vip(respx_mock)
+    h = await _create_host(client, "fw1", "https://fw1.test")
+    _mock_service_list(respx_mock)
+    stop = respx_mock.post(url__regex=r".*/api/core/service/stop/.*").respond(200, json={"result": "ok"})
+    r = await client.post(f"/api/hosts/{h['id']}/services/pf/stop")
+    assert r.status_code == 409, r.text
+    assert r.json()["detail"]["code"] == "SERVICE_LOCKED"
+    assert stop.call_count == 0

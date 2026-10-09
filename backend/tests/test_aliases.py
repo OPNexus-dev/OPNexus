@@ -129,6 +129,27 @@ async def test_delete_alias(client: AsyncClient, respx_mock):
 
 
 @pytest.mark.asyncio
+async def test_delete_alias_refused_by_firewall_names_the_reason(client: AsyncClient, respx_mock):
+    """Live 26.7: an alias still used by a rule cannot be removed; the user must
+    see why (it used to be a bare "request failed")."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    r = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
+    _mock_alias_push(respx_mock, "https://fw1.test")
+    assert (await client.post(f"/api/aliases/{r['id']}/deploy")).status_code == 200
+    assert (await client.post(f"/api/aliases/{r['id']}/confirm")).status_code == 200
+
+    respx_mock.post(url__regex=r".*/firewall/alias/delItem/.*").mock(
+        return_value=httpx.Response(200, json={"status": "failed", "message": "Alias is used by rule FW3 test block"})
+    )
+    resp = await client.delete(f"/api/aliases/{r['id']}")
+    assert resp.status_code == 502, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "UPSTREAM_REJECTED"
+    assert "used by rule" in detail["params"]["reason"]
+
+
+@pytest.mark.asyncio
 async def test_deploy_alias_without_targets_rejected(client: AsyncClient):
     r = (await client.post("/api/aliases", json=_alias_payload([]))).json()
     resp = await client.post(f"/api/aliases/{r['id']}/deploy")

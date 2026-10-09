@@ -146,7 +146,7 @@ async def delete_alias(alias_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     try:
         await undeploy_alias(db, alias)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
     await db.refresh(alias, attribute_names=["deployments"])
     await db.delete(alias)
     await db.commit()

@@ -25,12 +25,27 @@ _PEM = re.compile(r"-----BEGIN [A-Z0-9 ]+-----.*?(?:-----END [A-Z0-9 ]+-----|$)"
 _PAIR = re.compile(r"(?i)\b([\w.\-]*(?:pass|secret|psk|token|private|api_?key|key)[\w.\-]*)\b([\"']?\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s,;&]+)")
 
 
-def _scrub_json(value: Any, key: str = "") -> Any:
+# Keys under which OPNsense lists per-field validation errors
+# ({"validations": {"instance.cert": "Please select a valid certificate"}}).
+# There the field name says WHICH field failed. "cert", "crt" and "auth" in it
+# do not make the message secret, so those three alone stop triggering the
+# redaction (otherwise every certificate/auth error from the firewall reads
+# "[redacted]"). Real secret names (psk, key, password, ...) still do.
+_VALIDATION_KEYS = {"validations", "validation"}
+_SECRET_KEY_IN_VALIDATIONS = re.compile(
+    r"pass|secret|psk|pre_?shared|private|prv|token|api_?key|apikey|credential|\bkey\b|_key|key_|tls_?key",
+    re.IGNORECASE,
+)
+
+
+def _scrub_json(value: Any, key: str = "", in_validations: bool = False) -> Any:
     if isinstance(value, dict):
-        return {k: _scrub_json(v, str(k)) for k, v in value.items()}
+        nested = in_validations or key in _VALIDATION_KEYS
+        return {k: _scrub_json(v, str(k), nested) for k, v in value.items()}
     if isinstance(value, list):
-        return [_scrub_json(v, key) for v in value]
-    if isinstance(value, str) and key and _SECRET_KEY.search(key):
+        return [_scrub_json(v, key, in_validations) for v in value]
+    pattern = _SECRET_KEY_IN_VALIDATIONS if in_validations else _SECRET_KEY
+    if isinstance(value, str) and key and pattern.search(key):
         return _REDACTED
     if isinstance(value, str):
         return _scrub_text(value)

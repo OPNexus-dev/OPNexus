@@ -557,6 +557,19 @@ async def del_ipsec_psk(host: OpnsenseHost, uuid_: str) -> dict:
     return _mutation_result(await _request(host, "POST", f"/ipsec/preSharedKeys/delItem/{uuid_}"), "IPsec Pre-Shared-Key entfernen", {"deleted", "not found"})
 
 
+async def ensure_ipsec_enabled(host: OpnsenseHost) -> bool:
+    """Switch the service-wide IPsec flag on (`ipsec/connections/isEnabled` /
+    `toggle/1`, ConnectionsController — it is NOT part of the service
+    controller). Without it the connections are stored but no daemon runs
+    (live 26.7.6: is_enabled=false, service status "disabled", yet
+    reconfigure answered ok). Returns True when it had to be switched on."""
+    data = await _request(host, "GET", "/ipsec/connections/is_enabled")
+    if isinstance(data, dict) and data.get("enabled") is True:
+        return False
+    _mutation_result(await _request(host, "POST", "/ipsec/connections/toggle/1"), "IPsec aktivieren", {"ok"})
+    return True
+
+
 async def reconfigure_ipsec(host: OpnsenseHost) -> dict:
     """`ipsec/service/reconfigure` (ServiceController::reconfigureAction,
     inherited from ApiMutableServiceControllerBase) — soft-reloads a
@@ -756,19 +769,12 @@ async def reconfigure_openvpn(host: OpnsenseHost) -> dict:
 #     ServiceController's own `$internalServiceEnabled = 'enabled'` /
 #     `$internalServiceClass = General::class` tie together for the
 #     framework's generic service-status plumbing. NOT INDEPENDENTLY
-#     VERIFIED: whether `wireguard configure` (the configd action
-#     reconfigureAction shells out to) actually brings up any wg-quick
-#     interface end-to-end while General.enabled=0 — reconfigureAction's
-#     OWN PHP body never reads $internalServiceEnabled at all (it always
-#     runs unconditionally), so this depends on configd's own action
-#     script content, which is out of the controller/model source layer
-#     this app's verification standard covers (same boundary IPsec/
-#     OpenVPN draw). Flagged as a real, source-confirmed structural
-#     difference from IPsec/OpenVPN (neither of which have an equivalent
-#     separate master switch) rather than silently ignored — see README:
-#     operators should confirm "VPN > WireGuard > General" is enabled at
-#     least once via the OPNsense UI before relying on OPNexus-pushed
-#     tunnels.
+#     VERIFIED LIVE (26.7.5, 2026-10-09): with General.enabled=0 a deploy
+#     writes Server+Peer correctly but NO wg interface comes up and
+#     `wireguard/service/show` stays empty, while OPNexus used to report
+#     "success". Enabling it (wireguard/general/set + reconfigure) brings
+#     wg0 up. wireguard_deploy_service therefore switches it on before the
+#     reconfigure (ensure_wireguard_enabled below); undeploy never touches it.
 #
 # Field names verified against Server.xml/Client.xml (fetched directly,
 # not summarized) — see wireguard_deploy_service.py for the exact
@@ -821,6 +827,21 @@ async def del_wireguard_peer(host: OpnsenseHost, uuid_: str) -> dict:
     return _mutation_result(await _request(host, "POST", f"/wireguard/client/delClient/{uuid_}"), "WireGuard-Peer entfernen", {"deleted", "not found"})
 
 
+async def ensure_wireguard_enabled(host: OpnsenseHost) -> bool:
+    """Turn the service-wide WireGuard switch (General.enabled, default 0) on
+    if it is off. Returns True when it had to be switched on."""
+    data = await _request(host, "GET", "/wireguard/general/get")
+    general = data.get("general", {}) if isinstance(data, dict) else {}
+    if str(general.get("enabled", "0")) == "1":
+        return False
+    _mutation_result(
+        await _request(host, "POST", "/wireguard/general/set", json={"general": {"enabled": "1"}}),
+        "WireGuard-Dienst aktivieren",
+        {"saved"},
+    )
+    return True
+
+
 async def reconfigure_wireguard(host: OpnsenseHost) -> dict:
     """`wireguard/service/reconfigure` (ServiceController::reconfigureAction)
     — runs interface registration + template reload + `wireguard configure`.
@@ -837,6 +858,10 @@ async def reconfigure_wireguard(host: OpnsenseHost) -> dict:
 # opnsense/core/master/..., fetched 2026-09-09 by downloading Cert.xml and
 # CertController.php directly) — see managed_certificate_service.py's
 # module docstring for the full field-mapping writeup.
+#
+# URL SEGMENTS ARE NOT PHP METHOD NAMES: the router strips the `Action`
+# suffix, so addAction() is POST /trust/cert/add (the `...Action` URL is a
+# 404 — found live 2026-10-09 on 26.7.5, the respx mocks had hidden it).
 #
 # CertController extends ApiMutableModelControllerBase exactly like
 # FilterController/ConnectionsController/etc: searchAction (already used
@@ -866,11 +891,11 @@ def _trust_cert_result(data: Any, operation: str) -> dict:
 
 
 async def add_trust_cert(host: OpnsenseHost, payload: dict) -> dict:
-    return _trust_cert_result(await _request(host, "POST", "/trust/cert/addAction", json={"cert": payload}), "Zertifikat anlegen")
+    return _trust_cert_result(await _request(host, "POST", "/trust/cert/add", json={"cert": payload}), "Zertifikat anlegen")
 
 
 async def set_trust_cert(host: OpnsenseHost, uuid_: str, payload: dict) -> dict:
-    return _trust_cert_result(await _request(host, "POST", f"/trust/cert/setAction/{uuid_}", json={"cert": payload}), "Zertifikat ändern")
+    return _trust_cert_result(await _request(host, "POST", f"/trust/cert/set/{uuid_}", json={"cert": payload}), "Zertifikat ändern")
 
 
 async def del_trust_cert(host: OpnsenseHost, uuid_: str) -> dict:
@@ -879,7 +904,7 @@ async def del_trust_cert(host: OpnsenseHost, uuid_: str) -> dict:
     # matching every other del* call in this module (add_alias_item's
     # del_alias_item sibling etc.), so this reuses the same
     # {"deleted", "not found"} results set they all share.
-    return _mutation_result(await _request(host, "POST", f"/trust/cert/delAction/{uuid_}"), "Zertifikat entfernen", {"deleted", "not found"})
+    return _mutation_result(await _request(host, "POST", f"/trust/cert/del/{uuid_}"), "Zertifikat entfernen", {"deleted", "not found"})
 
 
 async def get_trust_cert(host: OpnsenseHost, uuid_: str) -> dict:
@@ -940,15 +965,15 @@ def _acme_result(data: Any, operation: str) -> dict:
 
 
 async def add_acme_account(host: OpnsenseHost, payload: dict) -> dict:
-    return _acme_result(await _request(host, "POST", "/acmeclient/accounts/addAction", json={"account": payload}), "ACME-Account anlegen")
+    return _acme_result(await _request(host, "POST", "/acmeclient/accounts/add", json={"account": payload}), "ACME-Account anlegen")
 
 
 async def update_acme_account(host: OpnsenseHost, uuid_: str, payload: dict) -> dict:
-    return _acme_result(await _request(host, "POST", f"/acmeclient/accounts/updateAction/{uuid_}", json={"account": payload}), "ACME-Account ändern")
+    return _acme_result(await _request(host, "POST", f"/acmeclient/accounts/update/{uuid_}", json={"account": payload}), "ACME-Account ändern")
 
 
 async def del_acme_account(host: OpnsenseHost, uuid_: str) -> dict:
-    return _mutation_result(await _request(host, "POST", f"/acmeclient/accounts/delAction/{uuid_}"), "ACME-Account entfernen", {"deleted", "not found"})
+    return _mutation_result(await _request(host, "POST", f"/acmeclient/accounts/del/{uuid_}"), "ACME-Account entfernen", {"deleted", "not found"})
 
 
 async def get_acme_account(host: OpnsenseHost, uuid_: str) -> dict:
@@ -956,15 +981,15 @@ async def get_acme_account(host: OpnsenseHost, uuid_: str) -> dict:
 
 
 async def add_acme_certificate(host: OpnsenseHost, payload: dict) -> dict:
-    return _acme_result(await _request(host, "POST", "/acmeclient/certificates/addAction", json={"certificate": payload}), "ACME-Zertifikatsanfrage anlegen")
+    return _acme_result(await _request(host, "POST", "/acmeclient/certificates/add", json={"certificate": payload}), "ACME-Zertifikatsanfrage anlegen")
 
 
 async def update_acme_certificate(host: OpnsenseHost, uuid_: str, payload: dict) -> dict:
-    return _acme_result(await _request(host, "POST", f"/acmeclient/certificates/updateAction/{uuid_}", json={"certificate": payload}), "ACME-Zertifikatsanfrage ändern")
+    return _acme_result(await _request(host, "POST", f"/acmeclient/certificates/update/{uuid_}", json={"certificate": payload}), "ACME-Zertifikatsanfrage ändern")
 
 
 async def del_acme_certificate(host: OpnsenseHost, uuid_: str) -> dict:
-    return _mutation_result(await _request(host, "POST", f"/acmeclient/certificates/delAction/{uuid_}"), "ACME-Zertifikatsanfrage entfernen", {"deleted", "not found"})
+    return _mutation_result(await _request(host, "POST", f"/acmeclient/certificates/del/{uuid_}"), "ACME-Zertifikatsanfrage entfernen", {"deleted", "not found"})
 
 
 async def get_acme_certificate(host: OpnsenseHost, uuid_: str) -> dict:

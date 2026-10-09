@@ -95,7 +95,7 @@ async def test_push_managed_certificate(client, respx_mock):
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
 
-    respx_mock.post(url__regex=r".*/trust/cert/addAction$").mock(
+    respx_mock.post(url__regex=r".*/trust/cert/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-uuid-1"})
     )
     resp = await client.post(f"/api/certificates/managed/{cert_id}/push")
@@ -112,7 +112,7 @@ async def test_push_is_noop_when_nothing_changed(client, respx_mock):
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
 
-    add_route = respx_mock.post(url__regex=r".*/trust/cert/addAction$").mock(
+    add_route = respx_mock.post(url__regex=r".*/trust/cert/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-uuid-1"})
     )
     resp1 = await client.post(f"/api/certificates/managed/{cert_id}/push")
@@ -148,14 +148,21 @@ async def test_delete_in_use_certificate_returns_stable_error_code(client, respx
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
 
-    respx_mock.post(url__regex=r".*/trust/cert/addAction$").mock(
+    respx_mock.post(url__regex=r".*/trust/cert/add$").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "cert-uuid-1"})
     )
     await client.post(f"/api/certificates/managed/{cert_id}/push")
 
-    respx_mock.post(url__regex=r".*/trust/cert/delAction/.*").mock(
-        return_value=httpx.Response(500, json={"message": "OpenVPN - roadwarrior {openvpn.instance.abc}"})
+    respx_mock.post(url__regex=r".*/trust/cert/del/.*").mock(
+        # shape captured from a real OPNsense 26.7.5 (cert used by an OpenVPN instance)
+        return_value=httpx.Response(
+            500,
+            json={"errorMessage": "OpenVPN - roadwarrior {OpenVPN.Instances.Instance.abc}\n", "errorTitle": "Item in use by", "errorLevel": "error"},
+        )
     )
     resp = await client.delete(f"/api/certificates/managed/{cert_id}")
     assert resp.status_code == 502
-    assert resp.json()["detail"] == {"code": "UPSTREAM_REQUEST_FAILED", "params": {}}
+    detail = resp.json()["detail"]
+    assert detail["code"] == "UPSTREAM_REJECTED"
+    assert "Item in use by" in detail["params"]["reason"]
+    assert "roadwarrior" in detail["params"]["reason"]

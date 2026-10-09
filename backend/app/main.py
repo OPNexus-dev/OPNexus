@@ -7,6 +7,9 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import DBAPIError
+
+from app.errors import ErrorCode
 
 from app import models  # noqa: F401 - registers models with Base.metadata
 from app.auth_middleware import AuthMiddleware
@@ -287,6 +290,19 @@ async def _safe_validation_error(request: Request, exc: RequestValidationError):
         status_code=422,
         content={"detail": [{"loc": list(err.get("loc", ())), "msg": err.get("msg", ""), "type": err.get("type", "")} for err in exc.errors()]},
     )
+
+
+@app.exception_handler(DBAPIError)
+async def _database_text_errors(request: Request, exc: DBAPIError):
+    """A NUL byte in any text field cannot be stored by Postgres and used to
+    surface as a 500 plus a dropped connection (found by fuzzing). That is bad
+    input, not a server fault. Anything else stays a normal 500."""
+    if type(exc.orig).__name__.endswith("CharacterNotInRepertoireError") or "0x00" in str(exc.orig):
+        return JSONResponse(
+            status_code=422,
+            content={"detail": {"code": ErrorCode.INVALID_CHARACTERS.value, "params": {}}},
+        )
+    raise exc
 
 
 app.add_middleware(AuthMiddleware)

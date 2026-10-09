@@ -15,10 +15,27 @@ from app.models.audit import AuditEvent
 context = ContextVar("audit_context", default=None)
 
 
+# Column widths of audit_events. entity_id/host_id/action are taken from the
+# request path BEFORE the router validated it, so a junk segment (300 chars,
+# or a NUL byte which Postgres text cannot store) used to turn into a 500 or a
+# dropped connection instead of a plain 404/422 (found by fuzzing, 2026-10-09).
+_LIMITS = {"correlation_id": 36, "actor": 150, "kind": 32, "action": 40, "status": 32,
+           "entity_id": 36, "entity_name": 255, "host_id": 36, "host_name": 255}
+
+
+def _clean(key, value):
+    if not isinstance(value, str):
+        return value
+    value = value.replace("\x00", "")
+    limit = _LIMITS.get(key)
+    return value[:limit] if limit else value
+
+
 def make_event(**values):
     ctx = context.get() or {}
-    return AuditEvent(actor=ctx.get("actor", "system:rollback"),
-                      correlation_id=ctx.get("id", str(uuid.uuid4())), **values)
+    values = {k: _clean(k, v) for k, v in values.items()}
+    return AuditEvent(actor=_clean("actor", ctx.get("actor", "system:rollback")),
+                      correlation_id=_clean("correlation_id", ctx.get("id", str(uuid.uuid4()))), **values)
 
 
 async def persist(**values):

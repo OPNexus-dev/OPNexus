@@ -172,7 +172,7 @@ async def delete_rule(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     try:
         await undeploy_rule(db, rule)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
     await db.refresh(rule, attribute_names=["deployments"])
     await db.delete(rule)
     await db.commit()

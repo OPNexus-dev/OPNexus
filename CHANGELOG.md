@@ -31,6 +31,78 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.11.1] "Merlin" — 2026-10-09
+
+Fehler aus dem ersten Live-Test der bisher nur gemockten Funktionen auf drei
+echten OPNsense-Firewalls (alle in den Tests mit Mocks unsichtbar geblieben).
+Live bestätigt sind jetzt auch das Major-Upgrade über den Update Center
+(25.7 → 26.1 → 26.7, je mit Backup und Abschluss-Bestätigung), WireGuard,
+OpenVPN, IPsec, Zertifikate, ACME (Staging), hierarchische Policies,
+Benachrichtigungen und der HA-Config-Sync:
+
+- **Zertifikate (Trust-Store) und ACME ließen sich nicht pushen:** Die URLs
+  endeten auf `…Action` (`/trust/cert/addAction`), OPNsense kennt aber nur
+  `/trust/cert/add`, `set`, `del` bzw. `/acmeclient/…/add`, `update`, `del` (404).
+  Die Mocks hatten denselben Tippfehler. Ein neuer Test prüft den Client-Quelltext
+  gegen dieses Muster.
+- **OpenVPN-Deploy scheiterte immer:** Die Firewall verlangt `vpnid` und vergibt
+  es nicht selbst. OPNexus wählt jetzt die nächste freie. Außerdem erwarten
+  `cert`/`ca` (OpenVPN) und `caref` (Zertifikat signieren) die **refid** der
+  Trust-Store-Einträge, der Picker lieferte die Zeilen-UUID. Die Listen
+  `/hosts/{id}/certificates` und `/cas` liefern jetzt `refid`; im
+  Zertifikatsformular gibt es ein CA-Dropdown statt eines Freitextfelds.
+- **WireGuard meldete „Erfolg“ ohne laufenden Tunnel:** Ist der globale Dienst
+  (VPN › WireGuard › Allgemein) aus, entsteht trotz geschriebener Konfiguration
+  kein Interface. Der Deploy schaltet den Dienst jetzt ein.
+- **Dienststeuerung:** Das Backend prüfte weder, ob der Dienst existiert, noch ob
+  er gesperrt ist (pf, webgui, routing …). Beides war nur in der UI gesperrt;
+  unbekannte Namen meldete die Firewall trotzdem als „ok“. Jetzt 404
+  `SERVICE_NOT_FOUND` bzw. 409 `SERVICE_LOCKED`.
+- **Fehlertexte der Firewall unleserlich:** Die Redaktion maskierte jede
+  Validierungsmeldung, deren Feldname `cert`, `crt` oder `auth` enthält
+  („instance.cert: [redacted]“). In `validations` lösen diese drei Namen die
+  Maskierung nicht mehr aus; echte Geheimnisfelder bleiben maskiert. Das
+  Löschen eines benutzten Zertifikats nennt jetzt den Grund der Firewall
+  („Item in use by OpenVPN …“) statt eines allgemeinen Fehlers.
+- **Drift-Alarme flackerten beim Neustart eines Cluster-Mitglieds:** Mit nur
+  einem erreichbaren Host gab es nichts zu vergleichen, offene Regel-/NAT-Drift-
+  und Zertifikatsprobleme wurden „gelöst“ und danach neu geöffnet (je ein
+  Meldungspaar pro Problem). Offene Probleme bleiben jetzt unverändert, solange
+  sie nicht beurteilbar sind.
+- **IPsec lief nach dem Deploy nicht:** Der globale IPsec-Schalter war aus, die
+  Verbindungen wurden gespeichert, `reconfigure` antwortete „ok“, OPNexus meldete
+  „Erfolg“ (gleiche Klasse wie bei WireGuard). Der Deploy schaltet ihn jetzt ein;
+  zwischen zwei Test-FWs steht der Tunnel (Phase 1 verbunden).
+- **Löschen scheiterte ohne Grund:** Wenn die Firewall ein Löschen ablehnt (Alias
+  noch in einer Regel, Zertifikat in Benutzung), nennt die Meldung jetzt den Grund
+  der Firewall (`UPSTREAM_REJECTED`) statt „Anfrage fehlgeschlagen“.
+- **Kaputte Eingaben:** Ein NUL-Zeichen in einem Textfeld ergab einen 500er samt
+  abgebrochener Verbindung, ebenso ein langes oder NUL-haltiges Pfadsegment (der
+  Audit-Eintrag übernahm es ungeprüft in `VARCHAR(36)`). Jetzt 422 bzw. 404/422;
+  ein Fuzz-Lauf über alle 188 Routen findet keine 5xx mehr.
+- **`opnexus rollback` landete auf der falschen Version:** Zurückgesetzt wurde auf
+  die vom Backend gemeldete Programmversion statt auf den vorher eingestellten
+  Image-Tag. Bei Release-Candidates (rc1-Images melden schon `1.11.0`) führte das
+  auf das neuere Release. Jetzt wird der vorherige exakte Tag wiederhergestellt.
+- **Handy-Ansicht (375px) zoomte aus:** Die ausgeblendete Überschrift der
+  Aktionsspalte (`sr-only`, absolut positioniert) lag außerhalb der scrollbaren
+  Tabellenkarte und machte die Seite bis zu doppelt so breit (Hosts, Benutzer,
+  Host-Details). Scroll-Container sind jetzt der Bezugsrahmen.
+- **Überschriften-Reihenfolge:** Kartentitel in den Listen (OpenVPN, IPsec,
+  WireGuard, NAT) sind `h2` statt `h3`, sichtbar erst mit Daten; axe meldet auf
+  allen Seiten, hell und dunkel, nichts mehr.
+
+- **CARP-Wartungsfenster mit Auto-Revert:** Nach dem automatischen Zurückschalten
+  blieb die Aktion „CARP-Übergabe“ (`carp_enter`) offen. Sie ließ sich nicht mehr
+  bestätigen (der Host ist ja nicht mehr im Wartungsmodus) und blockierte alle
+  Deploys und Updates im Cluster (`OPEN_HOST_MAINTENANCE_BLOCKS_DEPLOY`), bis
+  jemand sie von Hand abbrach. Der Auto-Revert schließt die Aktion jetzt selbst
+  (Status „abgebrochen“, Audit-Eintrag). Schlägt das Zurückschalten fehl, bleibt
+  sie bewusst offen. Gefunden beim Live-Test gegen zwei OPNsense-26.7-Firewalls.
+- **Update Center, Protokoll-Fenster:** Nach einem Update mit Neustart ist das
+  Protokoll der Firewall leer; angezeigt wurde dann nur das Wort „error“, obwohl
+  das Update erfolgreich war. Jetzt steht dort ein erklärender Hinweis.
+
 ## [1.11.0] "Merlin" — 2026-10-07
 
 Sicherheitsüberprüfung vom 2026-10-07, umgesetzte Korrekturen.

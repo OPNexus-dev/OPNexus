@@ -123,6 +123,9 @@ CertStatus = Literal["valid", "expiring_soon", "expired", "unknown"]
 
 class HostCertificate(BaseModel):
     uuid: str
+    # OPNsense's own cross-references (OpenVPN cert/ca, Trust-Store caref) use
+    # this id, not the row UUID.
+    refid: str = ""
     descr: str
     common_name: str | None
     issuer: str
@@ -135,6 +138,7 @@ class HostCertificate(BaseModel):
 
 class HostCa(BaseModel):
     uuid: str
+    refid: str = ""
     descr: str
     common_name: str | None
     valid_from: datetime | None

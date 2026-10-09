@@ -62,6 +62,10 @@ async def _live_rows_or_none(host: OpnsenseHost, nat_type: str) -> list[dict] | 
 
 
 async def compute_cluster_drift(hosts: list[OpnsenseHost], nat_type: str) -> list[dict]:
+    return (await compute_cluster_drift_with_reachable(hosts, nat_type))[0]
+
+
+async def compute_cluster_drift_with_reachable(hosts: list[OpnsenseHost], nat_type: str) -> tuple[list[dict], set]:
     """Same shape/contract as rule_drift_service.compute_cluster_drift:
     one row per fingerprint missing from at least one reachable host."""
     _, fingerprint_fn = _SPECS[nat_type]
@@ -78,4 +82,4 @@ async def compute_cluster_drift(hosts: list[OpnsenseHost], nat_type: str) -> lis
     for entry in by_fingerprint.values():
         entry["reachable_host_ids"] = reachable_ids
 
-    return [entry for entry in by_fingerprint.values() if len(entry["present_on"]) < len(reachable_ids)]
+    return [entry for entry in by_fingerprint.values() if len(entry["present_on"]) < len(reachable_ids)], reachable_ids

@@ -160,7 +160,7 @@ async def undeploy_rule(db: AsyncSession, rule: FirewallRule) -> None:
             except OpnsenseAPIError as exc:
                 deployment.status = "error"
                 deployment.message = str(exc)
-                failures.append(host.name)
+                failures.append(f"{host.name} ({str(exc)[:200]})")
                 continue
         await db.delete(deployment)
     await db.flush()

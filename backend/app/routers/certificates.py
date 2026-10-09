@@ -112,7 +112,7 @@ async def delete_managed_certificate(cert_id: uuid.UUID, db: AsyncSession = Depe
     try:
         await managed_certificate_service.delete_certificate(db, cert, host)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
 
 
 # ── ACME accounts ──────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ async def delete_acme_account(account_id: uuid.UUID, db: AsyncSession = Depends(
     try:
         await acme_service.delete_account(db, account, host)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc
 
 
 # ── ACME certificate requests ─────────────────────────────────────────
@@ -298,4 +298,4 @@ async def delete_acme_certificate_request(request_id: uuid.UUID, db: AsyncSessio
     try:
         await acme_service.delete_certificate_request(db, req, host)
     except OpnsenseAPIError as exc:
-        raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+        raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)) from exc

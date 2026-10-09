@@ -467,6 +467,8 @@ async def test_cas_parses_real_shape(client, respx_mock):
                 "rows": [
                     {
                         "uuid": "ca-uuid-1",
+                        # OpenVPN cert/ca and Trust-Store caref reference this id, not the uuid
+                        "refid": "6ac8a49fa1589",
                         "descr": "Internal CA",
                         "commonname": "Internal Root CA",
                         "valid_from": str(now - 300 * 86400),
@@ -482,6 +484,7 @@ async def test_cas_parses_real_shape(client, respx_mock):
     cas = resp.json()
     assert len(cas) == 1
     assert cas[0]["uuid"] == "ca-uuid-1"
+    assert cas[0]["refid"] == "6ac8a49fa1589"
     assert cas[0]["common_name"] == "Internal Root CA"
     assert cas[0]["status"] == "valid"
 

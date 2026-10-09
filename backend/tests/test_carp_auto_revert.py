@@ -157,6 +157,57 @@ async def test_sweep_reverts_expired_window(client, respx_mock):
         assert await carp_maintenance_window_service.active_window(db, uuid.UUID(primary["id"])) is None
 
 
+async def _enter_with_expired_window(client, primary):
+    plan = (await client.post(f"/api/hosts/{primary['id']}/maintenance/carp-preview")).json()
+    await client.post(
+        f"/api/hosts/{primary['id']}/maintenance/carp-execute",
+        json={"preview_id": plan["preview_id"], "confirm_name": "fw-primary", "acknowledge_downtime": True, "auto_revert_minutes": 30},
+    )
+    async with SessionLocal() as db:
+        window = await carp_maintenance_window_service.active_window(db, uuid.UUID(primary["id"]))
+        window.auto_revert_at = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+    return plan["preview_id"]
+
+
+async def test_sweep_revert_closes_the_enter_operation_and_unblocks_deploys(client, respx_mock):
+    """Nach dem Auto-Revert darf die carp_enter-Aktion nicht offen bleiben:
+    sie ließe sich nie mehr bestätigen und blockiert sonst alle Deploys im Cluster."""
+    from app.services.host_maintenance_service import ACTIVE, ensure_no_maintenance
+
+    roles, switch = _stateful_cluster(respx_mock)
+    primary, secondary = await _make_cluster(client)
+    op_id = await _enter_with_expired_window(client, primary)
+
+    async with SessionLocal() as db:
+        op = await db.get(HostOperation, uuid.UUID(op_id))
+        assert op.status == "submitted"
+        await carp_maintenance_window_service.sweep_expired(db)
+
+    async with SessionLocal() as db:
+        op = await db.get(HostOperation, uuid.UUID(op_id))
+        assert op.status == "cancelled" and op.status not in ACTIVE
+        assert "Automatisch" in op.message
+        host = await db.get(__import__("app.models.host", fromlist=["OpnsenseHost"]).OpnsenseHost, uuid.UUID(primary["id"]))
+        await ensure_no_maintenance(db, [host])  # raises if still blocked
+
+
+async def test_sweep_failed_revert_keeps_the_enter_operation_open(client, respx_mock):
+    """Schlägt der automatische Rückschalt-Versuch fehl, muss ein Mensch nachsehen:
+    die Aktion bleibt offen."""
+    roles, switch = _stateful_cluster(respx_mock)
+    primary, secondary = await _make_cluster(client)
+    op_id = await _enter_with_expired_window(client, primary)
+    switch.mock(side_effect=httpx.ConnectError("boom"))
+
+    async with SessionLocal() as db:
+        resolved = await carp_maintenance_window_service.sweep_expired(db)
+    assert resolved[0].status == "revert_failed"
+
+    async with SessionLocal() as db:
+        assert (await db.get(HostOperation, uuid.UUID(op_id))).status == "submitted"
+
+
 @pytest.mark.asyncio
 async def test_sweep_marks_revert_failed_on_toggle_error(client, respx_mock):
     respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(

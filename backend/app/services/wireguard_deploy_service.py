@@ -324,6 +324,9 @@ async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: Opnse
 
     try:
         await _write_config(host, payloads, deployment)
+        # Without the global switch the config is stored but no interface
+        # ever comes up (live-verified), so a "success" would be a lie.
+        await opnsense_client.ensure_wireguard_enabled(host)
     except OpnsenseAPIError as exc:
         deployment.status = "error"
         deployment.message = str(exc)
@@ -388,7 +391,7 @@ async def undeploy_tunnel(db: AsyncSession, tunnel: WireguardTunnel) -> None:
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = str(exc)
-            failures.append(host.name)
+            failures.append(f"{host.name} ({str(exc)[:200]})")
             continue
         await db.delete(deployment)
     await db.flush()

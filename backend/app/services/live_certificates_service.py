@@ -44,6 +44,7 @@ def _row_to_certificate(row: dict) -> HostCertificate:
 
     return HostCertificate(
         uuid=row.get("uuid", ""),
+        refid=row.get("refid", ""),
         descr=row.get("descr") or "(ohne Beschreibung)",
         common_name=row.get("commonname") or None,
         issuer=row.get("%caref") or "Selbstsigniert",
@@ -68,6 +69,7 @@ def _row_to_ca(row: dict) -> HostCa:
 
     return HostCa(
         uuid=row.get("uuid", ""),
+        refid=row.get("refid", ""),
         descr=row.get("descr") or "(ohne Beschreibung)",
         common_name=row.get("commonname") or None,
         valid_from=valid_from,

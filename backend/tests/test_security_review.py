@@ -535,6 +535,17 @@ async def test_password_hashing_runs_off_the_event_loop():
 
 # ── SEC-08: upstream errors never carry secrets ───────────────────────
 
+def test_redaction_keeps_validation_messages_readable():
+    body = (
+        '{"result": "failed", "validations": {"instance.cert": "Please select a valid certificate from the list.",'
+        ' "instance.auth": "Authentication method required"}, "api_key": "k-MARKER"}'
+    )
+    out = redact_text(body)
+    assert "Please select a valid certificate" in out
+    assert "Authentication method required" in out
+    assert "k-MARKER" not in out  # secrets outside "validations" are still masked
+
+
 def test_redaction_scrubs_json_pem_and_known_secrets():
     pem = "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBg\n-----END PRIVATE KEY-----"
     body = json.dumps({
@@ -859,3 +870,30 @@ async def test_process_death_after_intent_leaves_sweepable_or_flagged_row(client
     async with SessionLocal() as db:
         row = (await db.scalars(select(RuleDeployment))).one()
         assert row.status == "revert_failed" and row.opnsense_rule_uuid is None  # visible, blocks retries, notifies
+
+
+# ── audit events built from unvalidated request paths ────────────────────
+
+@pytest.mark.asyncio
+async def test_junk_path_segments_give_422_not_500(client):
+    """Fuzzing found 500s/dropped connections: the audit event copied the raw
+    path segment (300 chars, NUL byte) into VARCHAR(36)/Postgres text."""
+    for path in (
+        "/api/hosts/" + "x" * 300,
+        "/api/hosts/%00/services/ntpd/restart",
+        "/api/rules/not-a-uuid/deploy",
+    ):
+        method = "PATCH" if path.count("/") == 3 else "POST"
+        resp = await client.request(method, path, json={})
+        assert resp.status_code in (404, 422), (path[:40], resp.status_code, resp.text[:100])
+
+
+@pytest.mark.asyncio
+async def test_nul_byte_in_a_text_field_is_a_422_not_a_500(client):
+    for path, body in (
+        ("/api/groups", {"name": "a\u0000b", "description": "x", "host_ids": []}),
+        ("/api/rules", {"description": "a\u0000b", "interface": "lan", "target_host_ids": []}),
+    ):
+        resp = await client.post(path, json=body)
+        assert resp.status_code == 422, (path, resp.status_code, resp.text[:120])
+        assert resp.json()["detail"]["code"] == "INVALID_CHARACTERS"

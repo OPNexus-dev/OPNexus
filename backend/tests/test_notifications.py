@@ -177,6 +177,41 @@ async def test_check_rule_drift_no_drift_when_identical(client, respx_mock):
     assert problems == {}
 
 
+@pytest.mark.asyncio
+async def test_drift_stays_open_while_a_cluster_member_is_unreachable(client, respx_mock):
+    """Live 26.7.5: rebooting one firewall made every open drift problem
+    resolve (only one host reachable => nothing to compare) and re-open
+    afterwards, sending a resolved+opened pair per problem."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    await _create_host(client, "fw-a", "https://fw-a.test", cluster_name="ha")
+    await _create_host(client, "fw-b", "https://fw-b.test", cluster_name="ha")
+    respx_mock.get("https://fw-a.test/api/firewall/filter/searchRule").mock(
+        return_value=httpx.Response(200, json={"rows": [_live_rule_row("r1", "Allow SSH"), _live_rule_row("r2", "Only A")]})
+    )
+    b = respx_mock.get("https://fw-b.test/api/firewall/filter/searchRule").mock(
+        return_value=httpx.Response(200, json={"rows": [_live_rule_row("r1", "Allow SSH")]})
+    )
+
+    async with SessionLocal() as db:
+        current = await notification_checks.check_rule_drift(db)
+        opened, resolved = await notification_dedup.diff_and_update(db, "rule_drift", current)
+        await db.commit()
+        assert len(opened) == 1 and not resolved
+
+        b.mock(side_effect=httpx.ConnectError("down"))  # fw-b reboots
+        current = await notification_checks.check_rule_drift(db)
+        assert dict(current) == {}
+        opened, resolved = await notification_dedup.diff_and_update(db, "rule_drift", current)
+        await db.commit()
+        assert not opened and not resolved  # still open, nothing sent
+
+        b.mock(return_value=httpx.Response(200, json={"rows": [_live_rule_row("r1", "Allow SSH")]}))
+        current = await notification_checks.check_rule_drift(db)
+        opened, resolved = await notification_dedup.diff_and_update(db, "rule_drift", current)
+        await db.commit()
+        assert not opened and not resolved  # same problem, no duplicate "opened"
+
+
 # ── check_revert_failed / check_maintenance_unknown ─────────────────────
 
 @pytest.mark.asyncio

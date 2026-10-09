@@ -17,17 +17,29 @@ from tests.test_openvpn import _create_host, _instance_payload
 from tests.helpers import deploy_approved
 
 
+def _mock_vpnid_search(respx_mock, base_url: str, rows=None):
+    respx_mock.get(f"{base_url}/api/openvpn/instances/search").mock(
+        return_value=httpx.Response(200, json={"rows": rows or []})
+    )
+
+
 def _mock_full_success(respx_mock, base_url: str, with_statickey: bool = False):
     if with_statickey:
         respx_mock.post(f"{base_url}/api/openvpn/instances/addStaticKey").mock(
             return_value=httpx.Response(200, json={"result": "saved", "uuid": "statickey-1"})
         )
-    respx_mock.post(f"{base_url}/api/openvpn/instances/add").mock(
+    # The firewall does not assign vpnid itself (live 26.7.5: "A value is
+    # required."), so the deploy asks for the existing ones first.
+    respx_mock.get(f"{base_url}/api/openvpn/instances/search").mock(
+        return_value=httpx.Response(200, json={"rows": [{"uuid": "x", "vpnid": "3"}, {"uuid": "y", "vpnid": "1"}]})
+    )
+    add_route = respx_mock.post(f"{base_url}/api/openvpn/instances/add").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "instance-1"})
     )
     respx_mock.post(f"{base_url}/api/openvpn/service/reconfigure").mock(
         return_value=httpx.Response(200, json={"result": "ok"})
     )
+    return add_route
 
 
 @pytest.mark.asyncio
@@ -37,13 +49,14 @@ async def test_deploy_success_persists_instance_uuid(client, respx_mock):
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
 
-    _mock_full_success(respx_mock, "https://fw1.test")
+    add_route = _mock_full_success(respx_mock, "https://fw1.test")
 
     resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
     assert resp.status_code == 200, resp.text
     dep = resp.json()["deployments"][0]
     assert dep["status"] == "success"
     assert dep["message"] is None
+    assert json.loads(add_route.calls.last.request.content)["instance"]["vpnid"] == "4"
 
     async with SessionLocal() as db:
         row = (await db.execute(select(OpenVpnInstanceDeployment))).scalar_one()
@@ -85,6 +98,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
 
+    _mock_vpnid_search(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/openvpn/instances/add").mock(
         side_effect=httpx.ConnectError("connection refused")
     )
@@ -115,6 +129,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
 
+    _mock_vpnid_search(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/openvpn/instances/add").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "instance-1"})
     )
@@ -150,6 +165,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
 
+    _mock_vpnid_search(respx_mock, "https://fw1.test")
     respx_mock.post("https://fw1.test/api/openvpn/instances/add").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "instance-1"})
     )
@@ -174,6 +190,7 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
     _mock_full_success(respx_mock, "https://fw1.test")
     await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
 
+    _mock_vpnid_search(respx_mock, "https://fw1.test")
     add_route = respx_mock.post("https://fw1.test/api/openvpn/instances/add")
 
     resp = await deploy_approved(client, f"/api/openvpn/instances/{instance_id}/deploy")
@@ -241,6 +258,7 @@ async def test_multi_host_deploy_sends_each_host_its_own_cert_and_ca(client, res
     instance_id = resp.json()["id"]
 
     _mock_full_success(respx_mock, "https://fw1.test")
+    _mock_vpnid_search(respx_mock, "https://fw2.test")
     respx_mock.post("https://fw2.test/api/openvpn/instances/add").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "instance-2"})
     )
@@ -271,6 +289,7 @@ async def test_host_missing_cert_selection_fails_closed_without_any_call(client,
     )
     instance_id = resp.json()["id"]
 
+    _mock_vpnid_search(respx_mock, "https://fw1.test")
     add_route = respx_mock.post("https://fw1.test/api/openvpn/instances/add").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "instance-1"})
     )

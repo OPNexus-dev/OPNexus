@@ -140,7 +140,7 @@ async def undeploy_one_to_one(db: AsyncSession, rule: OneToOneRule) -> None:
             except OpnsenseAPIError as exc:
                 deployment.status = "error"
                 deployment.message = str(exc)
-                failures.append(host.name)
+                failures.append(f"{host.name} ({str(exc)[:200]})")
                 continue
         await db.delete(deployment)
     await db.flush()
