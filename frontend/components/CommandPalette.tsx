@@ -1,6 +1,6 @@
 "use client";
 
-import { navGroups } from "@/components/Nav";
+import { navGroups, navLabelKey } from "@/components/Nav";
 import { useLanguage } from "@/components/LanguageProvider";
 import { api, Host, SearchHit } from "@/lib/api";
 import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/events";
@@ -88,7 +88,7 @@ export function CommandPalette() {
     () =>
       navGroups.flatMap((group) =>
         group.items.map((item) => {
-          const label = t(`nav.items.${item.href.slice(1)}`);
+          const label = t(navLabelKey(item.href));
           const groupLabel = t(`nav.groups.${group.key}`);
           return {
             key: `nav:${item.href}`,

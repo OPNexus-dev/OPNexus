@@ -144,6 +144,7 @@ export interface TlsProbe {
 
 export interface HostUpdate {
   name?: string;
+  base_url?: string;
   verify_tls?: boolean;
   tls_ca_pem?: string | null;
   clear_tls_pin?: boolean;
@@ -152,6 +153,171 @@ export interface HostUpdate {
   clear_cluster_name?: boolean;
   policy_hierarchy_group_id?: string | null;
   clear_policy_hierarchy_group_id?: boolean;
+}
+
+export interface NetAddress {
+  address: string;
+  vhid: string | null;
+  carp_status: string | null;
+}
+
+export interface NetInterface {
+  device: string;
+  identifier: string | null;
+  description: string;
+  status: string;
+  enabled: boolean;
+  is_physical: boolean;
+  mtu: string | null;
+  mac: string | null;
+  media: string | null;
+  vlan_tag: string | null;
+  vlan_parent: string | null;
+  ipv4_type: string | null;
+  ipv6_type: string | null;
+  addresses: NetAddress[];
+  pending_action: string | null;
+  assigned: boolean;
+  is_management: boolean;
+}
+
+export interface NetVlan {
+  uuid: string;
+  parent: string;
+  tag: string;
+  pcp: string | null;
+  description: string;
+  device: string | null;
+}
+
+export interface NetVip {
+  uuid: string;
+  interface: string;
+  interface_label: string;
+  mode: string;
+  address: string;
+  vhid: string | null;
+  advbase: string | null;
+  advskew: string | null;
+  description: string;
+}
+
+export interface NetGateway {
+  uuid: string;
+  name: string;
+  description: string;
+  interface: string;
+  interface_label: string;
+  ip_protocol: string;
+  address: string;
+  is_default: boolean;
+  disabled: boolean;
+  priority: string | null;
+  status: string;
+}
+
+export interface NetRoute {
+  uuid: string;
+  network: string;
+  gateway: string;
+  description: string;
+  disabled: boolean;
+}
+
+export type NetworkKind = "vlan" | "vip" | "gateway" | "route" | "interface" | "dns_host" | "dhcp_host" | "kea_subnet" | "kea_reservation";
+export type NetworkAction = "add" | "set" | "del";
+
+export interface NetworkChangeRequest {
+  kind: NetworkKind;
+  action: NetworkAction;
+  uuid?: string;
+  fields: Record<string, string>;
+}
+
+export interface NetworkRisk {
+  code: string;
+  params: Record<string, string>;
+}
+
+export interface NetworkChangePreview {
+  token: string;
+  kind: NetworkKind;
+  action: NetworkAction;
+  uuid: string | null;
+  host_id: string;
+  host_name: string;
+  changes: { field: string; before: string | null; after: string | null }[];
+  risks: NetworkRisk[];
+  warnings: NetworkRisk[];
+  blocks: NetworkRisk[];
+  requires_acknowledgement: boolean;
+  management_device: string | null;
+  can_execute: boolean;
+}
+
+export interface NetworkChangeResult {
+  status: string;
+  uuid: string | null;
+  verified: boolean;
+  mismatches: string[];
+  backup_id: string;
+}
+
+export type NetworkTemplate = Record<string, { value: string; options: { value: string; label: string; selected: boolean }[] | null }>;
+
+export interface NetDnsHost {
+  uuid: string;
+  hostname: string;
+  domain: string;
+  record_type: string;
+  server: string;
+  enabled: boolean;
+  description: string;
+}
+
+export interface NetDhcpHost {
+  uuid: string;
+  host: string;
+  domain: string;
+  ip: string;
+  hwaddr: string;
+  lease_time: string;
+  description: string;
+}
+
+export interface NetKeaSubnet {
+  uuid: string;
+  subnet: string;
+  pools: string;
+  routers: string;
+  dns_servers: string;
+  description: string;
+}
+
+export interface NetKeaReservation {
+  uuid: string;
+  subnet: string;
+  ip_address: string;
+  hw_address: string;
+  hostname: string;
+  description: string;
+}
+
+export interface HostNetwork {
+  host_id: string;
+  host_name: string;
+  interfaces: NetInterface[];
+  vlans: NetVlan[];
+  vips: NetVip[];
+  gateways: NetGateway[];
+  routes: NetRoute[];
+  dns_hosts: NetDnsHost[];
+  dhcp_hosts: NetDhcpHost[];
+  kea_subnets: NetKeaSubnet[];
+  kea_reservations: NetKeaReservation[];
+  management_device: string | null;
+  can_configure_interfaces: boolean;
+  unavailable: string[];
 }
 
 export interface LiveRule {
@@ -290,6 +456,7 @@ export interface Rule {
   destination_net: string;
   destination_port: string | null;
   enabled: boolean;
+  log: boolean;
   created_at: string;
   updated_at: string;
   target_host_ids: string[];
@@ -312,8 +479,27 @@ export interface RuleCreate {
   destination_net: string;
   destination_port: string | null;
   enabled: boolean;
+  log?: boolean;
   target_host_ids: string[];
   target_group_ids: string[];
+}
+
+export interface UnmanagedRule {
+  uuid: string;
+  description: string;
+  interface: string;
+  interface_label: string;
+  direction: string;
+  action: string;
+  protocol: string;
+  source_net: string;
+  source_port: string;
+  destination_net: string;
+  destination_port: string;
+  enabled: boolean;
+  log: boolean;
+  adoptable: boolean;
+  reasons: string[];
 }
 
 export type PolicyAliasType = "host" | "network" | "port" | "networkgroup" | "mac" | "asn";
@@ -884,6 +1070,16 @@ export const api = {
     request<Host>(`/hosts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteHost: (id: string) => request<void>(`/hosts/${id}`, { method: "DELETE" }),
   getLiveRules: (id: string) => request<LiveRule[]>(`/hosts/${id}/live-rules`),
+  getHostNetwork: (id: string) => request<HostNetwork>(`/hosts/${id}/network`),
+  getNetworkItem: (id: string, kind: NetworkKind, uuid: string) => request<Record<string, string>>(`/hosts/${id}/network/item/${kind}/${uuid}`),
+  getNetworkTemplate: (id: string, kind: NetworkKind) => request<NetworkTemplate>(`/hosts/${id}/network/template/${kind}`),
+  previewNetworkChange: (id: string, data: NetworkChangeRequest) =>
+    request<NetworkChangePreview>(`/hosts/${id}/network/changes/preview`, { method: "POST", body: JSON.stringify(data) }),
+  executeNetworkChange: (id: string, data: NetworkChangeRequest, previewToken: string, acknowledge: boolean) =>
+    request<NetworkChangeResult>(`/hosts/${id}/network/changes`, {
+      method: "POST",
+      body: JSON.stringify({ ...data, preview_token: previewToken, acknowledge }),
+    }),
   getHostPortForwards: (id: string) => request<NatLiveSplit>(`/port-forward/hosts/${id}/live`),
   getHostOneToOne: (id: string) => request<NatLiveSplit>(`/one-to-one/hosts/${id}/live`),
   getHostOutboundNat: (id: string) => request<NatLiveSplit>(`/outbound-nat/hosts/${id}/live`),
@@ -910,6 +1106,8 @@ export const api = {
 
   listRules: () => request<Rule[]>("/rules"),
   createRule: (data: RuleCreate) => request<Rule>("/rules", { method: "POST", body: JSON.stringify(data) }),
+  listUnmanagedRules: (hostId: string) => request<UnmanagedRule[]>(`/rules/unmanaged?host_id=${hostId}`),
+  adoptRule: (hostId: string, ruleUuid: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid }) }),
   updateRule: (id: string, data: RuleCreate, expectedUpdatedAt: string) => request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
   ruleRevisions: (id: string) => request<RuleRevision[]>(`/rules/${id}/revisions`),

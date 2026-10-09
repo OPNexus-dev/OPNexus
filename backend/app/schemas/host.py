@@ -47,6 +47,8 @@ class HostUpdate(BaseModel):
     recreate is still the way to rotate a host's API key for now."""
 
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    # New address of the firewall, e.g. after its management IP was changed.
+    base_url: str | None = Field(default=None, min_length=1, max_length=255)
     verify_tls: bool | None = None
     tls_ca_pem: str | None = Field(default=None, max_length=32768)
     clear_tls_pin: bool = False
@@ -55,6 +57,11 @@ class HostUpdate(BaseModel):
     clear_cluster_name: bool = False  # explicit flag, since cluster_name=None is ambiguous with "don't touch it"
     policy_hierarchy_group_id: uuid.UUID | None = None
     clear_policy_hierarchy_group_id: bool = False  # same ambiguity as clear_cluster_name above
+
+    @field_validator("base_url")
+    @classmethod
+    def _base_url_is_safe(cls, value: str | None) -> str | None:
+        return validate_base_url(value) if value is not None else None
 
 
 class HostRead(BaseModel):

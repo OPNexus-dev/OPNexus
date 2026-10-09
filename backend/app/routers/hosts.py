@@ -155,6 +155,8 @@ async def update_host(host_id: uuid.UUID, payload: HostUpdate, db: AsyncSession 
         if existing:
             raise api_error(409, ErrorCode.HOST_MIT_DIESEM_NAMEN_EXISTIERT_BEREITS)
         host.name = payload.name
+    if payload.base_url is not None:
+        host.base_url = payload.base_url
     if payload.verify_tls is not None:
         host.verify_tls = payload.verify_tls
     if payload.clear_tls_pin:

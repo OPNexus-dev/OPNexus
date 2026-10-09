@@ -1027,3 +1027,154 @@ async def sign_acme_certificate(host: OpnsenseHost, uuid_: str) -> dict:
     against anything but a respx mock / fully-mocked write path in
     tests/verification."""
     return _acme_action_result(await _request(host, "POST", f"/acmeclient/certificates/sign/{uuid_}"), "ACME-Zertifikat ausstellen")
+
+
+# ── Network inventory (read-only) ────────────────────────────────────────
+# Interfaces\Api\{Overview,Assignment,VlanSettings,VipSettings}Controller,
+# Routing\Api\SettingsController and Routes\Api\RoutesController, verified
+# against core source (github.com/opnsense/core, master) AND live with real
+# read-only GETs on OPNsense 26.7.1/26.7.6 (2026-10-09). Shapes: the search*
+# calls return {"rows": [...]} (flat dicts with "%"-prefixed display
+# counterparts); interfacesInfo rows carry device/identifier/status/ipv4[].
+# Caution: vip_settings rows contain the CARP password in plain text — callers
+# must drop it (see network_service).
+async def get_interfaces_info(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/interfaces/overview/interfacesInfo", params={"rowCount": -1})
+
+
+async def search_interface_assignments(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/interfaces/assignment/searchItem", params={"rowCount": -1})
+
+
+async def search_vlans(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/interfaces/vlan_settings/searchItem", params={"rowCount": -1})
+
+
+async def search_vips(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/interfaces/vip_settings/searchItem", params={"rowCount": -1})
+
+
+async def search_gateways(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/routing/settings/searchGateway", params={"rowCount": -1})
+
+
+async def search_static_routes(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/routes/routes/searchroute", params={"rowCount": -1})
+
+
+# ── Network objects (write) ──────────────────────────────────────────────
+# One table for the four config objects handled by network_change_service.
+# Sources (core master, read 2026-10-09): Interfaces/Api/VlanSettingsController,
+# VipSettingsController, Routing/Api/SettingsController (gateways) and
+# Routes/Api/RoutesController. Each add/set takes {<body_key>: {fields}}; set/del
+# address the item by UUID; nothing takes effect before the object's reconfigure
+# call, which answers {"status": "ok"}. The VIP form posts address+prefix as ONE
+# field called "network".
+# The interface assignment (Interfaces/Api/AssignmentController, model NetworkInterface) is two-step:
+# add/set/del only stage the change (a todo file on the firewall); reconfigure ("interface apply") makes
+# it real. Its items are addressed by the interface identifier (wan, lan, opt1), not a UUID, and
+# deleting one makes OPNsense itself drop every rule/NAT entry that references it.
+NETWORK_ITEM_APIS = {
+    "vlan": {"body_key": "vlan", "base": "/interfaces/vlan_settings", "add": "addItem", "set": "setItem",
+             "del": "delItem", "get": "getItem", "search": "searchItem",
+             "reconfigure": "/interfaces/vlan_settings/reconfigure"},
+    "vip": {"body_key": "vip", "base": "/interfaces/vip_settings", "add": "addItem", "set": "setItem",
+            "del": "delItem", "get": "getItem", "search": "searchItem",
+            "reconfigure": "/interfaces/vip_settings/reconfigure"},
+    "gateway": {"body_key": "gateway_item", "base": "/routing/settings", "add": "addGateway", "set": "setGateway",
+                "del": "delGateway", "get": "getGateway", "search": "searchGateway",
+                "reconfigure": "/routing/settings/reconfigure"},
+    "route": {"body_key": "route", "base": "/routes/routes", "add": "addroute", "set": "setroute",
+              "del": "delroute", "get": "getroute", "search": "searchroute",
+              "reconfigure": "/routes/routes/reconfigure"},
+    "interface": {"body_key": "interface", "base": "/interfaces/assignment", "add": "addItem", "set": "setItem",
+                  "del": "delItem", "get": "getItem", "search": "searchItem",
+                  "reconfigure": "/interfaces/assignment/reconfigure"},
+    # DNS / DHCP (Unbound/Api/SettingsController, Dnsmasq/Api/SettingsController, Kea/Api/Dhcpv4Controller;
+    # reconfigure is the service controller's inherited action). Read 2026-10-09.
+    "dns_host": {"body_key": "host", "base": "/unbound/settings", "add": "addHostOverride", "set": "setHostOverride",
+                 "del": "delHostOverride", "get": "getHostOverride", "search": "searchHostOverride",
+                 "reconfigure": "/unbound/service/reconfigure"},
+    "dhcp_host": {"body_key": "host", "base": "/dnsmasq/settings", "add": "addHost", "set": "setHost",
+                  "del": "delHost", "get": "getHost", "search": "searchHost",
+                  "reconfigure": "/dnsmasq/service/reconfigure"},
+    "kea_subnet": {"body_key": "subnet4", "base": "/kea/dhcpv4", "add": "addSubnet", "set": "setSubnet",
+                   "del": "delSubnet", "get": "getSubnet", "search": "searchSubnet",
+                   "reconfigure": "/kea/service/reconfigure"},
+    "kea_reservation": {"body_key": "reservation", "base": "/kea/dhcpv4", "add": "addReservation",
+                        "set": "setReservation", "del": "delReservation", "get": "getReservation",
+                        "search": "searchReservation", "reconfigure": "/kea/service/reconfigure"},
+}
+
+
+def _nest(fields: dict) -> dict:
+    """{"option_data.routers": "x"} -> {"option_data": {"routers": "x"}} (the wire form of Kea's option block)."""
+    out: dict = {}
+    for key, value in fields.items():
+        head, _, tail = key.partition(".")
+        if tail:
+            out.setdefault(head, {})[tail] = value
+        else:
+            out[key] = value
+    return out
+
+
+async def get_network_item(host: OpnsenseHost, kind: str, uuid: str | None) -> dict:
+    api = NETWORK_ITEM_APIS[kind]
+    path = f"{api['base']}/{api['get']}" + (f"/{uuid}" if uuid else "")
+    data = await _request(host, "GET", path)
+    item = data.get(api["body_key"]) if isinstance(data, dict) else None
+    return item if isinstance(item, dict) else {}
+
+
+async def write_network_item(host: OpnsenseHost, kind: str, action: str, uuid: str | None, fields: dict) -> dict:
+    api = NETWORK_ITEM_APIS[kind]
+    if action == "add":
+        return _mutation_result(
+            await _request(host, "POST", f"{api['base']}/{api['add']}", json={api["body_key"]: _nest(fields)}),
+            "Objekt anlegen", {"saved"})
+    if action == "set":
+        return _mutation_result(
+            await _request(host, "POST", f"{api['base']}/{api['set']}/{uuid}", json={api["body_key"]: _nest(fields)}),
+            "Objekt ändern", {"saved"})
+    return _mutation_result(
+        await _request(host, "POST", f"{api['base']}/{api['del']}/{uuid}"), "Objekt entfernen", {"deleted"})
+
+
+async def reconfigure_network(host: OpnsenseHost, kind: str) -> dict:
+    return _mutation_result(
+        await _request(host, "POST", NETWORK_ITEM_APIS[kind]["reconfigure"]), "Änderung anwenden", set())
+
+
+async def list_network_item_uuids(host: OpnsenseHost, kind: str) -> list[str]:
+    api = NETWORK_ITEM_APIS[kind]
+    data = await _request(host, "GET", f"{api['base']}/{api['search']}", params={"rowCount": -1})
+    rows = data.get("rows", []) if isinstance(data, dict) else []
+    return [str(r.get("uuid")) for r in rows if isinstance(r, dict) and r.get("uuid")]
+
+
+async def interface_changes_pending(host: OpnsenseHost) -> bool:
+    """True while staged interface changes wait for an apply (AssignmentController::pendingAction).
+    Our own apply would apply those too, so a change must not start on top of them."""
+    data = await _request(host, "GET", "/interfaces/assignment/pending")
+    return isinstance(data, dict) and data.get("status") == "pending"
+
+
+async def _search_all(host: OpnsenseHost, path: str) -> dict:
+    return await _request(host, "GET", path, params={"rowCount": -1})
+
+
+async def search_dns_hosts(host: OpnsenseHost) -> dict:
+    return await _search_all(host, "/unbound/settings/searchHostOverride")
+
+
+async def search_dhcp_hosts(host: OpnsenseHost) -> dict:
+    return await _search_all(host, "/dnsmasq/settings/searchHost")
+
+
+async def search_kea_subnets(host: OpnsenseHost) -> dict:
+    return await _search_all(host, "/kea/dhcpv4/searchSubnet")
+
+
+async def search_kea_reservations(host: OpnsenseHost) -> dict:
+    return await _search_all(host, "/kea/dhcpv4/searchReservation")

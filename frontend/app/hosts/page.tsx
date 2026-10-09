@@ -313,6 +313,7 @@ export default function HostsPage() {
 function EditHostModal({ host, hierarchyGroups, onClose, onSaved }: { host: Host; hierarchyGroups: PolicyHierarchyGroup[]; onClose: () => void; onSaved: () => void }) {
   const { t, errorMessage } = useLanguage();
   const [name, setName] = useState(host.name);
+  const [baseUrl, setBaseUrl] = useState(host.base_url);
   const [clusterName, setClusterName] = useState(host.cluster_name ?? "");
   const [hierarchyGroupId, setHierarchyGroupId] = useState(host.policy_hierarchy_group_id ?? "");
   const [pin, setPin] = useState<TlsPinValue>({ pem: null, insecure: !host.verify_tls, clear: false });
@@ -326,6 +327,7 @@ function EditHostModal({ host, hierarchyGroups, onClose, onSaved }: { host: Host
     setError(null);
     try {
       const payload: HostUpdate = { name, verify_tls: !pin.insecure, enabled };
+      if (baseUrl.trim() !== host.base_url) payload.base_url = baseUrl.trim();
       if (pin.pem) payload.tls_ca_pem = pin.pem;
       if (pin.clear) payload.clear_tls_pin = true;
       if (clusterName.trim()) {
@@ -352,6 +354,9 @@ function EditHostModal({ host, hierarchyGroups, onClose, onSaved }: { host: Host
       <form onSubmit={handleSubmit} className="space-y-4">
         <FieldGroup label="Name">
           <Input required value={name} onChange={(e) => setName(e.target.value)} />
+        </FieldGroup>
+        <FieldGroup label={t("hosts.baseUrl")} hint={t("hosts.baseUrlEditHint")}>
+          <Input required value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder="https://192.168.1.1" />
         </FieldGroup>
         <FieldGroup label={t("hosts.clusterOptional")}>
           <Input

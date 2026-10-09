@@ -17,6 +17,7 @@ class RuleCreate(BaseModel):
     destination_net: str = Field(default="any", min_length=1, max_length=128)
     destination_port: str | None = Field(default=None, max_length=32)
     enabled: bool = True
+    log: bool = False
     target_host_ids: list[uuid.UUID] = Field(default_factory=list)
     target_group_ids: list[uuid.UUID] = Field(default_factory=list)
 
@@ -56,6 +57,7 @@ class RuleRead(BaseModel):
     destination_net: str
     destination_port: str | None
     enabled: bool
+    log: bool = False
     created_at: datetime
     updated_at: datetime
     target_host_ids: list[uuid.UUID]
@@ -72,3 +74,27 @@ class RuleEdit(RuleCreate):
 
 class DeployApproval(BaseModel):
     preview_token: str = Field(min_length=64, max_length=64)
+
+
+class AdoptRequest(BaseModel):
+    host_id: uuid.UUID
+    rule_uuid: str = Field(min_length=1, max_length=64)
+
+
+class UnmanagedRule(BaseModel):
+    uuid: str
+    description: str
+    interface: str
+    interface_label: str
+    direction: str
+    action: str
+    protocol: str
+    source_net: str
+    source_port: str
+    destination_net: str
+    destination_port: str
+    enabled: bool
+    log: bool
+    adoptable: bool
+    # Codes such as "negated_source" or "not_quick"; the UI turns them into text.
+    reasons: list[str]

@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { LiveRulesDrift } from "@/components/LiveRulesDrift";
+import { AdoptRulesModal } from "@/components/AdoptRulesModal";
 import { useReadOnly } from "@/lib/useReadOnly";
 import {
   api,
@@ -32,6 +33,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Download,
   Plus,
   Pencil,
   History,
@@ -105,6 +107,7 @@ const emptyForm: RuleCreate = {
   destination_net: "any",
   destination_port: null,
   enabled: true,
+  log: false,
   target_host_ids: [],
   target_group_ids: [],
 };
@@ -128,6 +131,7 @@ function RulesContent() {
   const [hosts, setHosts] = useState<Host[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showAdopt, setShowAdopt] = useState(false);
   const [form, setForm] = useState<RuleCreate>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -395,10 +399,16 @@ function RulesContent() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("rules.groupTitle", { name: selectedGroup.name }) : t("rules.title")}<InfoTip text={t("rules.subtitle")} size={18} /></h1>
         {activeTab === "managed" && (
-          <Button onClick={() => openEditor(null)} disabled={readOnly}>
-            <Plus size={16} />
-            {t("rules.new")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
+              <Download size={16} />
+              {t("rules.adopt.button")}
+            </Button>
+            <Button onClick={() => openEditor(null)} disabled={readOnly}>
+              <Plus size={16} />
+              {t("rules.new")}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -504,6 +514,7 @@ function RulesContent() {
       )}
 
       <fieldset disabled={readOnly} className="contents">
+      {showAdopt && <AdoptRulesModal hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
       {review && <RuleReview rule={review.rule} mode={review.mode} onClose={() => setReview(null)} onDeployed={() => { setReview(null); load(); }} onChanged={load} onRestore={snapshot => openEditor(review.rule, false, snapshot)} />}
       {showModal && (
         <Modal title={editing ? t("rules.editDraft") : t("rules.new")} onClose={() => setShowModal(false)}>
@@ -629,7 +640,10 @@ function RulesContent() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label={t("nat.ipVersion")}><Select value={form.ipprotocol} onChange={e => setForm({ ...form, ipprotocol: e.target.value })}><option value="inet">IPv4</option><option value="inet6">IPv6</option></Select></FieldGroup>
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />{t("rules.active")}</label>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.enabled} onChange={e => setForm({ ...form, enabled: e.target.checked })} />{t("rules.active")}</label>
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.log} onChange={e => setForm({ ...form, log: e.target.checked })} />{t("rules.logPackets")}</label>
+              </div>
             </div>
             <FieldGroup label={t("rules.deviceGroups")}>
               <div className="space-y-2 rounded-lg border border-slate-200 p-3">

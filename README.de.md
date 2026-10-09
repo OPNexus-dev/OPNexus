@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](website/assets/screenshots/de/rules-light-desktop.webp)
 
-> **Stand:** `1.11.1` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.12.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -16,6 +16,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Sichere Änderungen** — jede Änderung läuft *Prüfen → Ausrollen → Bestätigen*; bleibt die Bestätigung im Zeitfenster aus, rollt OPNexus zurück.
 - **Hierarchische Policies** — Pre-/Post-Rulebases mit Vererbung über Gruppenbäume.
 - **VPN** — IPsec-Site-to-Site, OpenVPN und WireGuard, einmal definiert und ausgerollt.
+- **Netzwerk** — Schnittstellen, VLANs, virtuelle IPs, Gateways, Routen, DNS und DHCP je Firewall, mit Diff-Vorschau, Backup vor jeder Änderung und Schutz davor, die eigene Verbindung zu kappen; von Hand angelegte Regeln lassen sich übernehmen.
 - **Zertifikate** — Trust-Store für alle Firewalls und Ausstellung per ACME / Let's Encrypt.
 - **Logs & Audit** — zentrale Log-Suche mit Korrelation, Dashboards und lückenloser Deploy-Verlauf.
 - **Update-Center** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus.
@@ -46,7 +47,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.11.1
+OPNEXUS_VERSION=1.12.0
 ```
 
 ```bash

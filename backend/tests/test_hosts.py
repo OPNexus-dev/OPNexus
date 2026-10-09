@@ -575,3 +575,15 @@ async def test_firmware_info_broken_http_framing_gives_actionable_message(client
         await opnsense_client.get_firmware_info(host)
     assert "kern.ipc.tls.enable=0" in str(info.value)
     assert "malformed chunk footer" in str(info.value)
+
+
+@pytest.mark.asyncio
+async def test_host_address_can_be_changed_after_the_firewall_moved(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = (await client.post("/api/hosts", json={"name": "fw-moved", "base_url": "https://10.9.9.1", "api_key": "k", "api_secret": "s"})).json()
+    resp = await client.patch(f"/api/hosts/{host['id']}", json={"base_url": "https://10.9.9.2"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["base_url"] == "https://10.9.9.2" and resp.json()["id"] == host["id"]
+    for bad in ("ftp://x", "http://10.9.9.3", "https://user:pw@10.9.9.3", "https://10.9.9.3/?a=b"):
+        assert (await client.patch(f"/api/hosts/{host['id']}", json={"base_url": bad})).status_code == 422, bad
+    assert next(h for h in (await client.get("/api/hosts")).json() if h["id"] == host["id"])["base_url"] == "https://10.9.9.2"

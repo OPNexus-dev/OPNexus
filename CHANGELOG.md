@@ -31,6 +31,55 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.12.0] "Condor" — 2026-10-09
+
+Netzwerk-Verwaltung und Übernahme von Hand angelegter Regeln. Alles gegen die
+OPNsense-Core-Quellen geprüft und live auf drei Test-Firewalls (26.7.1 und
+26.7.6) getestet, siehe Handbuch „Netzwerk, DNS und DHCP“:
+
+- **Neuer Bereich „Netzwerk“:** Inventar je Firewall (Schnittstellen mit
+  Adressen und CARP-Zustand, VLANs, virtuelle IPs, Gateways, Routen, DNS-Einträge,
+  DHCP) und Änderungen daran: anlegen, bearbeiten, löschen für VLANs, virtuelle
+  IPs, Gateways, statische Routen, Schnittstellen-Zuweisung samt IP-Konfiguration,
+  Unbound-DNS-Einträge, dnsmasq-Hosts sowie Kea-Subnetze und -Reservierungen.
+- **Abgesichert:** Jede Änderung läuft über eine Vorschau mit Diff und einem Token,
+  der den Firewall-Stand erfasst. Vor dem Schreiben wird ein Konfig-Backup
+  gespeichert (ohne Backup keine Änderung), danach angewendet und zurückgelesen.
+  OPNexus erkennt, über welche Schnittstelle es die Firewall erreicht; Änderungen,
+  die diese Verbindung kappen können (Verwaltungs-Schnittstelle, Standard-Gateway,
+  Standardroute, Route über die Firewall-Adresse), brauchen eine ausdrückliche
+  Bestätigung mit Eingabe des Firewall-Namens. Es gibt bewusst **keinen**
+  automatischen Rollback: OPNexus kann eine Änderung nicht zurücknehmen, wenn sie
+  seine eigene Verbindung trennt. Das Backup vor der Änderung ist der Rückweg.
+- **Schnittstellen-Löschen:** OPNsense entfernt dabei selbst alle Regeln, die die
+  Schnittstelle nutzen. Die Vorschau listet sie, die Bestätigung ist Pflicht.
+  Bereits auf der Firewall vorgemerkte Änderungen blockieren eine neue Änderung.
+- **IP-Konfiguration per API gibt es erst ab OPNsense 26.7.6.** Auf 26.7.1 ist die
+  Zuweisungsliste nur lesbar; OPNexus erkennt das an den Daten und sperrt die
+  Änderung mit Begründung.
+- **Von der Firewall übernehmen:** Regeln, die direkt in OPNsense angelegt wurden,
+  lassen sich in OPNexus übernehmen, bearbeiten und ausrollen. Die Übernahme schreibt
+  nichts auf die Firewall. Regeln, die das Modell verfälschen würde (invertierte
+  Quelle/Ziel, mehrere Schnittstellen, keine Quick-Regel, …), werden mit Grund
+  abgelehnt. Neu: Regeln haben ein Protokollieren-Flag (`log`, Migration 0003),
+  damit es beim Bearbeiten nicht still verloren geht; nicht modellierte Felder
+  (Gateway, Zustandsoptionen, …) bleiben auf der Firewall unverändert.
+- **Geheimnisse:** Das CARP-Passwort (liefert OPNsense im Klartext) und der
+  Kea-DDNS-Schlüssel werden nie zurückgegeben, gespeichert oder auditiert.
+- **Host-Adresse änderbar:** Hosts › Bearbeiten hat jetzt das Feld „Adresse“. Nach
+  einer Änderung der Verwaltungs-IP muss der Host nicht mehr gelöscht und neu
+  angelegt werden; Verlauf und Zuordnungen bleiben erhalten. Meldet eine Änderung
+  „angewendet, aber nicht prüfbar“, weist die Oberfläche darauf hin.
+- **Fehler aus den Live-Tests, die Mocks nicht gezeigt haben:** Jede Änderung einer
+  virtuellen IP muss die Adresse (`network`) wiederholen, sonst leert OPNsense sie
+  bzw. lehnt ab; die Prüfung nach dem Anwenden vergleicht jetzt den vollständigen
+  Soll-Zustand statt nur der gesendeten Felder. Dazu: Gateway-Priorität als Zahl,
+  Routen mit `enabled` statt `disabled`, Beschreibungsmuster der Schnittstellen,
+  gesperrte Schnittstellen, Pflicht-Backup vor jeder Änderung.
+- **Hinweis zu den Versionen:** Die IP-Konfiguration von Schnittstellen per API gibt
+  es erst ab OPNsense 26.7.6. Mit 26.7.5 (die Prod-Firewalls) sind VLANs, virtuelle
+  IPs, Gateways, Routen, DNS und DHCP verwaltbar, Schnittstellen nur lesbar.
+
 ## [1.11.1] "Merlin" — 2026-10-09
 
 Fehler aus dem ersten Live-Test der bisher nur gemockten Funktionen auf drei

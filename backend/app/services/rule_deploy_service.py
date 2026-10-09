@@ -50,7 +50,7 @@ def _build_payload(rule: FirewallRule) -> dict:
         "destination_net": rule.destination_net,
         "destination_port": rule.destination_port or "",
         "description": rule.description,
-        "log": "0",
+        "log": "1" if rule.log else "0",
     }
 
 

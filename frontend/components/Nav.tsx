@@ -6,6 +6,7 @@ import clsx from "clsx";
 import {
   Cable,
   FolderTree,
+  Globe,
   GitBranch,
   KeyRound,
   LayoutDashboard,
@@ -13,8 +14,11 @@ import {
   LogOut,
   Network,
   RefreshCw,
+  Route,
+  Router,
   ScrollText,
   Search,
+  Server,
   Settings,
   Shield,
   ShieldCheck,
@@ -57,6 +61,20 @@ export const navGroups: NavGroup[] = [
       { href: "/groups", label: "Gruppen", icon: FolderTree, keywords: ["Gerätegruppen", "Device Groups"] },
       { href: "/aliases", label: "Aliase", icon: Tags, keywords: ["Netzwerk-Objekte", "Netzwerkgruppen"] },
       { href: "/nat", label: "NAT", icon: Network, keywords: ["Port Forward", "Portweiterleitung", "1:1 NAT", "Outbound NAT", "Masquerade"] },
+    ],
+  },
+  {
+    key: "network",
+    label: "Netzwerk",
+    icon: Cable,
+    items: [
+      { href: "/network/interfaces", label: "Schnittstellen", icon: Cable, keywords: ["Interfaces", "IP-Adressen", "WAN", "LAN", "Zuweisung"] },
+      { href: "/network/vlans", label: "VLANs", icon: Layers, keywords: ["VLAN-Tag", "802.1q"] },
+      { href: "/network/vips", label: "Virtuelle IPs", icon: Tags, keywords: ["CARP-VIP", "IP-Alias", "VHID"] },
+      { href: "/network/gateways", label: "Gateways", icon: Router, keywords: ["Standard-Gateway", "Uplink"] },
+      { href: "/network/routes", label: "Routen", icon: Route, keywords: ["Routing", "Statische Routen"] },
+      { href: "/network/dns", label: "DNS", icon: Globe, keywords: ["Unbound", "Host-Override", "Hostnamen"] },
+      { href: "/network/dhcp", label: "DHCP", icon: Server, keywords: ["Kea", "dnsmasq", "Reservierung", "Statische Zuweisung", "Subnetz"] },
     ],
   },
   {
@@ -127,6 +145,11 @@ export const navGroups: NavGroup[] = [
   },
 ];
 
+/** i18n key for a nav item: "/network/vlans" -> nav.items.network-vlans (a slash would read as a nested path). */
+export function navLabelKey(href: string): string {
+  return `nav.items.${href.slice(1).replace(/\//g, "-")}`;
+}
+
 export function Nav() {
   const { t } = useLanguage();
   const pathname = usePathname();
@@ -194,10 +217,10 @@ export function Nav() {
         <button
           onClick={handleLogout}
           title={t("nav.logout")}
-          className="flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:px-3"
+          aria-label={t("nav.logout")}
+          className="flex shrink-0 items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
         >
           <LogOut size={16} aria-hidden="true" />
-          <span className="hidden sm:inline">{t("nav.logout")}</span>
         </button>
       </div>
       {activeGroup && activeGroup.items.length > 1 && (
@@ -209,8 +232,8 @@ export function Nav() {
                 <Link
                   key={href}
                   href={href}
-                  title={t(`nav.items.${href.slice(1)}`)}
-                  aria-label={t(`nav.items.${href.slice(1)}`)}
+                  title={t(navLabelKey(href))}
+                  aria-label={t(navLabelKey(href))}
                   aria-current={active ? "page" : undefined}
                   className={clsx(
                     "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors",
@@ -218,7 +241,7 @@ export function Nav() {
                   )}
                 >
                   <Icon size={14} aria-hidden="true" />
-                  <span className="hidden sm:inline">{t(`nav.items.${href.slice(1)}`)}</span>
+                  <span className="hidden sm:inline">{t(navLabelKey(href))}</span>
                 </Link>
               );
             })}

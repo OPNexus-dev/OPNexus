@@ -3023,6 +3023,117 @@ headless), inklusive Auth-Flow und Deploy-Sperrschutz:
 - Keine Konsolen-Fehler außer erwarteten 401/502 nach Logout bzw. gegen
   nicht erreichbare Test-Hosts.
 
+## Netzwerk, DNS und DHCP (2026-10-09)
+
+Neuer Bereich **Netzwerk** (`/network`). Je Firewall: Inventar und Änderungen für
+Schnittstellen, VLANs, virtuelle IPs, Gateways, statische Routen, DNS-Einträge
+(Unbound) und DHCP (dnsmasq-Hosts, Kea-Subnetze und -Reservierungen). Diese Objekte
+sind firewall-spezifisch (eigene IPs, eigenes VLAN-Layout), deshalb gibt es hier
+keine zentrale Kopie und keinen Multi-Host-Push: Die Firewall ist die Quelle der
+Wahrheit, jede Änderung geht direkt dorthin, aber nur über Vorschau und Ausführung.
+
+**Ablauf einer Änderung** (`services/network_change_service.py`):
+
+1. *Vorschau* (`POST /api/hosts/{id}/network/changes/preview`): liest den Live-Stand,
+   berechnet Diff, Risiken, Warnungen und Sperren, liefert einen Token über genau
+   diesen Stand.
+2. *Ausführen* (`POST /api/hosts/{id}/network/changes`): liest den Stand erneut und
+   verweigert bei abweichendem Token. Risikoreiche Änderungen brauchen
+   `acknowledge` (die UI verlangt zusätzlich die Eingabe des Firewall-Namens). Dann:
+   Konfig-Backup speichern (schlägt es fehl, wird nichts geändert), schreiben,
+   anwenden (`reconfigure`), zurücklesen und mit dem Gewünschten vergleichen. Jeder
+   Schritt landet im Audit-Log (`kind=network`: `started`, `applied`, `unverified`,
+   `apply_uncertain`, `rejected`, `aborted`).
+3. Nur Felder aus einer festen Liste je Objektart werden akzeptiert (`FIELDS`),
+   alles andere ergibt 422. Auswahllisten im Formular kommen von der Firewall
+   selbst (`GET …/network/template/{kind}`): OPNsense bietet z. B. für eine Route
+   nur die Gateways an, die es für gültig hält.
+
+**Schutz vor dem Kappen der eigenen Verbindung:** OPNexus ermittelt aus der
+Schnittstellenliste der Firewall, über welche Schnittstelle sie unter der
+hinterlegten Adresse erreichbar ist (`management_device`). Bestätigungspflichtig
+sind: Änderung oder Löschen dieser Schnittstelle, ihres VLANs oder ihres Gateways,
+Standard-Gateway ändern/löschen, eine Standardroute, eine Route, die die
+Firewall-Adresse abdeckt, und jede Änderung bestehender Objekte, wenn sich der
+Verbindungsweg nicht bestimmen lässt (NAT, CARP-Adresse). **Es gibt keinen
+automatischen Rollback** (anders als bei Regeln): OPNexus kann eine Änderung nicht
+zurücknehmen, die seine eigene Verbindung trennt. Der Rückweg ist das Backup vor
+der Änderung. DNS- und DHCP-Daten können die Verbindung nicht kappen und lösen
+diesen Schutz nicht aus.
+
+**Schnittstellen-Zuweisung** (`/interfaces/assignment/*`): zweistufig. `set`/`add`/`del`
+merken die Änderung nur vor (Datei auf der Firewall), erst `reconfigure` wendet sie
+an. Deshalb blockiert OPNexus eine neue Änderung, solange dort schon etwas
+vorgemerkt ist (`interface_changes_pending`), sonst würde das Anwenden fremde
+Änderungen mitnehmen. Beim Löschen entfernt OPNsense selbst alle Regeln und NAT-
+Einträge, die die Schnittstelle nutzen; die Vorschau listet sie. Gesperrte
+Schnittstellen (`lock`) lassen sich nicht löschen, das sagt die Vorschau vorab.
+Beschreibungen dürfen nur Buchstaben, Ziffern und Unterstriche enthalten.
+**Die API kann die IP-Konfiguration erst ab OPNsense 26.7.6**; auf 26.7.1 liefert
+die Zuweisungsliste nur Name und Gerät. OPNexus erkennt das an den Daten
+(`can_configure_interfaces`) und sperrt die Änderung mit Begründung.
+
+**Geheimnisse:** `vip_settings` liefert das CARP-Passwort im Klartext, Kea-Subnetze
+den DDNS-Schlüssel. Beides wird nie zurückgegeben, gespeichert oder auditiert: Das
+Inventar wählt Felder namentlich aus, der „Vorher“-Zustand wird auf die erlaubten
+Felder begrenzt, ein neues CARP-Passwort geht nur beim Ausführen an die Firewall.
+
+**Von der Firewall übernehmen** (`/rules` → „Von Firewall übernehmen“,
+`services/rule_adopt_service.py`): Regeln, die von Hand in OPNsense angelegt wurden,
+werden als verwaltete Regel mit der vorhandenen UUID erfasst. Die Übernahme liest
+die Regel frisch von der Firewall und schreibt nichts dorthin; erst die erste
+Änderung läuft durch den normalen Ablauf (Vorschau, Push, Bestätigung, Auto-Revert).
+Nicht übernommen werden Regeln, die das Modell verfälschen würde: invertierte
+Schnittstelle/Quelle/Ziel, mehrere oder keine Schnittstelle, „Empfangen auf“, keine
+Quick-Regel, Richtung weder ein noch aus, IPv4+IPv6 in einer Regel, fehlende
+Beschreibung, Systemregeln. Die Gründe zeigt die Oberfläche. Regeln haben jetzt ein
+Protokollieren-Flag (`log`, Migration 0003), weil jeder Push bisher fest `log=0`
+schrieb. Felder, die OPNexus nicht kennt (Gateway, Zustandsoptionen, Zeitpläne, …),
+bleiben unverändert, denn `setRule` überschreibt nur mitgesendete Felder (live
+bestätigt).
+
+**Verifikation 2026-10-09:** Endpunkte gegen die Core-Quellen geprüft und live auf
+drei Test-Firewalls (test-fw-1/-2 mit 26.7.6 als HA-Paar, test-fw-3 mit 26.7.1_1):
+je anlegen, ändern, löschen mit Backup, Apply und Rücklesen für VLAN, virtuelle IP,
+Gateway, Schnittstellen-Zuweisung inkl. IP, Unbound-Eintrag, dnsmasq-Host,
+Kea-Subnetz mit verschachtelten Optionen und Kea-Reservierung; Übernahme einer
+Handregel mit Gateway und `log=1`, danach Bearbeiten und Ausrollen ohne Verlust.
+Der Guard verweigerte das Löschen des Standard-Gateways und die Änderung der
+WAN-Schnittstelle ohne Bestätigung. Browser (1440 px und 375 px, keine
+Konsolenfehler, kein Overflow): Anlegen und Löschen von VLAN, Schnittstelle und
+DNS-Eintrag über die Oberfläche. Der Live-Test fand drei Fehler, die Mocks nicht
+zeigten (Gateway-`priority` als Zahl, Routen-Feld `enabled` statt `disabled`,
+Beschreibungsmuster der Schnittstelle), der Browser-Test einen weiteren (Dialog
+verschwand nach dem Neuladen). 534 Backend-Tests grün.
+
+**Weitere Verifikation (zweiter Durchlauf):** Der Bestätigungs-Pfad wurde live
+ausgeführt: Beschreibung der WAN-Schnittstelle mit Bestätigung geändert, und die
+WAN-IP von test-fw-2 auf eine freie Adresse im selben Netz gesetzt, womit OPNexus
+den Weg zur Firewall verliert (Ergebnis „angewendet, nicht prüfbar“, Audit
+`unverified`, Backup vorhanden). Wiederherstellung: neue Adresse unter Hosts ›
+Bearbeiten eintragen, WAN-IP über die Engine zurücksetzen, Adresse zurücksetzen.
+Außerdem: Routen-Lebenszyklus (aktivieren/deaktivieren), CARP-VIP auf dem HA-Paar
+(Backup zuerst, dann Master; Advskew ändern), Übernahme von Regeln mit Alias-Quelle,
+IPv6 und Block/Log, Ablehnung einer Regel mit invertierter Quelle, Auto-Revert einer
+unbestätigten Änderung an einer übernommenen Regel (Status `reverted`, ursprüngliche
+Beschreibung und `log=1` zurück), Übernahme auf beiden Knoten des HA-Paars,
+Kea-Reservierung samt Subnetz, Unbound-Eintrag mit echter DNS-Abfrage (NXDOMAIN →
+Antwort → NXDOMAIN). Browser: Anlegen, Bearbeiten und Löschen für VIP, Gateway, Route,
+dnsmasq-Host, Kea-Subnetz und -Reservierung, Übernahme per Dialog, Nur-Lesen-Rolle
+(alle Aktions-Buttons gesperrt), Englisch und Dark Mode ohne deutsche Reste,
+axe-core-Prüfung der sieben Netzwerkseiten. Die Migration 0003 lief auf einer Kopie
+der Prod-Datenbank (ohne Log-Tabelle): 0002 → 0003, bestehende Regeln `log=false`.
+Lesend gegen die Prod-Firewalls (26.7.5): Inventar und Erkennung der
+Verwaltungs-Schnittstelle (`vlan0110`) stimmen. **Nicht getestet:** die tatsächliche
+Vergabe von DHCP-Leases (Kea ist auf den Test-Firewalls deaktiviert).
+
+**Bekannte Grenzen:** Übernommene Regeln werden je Firewall einzeln übernommen. Wer
+eine übernommene Regel zusätzlich auf einen weiteren Host als Ziel setzt, legt dort
+eine zweite, doppelte Regel an (die Vorschau zeigt „create“). Keine Multi-Host-Vorlagen für Netzwerkobjekte, kein
+Rolling-Apply auf CARP-Paaren (die Vorschau weist auf den Partner hin), keine
+LAGG/Bridge/GRE/VXLAN-Verwaltung, keine dnsmasq-Bereiche, keine Kea-DDNS-Felder,
+Gateway-Gruppen nicht enthalten.
+
 ## Definition of Done — Stand
 
 - [x] `docker compose up -d --build` startet DB, Backend, Frontend

@@ -7,7 +7,7 @@ from sqlalchemy import text
 from app.models.policy import RuleRevision
 from app.services.rule_deploy_service import _build_payload
 
-RULE_FIELDS = ("description", "interface", "direction", "ipprotocol", "protocol", "action", "source_net", "source_port", "destination_net", "destination_port", "enabled")
+RULE_FIELDS = ("description", "interface", "direction", "ipprotocol", "protocol", "action", "source_net", "source_port", "destination_net", "destination_port", "enabled", "log")
 
 
 async def policy_lock(db):

@@ -17,6 +17,8 @@ from app.services.alias_service import check_alias_consistency, describe_alias_c
 from app.services.interface_service import check_interface_consistency
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.rule_deploy_service import confirm_rule, deploy_rule, undeploy_rule, revert_deployment
+from app.services import rule_adopt_service
+from app.schemas.rule import AdoptRequest, UnmanagedRule
 
 router = APIRouter(prefix="/rules", tags=["rules"])
 
@@ -59,6 +61,7 @@ def _to_read(
         destination_net=rule.destination_net,
         destination_port=rule.destination_port,
         enabled=rule.enabled,
+        log=rule.log,
         created_at=rule.created_at,
         updated_at=rule.updated_at,
         target_host_ids=[host.id for host in rule.targets],
@@ -84,6 +87,42 @@ async def list_rules(db: AsyncSession = Depends(get_db)):
     return [_to_read(rule, rule.targets, rule.deployments) for rule in rules]
 
 
+@router.get("/unmanaged", response_model=list[UnmanagedRule])
+async def list_unmanaged_rules(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Rules found on the host that OPNexus does not manage yet (live read)."""
+    host = await db.get(OpnsenseHost, host_id)
+    if not host:
+        raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    try:
+        return await rule_adopt_service.list_unmanaged(db, host)
+    except OpnsenseAPIError as exc:
+        raise api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name) from exc
+
+
+@router.post("/adopt", response_model=RuleRead, status_code=201)
+async def adopt_rule(payload: AdoptRequest, db: AsyncSession = Depends(get_db)):
+    """Takes over a hand-made rule. Writes nothing to the firewall."""
+    await policy_lock(db)
+    host = await db.get(OpnsenseHost, payload.host_id)
+    if not host:
+        raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    try:
+        rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid)
+    except rule_adopt_service.RuleNotFoundOnHost as exc:
+        raise api_error(404, ErrorCode.REGEL_NICHT_GEFUNDEN) from exc
+    except rule_adopt_service.NotAdoptable as exc:
+        raise api_error(409, ErrorCode.RULE_NOT_ADOPTABLE, reasons=", ".join(exc.reasons)) from exc
+    except OpnsenseAPIError as exc:
+        raise api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name) from exc
+    await db.commit()
+    # The new object sits in the session without its relationships loaded; db.get() would return it as-is.
+    rule = (await db.execute(
+        select(FirewallRule).where(FirewallRule.id == rule.id).options(*_load_options())
+        .execution_options(populate_existing=True)
+    )).scalar_one()
+    return _to_read(rule, rule.targets, rule.deployments)
+
+
 @router.post("", response_model=RuleRead, status_code=201)
 async def create_rule(payload: RuleCreate, db: AsyncSession = Depends(get_db)):
     await policy_lock(db)
@@ -101,6 +140,7 @@ async def create_rule(payload: RuleCreate, db: AsyncSession = Depends(get_db)):
         destination_net=payload.destination_net,
         destination_port=payload.destination_port,
         enabled=payload.enabled,
+        log=payload.log,
         targets=hosts,
         groups=groups,
     )
