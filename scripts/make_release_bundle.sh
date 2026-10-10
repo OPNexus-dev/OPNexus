@@ -38,7 +38,9 @@ OPNexus $version
 
 1. cp .env.example .env     und POSTGRES_PASSWORD (und was sonst nötig ist) eintragen
 2. docker compose pull && docker compose up -d --no-build
-3. Updates:   ./opnexus update            (neueste Version der in .env gewählten Spur)
+3. Anmelden:  ./opnexus password          (zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war)
+              dann im Browser öffnen — der Einrichtungsassistent führt durch den Rest
+4. Updates:   ./opnexus update            (neueste Version der in .env gewählten Spur)
               ./opnexus update 1.10.1     (feste Version)
    Zurück:    ./opnexus rollback
    Sichern:   ./opnexus backup

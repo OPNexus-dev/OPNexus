@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.15.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.16.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -20,6 +20,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Zertifikate** — Trust-Store für alle Firewalls und Ausstellung per ACME / Let's Encrypt.
 - **Logs & Audit** — zentrale Log-Suche mit Korrelation, Dashboards und lückenloser Deploy-Verlauf.
 - **Update-Center** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus.
+- **Einrichtungsassistent** — geführter Erststart nach der Installation: eigenes Passwort, Zwei-Faktor und die erste Firewall verbinden.
 - **Selbst-Update** — OPNexus aktualisiert sich auf Wunsch aus der eigenen Oberfläche, mit Fortschritt und automatischem Rollback (optional).
 - **Zugang** — HTTPS mit gepinnten Firewall-Zertifikaten, optionale Zwei-Faktor-Anmeldung, Rollen (Admin / Nur-Lesen), Tastaturbedienung, Dark Mode, Oberfläche auf Deutsch und Englisch.
 
@@ -43,11 +44,13 @@ cp .env.example .env        # POSTGRES_PASSWORD (und ADMIN_PASSWORD) setzen
 docker compose up -d --build
 ```
 
-Die Oberfläche läuft dann unter `http://localhost:3100`. Ohne `ADMIN_PASSWORD` wird beim ersten Start ein zufälliges Admin-Passwort erzeugt und **einmalig** im Backend-Log ausgegeben:
+Die Oberfläche läuft dann unter `http://localhost:3100`. Ohne `ADMIN_PASSWORD` wird beim ersten Start ein zufälliges Admin-Passwort erzeugt und **einmalig** im Backend-Log ausgegeben. Verloren oder nie gesehen? Dieses Kommando setzt ein neues Zufallspasswort und zeigt es an (im Repo-Checkout `scripts/opnexus`, im Release-Bundle `./opnexus`):
 
 ```bash
-docker compose logs backend | grep -A5 "generated password"
+scripts/opnexus password
 ```
+
+Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassistent**: eigenes Passwort setzen, optional Zwei-Faktor-Anmeldung einschalten, die erste Firewall verbinden (samt Anleitung für den API-Key in OPNsense). Er lässt sich überspringen und jederzeit unter System › Einrichtung wieder öffnen.
 
 Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-von-außerhalb-dieser-vm--produktivbetrieb-mit-tls).
 
@@ -55,7 +58,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.15.0
+OPNEXUS_VERSION=1.16.0
 ```
 
 ```bash

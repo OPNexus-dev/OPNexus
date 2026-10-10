@@ -7,6 +7,8 @@
 #                             bei Fehler automatisch zurückrollen
 #   opnexus rollback          Letztes Update rückgängig machen
 #   opnexus backup            Sofort-Backup der OPNexus-Datenbank
+#   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
+#                             anzeigen (--yes: ohne Rückfrage)
 #   opnexus status --porcelain  Zustand als key=value-Zeilen (für den Updater)
 #
 # Läuft im Verzeichnis mit docker-compose.yml und .env (oder OPNEXUS_DIR=...).
@@ -269,10 +271,37 @@ cmd_rollback() {
   phase done
 }
 
+# Setzt ein neues Zufallspasswort und gibt es einmalig aus. Gedacht für die
+# frische Installation (das beim ersten Start erzeugte Passwort steht nur
+# einmal im Log) und für ein vergessenes Admin-Passwort. Alle Sitzungen des
+# Kontos enden. Rückfrage nur, wenn sich schon jemand angemeldet hat.
+cmd_password() {
+  local user="" yes=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --yes|-y) yes=1 ;;
+      -*) die "Unbekannte Option: $arg" ;;
+      *) [ -z "$user" ] || die "Nur ein Benutzername erlaubt."; user="$arg" ;;
+    esac
+  done
+  c ps --status running --services 2>/dev/null | grep -qx backend \
+    || die "Das Backend läuft nicht. Erst starten: docker compose up -d"
+  if [ "$yes" != 1 ]; then
+    local logins; logins="$(psql_db -c 'SELECT count(*) FROM admin_users WHERE last_login_at IS NOT NULL' 2>/dev/null || echo 1)"
+    if [ "$logins" != 0 ]; then
+      [ -t 0 ] || die "Ohne Terminal nur mit --yes."
+      read -r -p "Passwort von ${user:-dem Admin} neu setzen? Alle Sitzungen enden. [j/N] " answer
+      case "$answer" in j|J|y|Y) ;; *) die "Abgebrochen." ;; esac
+    fi
+  fi
+  c exec -T backend python -m app.reset_password ${user:+"$user"}
+}
+
 case "${1:-}" in
+  password) shift; cmd_password "$@" ;;
   status)   if [ "${2:-}" = "--porcelain" ]; then cmd_status_porcelain; else cmd_status; fi ;;
   update)   shift; cmd_update "${1:-}" ;;
   rollback) cmd_rollback ;;
   backup)   cmd_backup ;;
-  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

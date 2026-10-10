@@ -164,6 +164,11 @@
       },
       "badge": "Update verfügbar",
       "resultTime": "Ergebnis vom {time}"
+    },
+    "setup": {
+      "title": "Einrichtungsassistent",
+      "intro": "Führt Schritt für Schritt durch Passwort, Zwei-Faktor-Anmeldung und das Verbinden einer Firewall.",
+      "open": "Assistent öffnen"
     }
   },
   "nav": {
@@ -215,7 +220,8 @@
       "hostsystem-cron": "Cron",
       "hostsystem-syslog": "Syslog",
       "hostsystem-snapshots": "Snapshots",
-      "hostsystem-diagnostics": "Diagnose"
+      "hostsystem-diagnostics": "Diagnose",
+      "setup": "Einrichtung"
     }
   },
   "dashboard": {
@@ -227,6 +233,7 @@
     "fleetHealth": "Fleet-/CARP-Gesundheit",
     "noHosts": "Noch keine Hosts angelegt",
     "toHosts": "Zu den Hosts",
+    "startSetup": "Einrichtungsassistent starten",
     "nothingPending": "Nichts offen",
     "nothingPendingDescription": "Keine ausstehenden Bestätigungen, Fehler oder unklaren Wartungsvorgänge.",
     "securityAndExpiryWarnings": "Sicherheits- & Ablauf-Warnungen",
@@ -2194,6 +2201,90 @@
       "open": "Port {port} offen",
       "closed": "Port {port} nicht erreichbar",
       "noRecords": "Keine Antwort für „{name}“."
+    }
+  },
+  "setup": {
+    "title": "Einrichtungsassistent",
+    "skip": "Assistent überspringen",
+    "stepsLabel": "Einrichtungsschritte",
+    "stepOf": "Schritt {current} von {total}",
+    "back": "Zurück",
+    "next": "Weiter",
+    "finish": "Einrichtung abschließen",
+    "readOnly": "Der Assistent richtet Konto und Firewalls ein und ist deshalb Administratoren vorbehalten.",
+    "toDashboard": "Zum Dashboard",
+    "steps": {
+      "welcome": "Willkommen",
+      "account": "Konto",
+      "firewall": "Firewall",
+      "done": "Fertig"
+    },
+    "welcome": {
+      "title": "Willkommen bei OPNexus",
+      "intro": "OPNexus verwaltet deine OPNsense-Firewalls zentral: Regeln, NAT, VPN, Zertifikate, Updates und HA-Cluster an einem Ort. Dieser Assistent richtet das Nötigste in wenigen Minuten ein. Du kannst ihn jederzeit überspringen und später unter System › Einrichtung wieder öffnen.",
+      "points": {
+        "account": "Konto absichern: eigenes Passwort und Zwei-Faktor-Anmeldung.",
+        "firewall": "Erste Firewall verbinden: API-Key anlegen, Zertifikat prüfen, fertig.",
+        "done": "Überblick, was als Nächstes sinnvoll ist."
+      },
+      "readOnlyNote": "Der Assistent liest nur von deiner Firewall. Geändert wird dort erst, wenn du später selbst etwas ausrollst."
+    },
+    "account": {
+      "title": "Konto absichern",
+      "passwordTitle": "Eigenes Passwort",
+      "passwordDone": "Geändert",
+      "passwordIntro": "Hast du beim Start kein ADMIN_PASSWORD gesetzt, hat OPNexus ein Zufallspasswort erzeugt. Setze jetzt ein eigenes. Dieser Schritt ist optional.",
+      "currentHint": "Das Passwort, mit dem du dich gerade angemeldet hast. Verloren? Auf dem Server: ./opnexus password",
+      "newHint": "Mindestens 10 Zeichen. Ein Passwortmanager ist am bequemsten.",
+      "twofaTitle": "Zwei-Faktor-Anmeldung (empfohlen)",
+      "twofaIntro": "OPNexus kann Firewalls verändern. Ein zweiter Faktor aus einer Authenticator-App schützt das Konto auch dann, wenn das Passwort bekannt wird."
+    },
+    "firewall": {
+      "title": "Erste Firewall verbinden",
+      "intro": "OPNexus spricht über die REST-API mit deiner OPNsense. Dafür braucht es einen API-Key. Das Anlegen dauert eine Minute.",
+      "connected": "Verbundene Firewalls",
+      "recheck": "Erneut prüfen",
+      "offlineHelp": "Prüfe Adresse und API-Key und ob die Firewall den Zugriff auf die Weboberfläche von diesem Server aus erlaubt.",
+      "keyTitle": "So legst du den API-Key in OPNsense an",
+      "keySteps": {
+        "menu": "In OPNsense System › Access › Users öffnen.",
+        "user": "Einen eigenen Benutzer (z. B. „opnexus“) anlegen oder einen vorhandenen bearbeiten.",
+        "key": "Beim Benutzer unter „API keys“ auf das Plus klicken. Der Browser lädt eine Datei apikey.txt herunter.",
+        "rights": "Dem Benutzer ausreichende Rechte geben, am einfachsten die Gruppe „admin“. Mit weniger Rechten schlagen einzelne Funktionen fehl."
+      },
+      "keyFileNote": "In apikey.txt steht der Key hinter key=, das Secret hinter secret=. Das Secret gibt es nur in dieser Datei.",
+      "addFirst": "Firewall eintragen",
+      "addAnother": "Weitere Firewall eintragen",
+      "nameHint": "Frei wählbar, nur zur Anzeige. Bei einem HA-Paar z. B. fw-a und fw-b.",
+      "urlHint": "Adresse der OPNsense-Weboberfläche, mit https:// und gegebenenfalls Port, z. B. https://192.168.1.1:8443.",
+      "clusterHint": "Besteht die Firewall aus einem HA-Paar? Trage beide Knoten als eigene Firewall ein und gib bei beiden denselben Cluster-Namen an.",
+      "connect": "Verbinden",
+      "connectNote": "OPNexus prüft sofort, ob die Firewall antwortet."
+    },
+    "done": {
+      "title": "Fertig",
+      "hostsOnline": "{online} von {total} Firewalls erreichbar",
+      "noHosts": "Noch keine Firewall verbunden",
+      "twofaOn": "Zwei-Faktor aktiv",
+      "twofaOff": "Zwei-Faktor nicht aktiv",
+      "nextTitle": "Das kannst du als Nächstes tun",
+      "next": {
+        "rules": {
+          "title": "Regeln anlegen",
+          "text": "Neue Regeln rollst du mit Bestätigung aus: Bestätigst du nicht innerhalb von {seconds} Sekunden, rollt OPNexus automatisch zurück."
+        },
+        "notify": {
+          "title": "Benachrichtigungen",
+          "text": "Per Webhook oder E-Mail melden lassen, wenn eine Firewall ausfällt oder ein Zertifikat abläuft."
+        },
+        "update": {
+          "title": "Updates",
+          "text": "Hinweis auf neue OPNexus-Versionen und Updates per Klick einrichten."
+        }
+      },
+      "backupBefore": "Eine Sicherung der OPNexus-Datenbank erstellst du auf dem Server mit",
+      "backupHelp": "Sichert die Datenbank (Regeln, Hosts, Verlauf). API-Secrets und Schlüssel liegen in eigenen Docker-Volumes und sind nicht im Dump. Details im Handbuch.",
+      "docs": "Dokumentation zum Kommandozeilen-Werkzeug"
     }
   }
 }

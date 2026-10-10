@@ -157,6 +157,56 @@ Verkehrsunterbrechung auf dem falschen Knoten.
 
 ---
 
+## Einrichtungsassistent und Passwort-Reset
+
+**Einrichtungsassistent** (`/setup`, System › Einrichtung). Vier Schritte mit
+kurzen Erklärungen, damit eine frische Installation ohne Handbuch funktioniert:
+
+1. **Willkommen:** was der Assistent tut, Sprache (Deutsch/Englisch). Er liest
+   nur von der Firewall; geändert wird dort erst, wenn du selbst etwas ausrollst.
+2. **Konto:** eigenes Passwort setzen (optional, empfohlen, wenn OPNexus beim
+   Start eines erzeugt hat) und Zwei-Faktor-Anmeldung einrichten (derselbe
+   Baustein wie in den Einstellungen).
+3. **Firewall:** Anleitung für den API-Key in OPNsense (System › Access › Users,
+   Benutzer, „API keys“, `apikey.txt`), dann Name, Adresse, Key und Secret
+   eintragen, Zertifikat abrufen und den Fingerabdruck bestätigen (dasselbe
+   Festsetzen wie beim Hinzufügen eines Hosts). Nach dem Anlegen zeigt der
+   Schritt sofort, ob die Firewall antwortet, und bei „offline“ was man prüft.
+   Weitere Firewalls, auch die Knoten eines HA-Paars, lassen sich im selben
+   Schritt nacheinander eintragen.
+4. **Fertig:** Zusammenfassung (Firewalls erreichbar, Zwei-Faktor an/aus) und
+   Verweise auf das, was danach sinnvoll ist: Regeln, Benachrichtigungen,
+   Updates, Datenbank-Sicherung.
+
+*Wann er sich öffnet:* nach der Anmeldung auf dem Dashboard, solange es **keinen
+Host** gibt und dieser Benutzer den Assistenten weder abgeschlossen noch
+übersprungen hat. Der Merker liegt pro Benutzer in `user_preferences.setup_done`
+(Migration `0005`, `PUT /api/settings {"setup_done": true}`). `read_only`-Benutzer
+bekommen ihn nicht angeboten. Wieder öffnen geht über System › Einrichtung, die
+Einstellungen und die Schnellsuche (Strg/⌘+K).
+
+**Passwort-Reset** (`opnexus password [BENUTZER] [--yes]`). Setzt für das
+Admin-Konto (Standard: `ADMIN_USERNAME`; gibt es das nicht und genau einen Admin,
+dieser) ein neues Zufallspasswort, gibt es einmal aus und beendet alle Sitzungen
+des Kontos. Eine Rückfrage kommt nur, wenn sich schon jemand angemeldet hat;
+ohne Terminal ist `--yes` nötig. Dahinter steht
+`docker compose exec backend python -m app.reset_password [BENUTZER]`, wie
+`app.reset_2fa` ein Werkzeug mit Shell-Zugriff auf den Server als
+Vertrauensgrenze. Eine eingeschaltete Zwei-Faktor-Anmeldung bleibt bestehen
+(verloren: `app.reset_2fa`). Es gibt bewusst keine Anzeige des alten Passworts:
+Gespeichert wird nur der Argon2id-Hash.
+
+*Verifikation 2026-10-10:* Backend-Tests (`test_setup_assistant.py`: Merker
+persistiert und bleibt bei anderen Einstellungen erhalten, Reset gibt Passwort
+aus, beendet Sitzungen und tauscht den Hash, unbekannter Benutzer scheitert;
+vollständige Suite 583 bestanden). Kommandozeile gegen einen Wegwerf-Stack:
+frische Installation ohne Rückfrage, nach einer Anmeldung Rückfrage bzw.
+`--yes`, ungültige Option/Benutzer mit Fehlercode. Browser (Chromium, 1440 und
+375 px, Wegwerf-Stack mit Mock-Firewall): Anmeldung landet auf `/setup`,
+Sprachwechsel, Passwortwechsel inklusive Fehlerfall, Host online und offline,
+Zusammenfassung, Abschließen merkt sich den Zustand, keine Konsolenfehler, kein
+horizontaler Überlauf.
+
 ## Barrierefreiheit (2026-10-04)
 
 Version 1.8.0 „Harris“. Ziel: OPNexus per Tastatur und mit Screenreader
@@ -2404,9 +2454,12 @@ in die Backend-Logs geschrieben:
 docker compose logs backend | grep -A5 "generated password"
 ```
 
-Danach in `.env` ein eigenes `ADMIN_PASSWORD` setzen (empfohlen) oder das
-Passwort über die künftige "Passwort ändern"-Funktion (`POST
-/api/auth/change-password`, aktuell nur per API, kein UI-Formular) ändern.
+Ist das Passwort verloren oder nie gesehen worden, setzt `opnexus password`
+(im Repo-Checkout `scripts/opnexus password`) ein **neues** Zufallspasswort und
+zeigt es an; siehe "Einrichtungsassistent und Passwort-Reset" unten. Danach
+das Passwort im Einrichtungsassistenten oder unter Einstellungen › Konto
+ändern, oder in `.env` ein eigenes `ADMIN_PASSWORD` setzen (gilt nur beim
+Anlegen des ersten Kontos).
 Login-Versuche sind pro (IP, Benutzername) und pro IP rate-limitiert
 (Standard: 5 Fehlversuche / 5 Minuten Sperre).
 

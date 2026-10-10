@@ -31,6 +31,25 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.16.0] "Hobby" — 2026-10-10
+
+Erste Schritte nach der Installation. Ende-zu-Ende gegen einen isolierten Stack getestet, siehe
+Handbuch „Einrichtungsassistent und Passwort-Reset“:
+
+- **Einrichtungsassistent** (`/setup`, System › Einrichtung): vier Schritte mit Erklärungen —
+  Willkommen und Sprache, Konto (eigenes Passwort, Zwei-Faktor-Anmeldung), erste Firewall
+  verbinden (inklusive Anleitung für den API-Key in OPNsense, Zertifikat festsetzen,
+  Verbindungsstatus) und eine Übersicht, was als Nächstes sinnvoll ist. Auf einer frischen
+  Installation ohne Hosts öffnet er sich nach der ersten Anmeldung von selbst; „Assistent
+  überspringen“ merkt sich das pro Benutzer, erneut öffnen geht jederzeit über System › Einrichtung
+  oder die Einstellungen. Nur für Admins. Neue Spalte `user_preferences.setup_done`
+  (Migration `0005`).
+- **`opnexus password [NAME]`** setzt ein neues Zufallspasswort für den Admin und zeigt es an
+  (`--yes` ohne Rückfrage; Rückfrage nur, wenn sich schon jemand angemeldet hat). Ersetzt das
+  Suchen im Backend-Log nach dem beim ersten Start erzeugten Passwort und taugt zugleich für ein
+  vergessenes Admin-Passwort. Alle Sitzungen des Kontos enden. Dahinter steht
+  `python -m app.reset_password`. Die Meldung beim ersten Start verweist darauf.
+
 ## [1.15.0] "Gyrfalcon" — 2026-10-10
 
 Updates aus dem Webinterface. Auf Klick, mit Fortschritt und automatischem Rollback; ein eigener,

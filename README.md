@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.15.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.16.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -20,6 +20,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
 - **Update center** — firmware updates for the fleet, aware of HA order and maintenance mode.
+- **Setup assistant** — a guided first run after installation: your own password, two-factor, and connecting the first firewall.
 - **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Access** — HTTPS with pinned firewall certificates, optional two-factor sign-in, roles (admin / read-only), keyboard operation, dark mode, German and English UI.
 
@@ -45,11 +46,13 @@ cp .env.example .env        # set POSTGRES_PASSWORD (and ADMIN_PASSWORD)
 docker compose up -d --build
 ```
 
-The UI is then available at `http://localhost:3100`. Without `ADMIN_PASSWORD` a random admin password is generated on first start and printed **once** in the backend log:
+The UI is then available at `http://localhost:3100`. Without `ADMIN_PASSWORD` a random admin password is generated on first start and printed **once** in the backend log. Lost it, or never saw it? This sets a new random one and prints it (use `scripts/opnexus` in a repo checkout, `./opnexus` in the release bundle):
 
 ```bash
-docker compose logs backend | grep -A5 "generated password"
+scripts/opnexus password
 ```
+
+After the first sign-in a short **setup assistant** opens on its own: set your own password, optionally enable two-factor sign-in, connect your first firewall (including how to create the API key in OPNsense). You can skip it and reopen it any time under System › Setup.
 
 For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-von-außerhalb-dieser-vm--produktivbetrieb-mit-tls) (German).
 
@@ -57,7 +60,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.15.0
+OPNEXUS_VERSION=1.16.0
 ```
 
 ```bash

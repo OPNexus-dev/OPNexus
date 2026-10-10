@@ -1098,7 +1098,7 @@ export interface UpdaterStatus {
 export const api = {
   search: (q: string, options?: RequestInit) => request<SearchHit[]>(`/search?${new URLSearchParams({ q })}`, options),
   settings: () => request<AppSettings>("/settings"),
-  saveSettings: (partial:{theme?:Theme;language?:Language}) => request<AppSettings>("/settings",{method:"PUT",body:JSON.stringify(partial)}),
+  saveSettings: (partial:{theme?:Theme;language?:Language;setup_done?:boolean}) => request<AppSettings>("/settings",{method:"PUT",body:JSON.stringify(partial)}),
   notificationSettings: () => request<NotificationSettings>("/notifications/settings"),
   saveNotificationSettings: (data: NotificationSettingsUpdate) => request<NotificationSettings>("/notifications/settings", { method: "PUT", body: JSON.stringify(data) }),
   logSettings: () => request<LogSettings>("/logs/settings"),
@@ -1527,7 +1527,7 @@ export interface CarpSwitchState {
 export interface CarpSwitchPreview {preview_id:string;expires_at:string;action:"carp_enter"|"carp_leave";state:CarpSwitchState;}
 
 export type Theme="light"|"dark"|"system";
-export interface AppSettings {username:string;theme:Theme;language:Language;deploy_confirm_window_seconds:number;session_lifetime_seconds:number;}
+export interface AppSettings {username:string;theme:Theme;language:Language;setup_done:boolean;deploy_confirm_window_seconds:number;session_lifetime_seconds:number;}
 
 export type SmtpSecurity = "none" | "starttls" | "ssl";
 

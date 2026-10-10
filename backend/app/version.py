@@ -6,5 +6,5 @@ convention — but both are bumped together whenever a release ships).
 Versioning scheme: see CHANGELOG.md ("Versionierung").
 """
 
-APP_VERSION = "1.15.0"
-APP_CODENAME = "Gyrfalcon"
+APP_VERSION = "1.16.0"
+APP_CODENAME = "Hobby"

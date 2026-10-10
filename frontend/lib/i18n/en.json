@@ -164,6 +164,11 @@
       },
       "badge": "Update available",
       "resultTime": "Result from {time}"
+    },
+    "setup": {
+      "title": "Setup assistant",
+      "intro": "Walks you step by step through password, two-factor sign-in and connecting a firewall.",
+      "open": "Open assistant"
     }
   },
   "nav": {
@@ -215,7 +220,8 @@
       "hostsystem-cron": "Cron",
       "hostsystem-syslog": "Syslog",
       "hostsystem-snapshots": "Snapshots",
-      "hostsystem-diagnostics": "Diagnostics"
+      "hostsystem-diagnostics": "Diagnostics",
+      "setup": "Setup"
     }
   },
   "dashboard": {
@@ -227,6 +233,7 @@
     "fleetHealth": "Fleet/CARP health",
     "noHosts": "No hosts yet",
     "toHosts": "Go to hosts",
+    "startSetup": "Start the setup assistant",
     "nothingPending": "Nothing pending",
     "nothingPendingDescription": "No pending confirmations, errors, or unclear maintenance operations.",
     "securityAndExpiryWarnings": "Security & expiry warnings",
@@ -2194,6 +2201,90 @@
       "open": "Port {port} open",
       "closed": "Port {port} not reachable",
       "noRecords": "No answer for “{name}”."
+    }
+  },
+  "setup": {
+    "title": "Setup assistant",
+    "skip": "Skip assistant",
+    "stepsLabel": "Setup steps",
+    "stepOf": "Step {current} of {total}",
+    "back": "Back",
+    "next": "Next",
+    "finish": "Finish setup",
+    "readOnly": "The assistant sets up the account and firewalls, so it is reserved for administrators.",
+    "toDashboard": "Go to dashboard",
+    "steps": {
+      "welcome": "Welcome",
+      "account": "Account",
+      "firewall": "Firewall",
+      "done": "Done"
+    },
+    "welcome": {
+      "title": "Welcome to OPNexus",
+      "intro": "OPNexus manages your OPNsense firewalls in one place: rules, NAT, VPN, certificates, updates and HA clusters. This assistant sets up the essentials in a few minutes. You can skip it at any time and reopen it later under System › Setup.",
+      "points": {
+        "account": "Secure the account: your own password and two-factor sign-in.",
+        "firewall": "Connect your first firewall: create an API key, check the certificate, done.",
+        "done": "An overview of what makes sense next."
+      },
+      "readOnlyNote": "The assistant only reads from your firewall. Nothing there changes until you roll something out yourself later."
+    },
+    "account": {
+      "title": "Secure the account",
+      "passwordTitle": "Your own password",
+      "passwordDone": "Changed",
+      "passwordIntro": "If you did not set ADMIN_PASSWORD at startup, OPNexus generated a random password. Set your own now. This step is optional.",
+      "currentHint": "The password you just signed in with. Lost it? On the server: ./opnexus password",
+      "newHint": "At least 10 characters. A password manager is the most convenient way.",
+      "twofaTitle": "Two-factor sign-in (recommended)",
+      "twofaIntro": "OPNexus can change firewalls. A second factor from an authenticator app protects the account even if the password becomes known."
+    },
+    "firewall": {
+      "title": "Connect your first firewall",
+      "intro": "OPNexus talks to your OPNsense through its REST API, which needs an API key. Creating one takes a minute.",
+      "connected": "Connected firewalls",
+      "recheck": "Check again",
+      "offlineHelp": "Check the address and API key, and that the firewall allows web interface access from this server.",
+      "keyTitle": "How to create the API key in OPNsense",
+      "keySteps": {
+        "menu": "In OPNsense open System › Access › Users.",
+        "user": "Create a dedicated user (e.g. “opnexus”) or edit an existing one.",
+        "key": "Under “API keys” on that user click the plus. Your browser downloads a file called apikey.txt.",
+        "rights": "Give the user sufficient privileges, most simply the “admin” group. With fewer privileges individual features fail."
+      },
+      "keyFileNote": "In apikey.txt the key follows key= and the secret follows secret=. The secret exists only in this file.",
+      "addFirst": "Add a firewall",
+      "addAnother": "Add another firewall",
+      "nameHint": "Free choice, display only. For an HA pair e.g. fw-a and fw-b.",
+      "urlHint": "Address of the OPNsense web interface, with https:// and the port if needed, e.g. https://192.168.1.1:8443.",
+      "clusterHint": "Is the firewall an HA pair? Add both nodes as separate firewalls and give both the same cluster name.",
+      "connect": "Connect",
+      "connectNote": "OPNexus checks right away whether the firewall answers."
+    },
+    "done": {
+      "title": "Done",
+      "hostsOnline": "{online} of {total} firewalls reachable",
+      "noHosts": "No firewall connected yet",
+      "twofaOn": "Two-factor on",
+      "twofaOff": "Two-factor off",
+      "nextTitle": "What you can do next",
+      "next": {
+        "rules": {
+          "title": "Create rules",
+          "text": "New rules are rolled out with a confirmation: if you do not confirm within {seconds} seconds, OPNexus rolls back automatically."
+        },
+        "notify": {
+          "title": "Notifications",
+          "text": "Get told by webhook or email when a firewall goes down or a certificate expires."
+        },
+        "update": {
+          "title": "Updates",
+          "text": "Set up the notice about new OPNexus versions and one-click updates."
+        }
+      },
+      "backupBefore": "You back up the OPNexus database on the server with",
+      "backupHelp": "Covers the database (rules, hosts, history). API secrets and keys live in their own Docker volumes and are not in the dump. See the manual for details.",
+      "docs": "Documentation for the command-line tool"
     }
   }
 }

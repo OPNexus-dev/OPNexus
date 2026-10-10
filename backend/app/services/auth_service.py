@@ -367,7 +367,8 @@ async def bootstrap_admin(db: AsyncSession) -> None:
         logger.warning(
             "\n%s\n  No ADMIN_PASSWORD set — created admin user '%s' with a\n"
             "  generated password:\n\n      %s\n\n"
-            "  Log in and change it now. This is shown only once.\n%s",
+            "  Log in and change it now. This is shown only once.\n"
+            "  Lost it?  ./opnexus password   (sets and prints a new one)\n%s",
             "=" * 64, settings.admin_username, password, "=" * 64,
         )
     else:

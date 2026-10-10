@@ -18,6 +18,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
 import { labelFor, type Language } from "@/lib/i18n";
@@ -110,6 +111,7 @@ function certProblemLabel(context: Record<string, unknown>, t: (key: string, par
 
 export default function DashboardPage() {
   const { language, t, errorMessage } = useLanguage();
+  const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [problems, setProblems] = useState<NotificationProblem[] | null>(null);
   const [firmwareWarnings, setFirmwareWarnings] = useState<FirmwareWarning[] | null>(null);
@@ -133,6 +135,15 @@ export default function DashboardPage() {
       .then(async (data) => {
         if (!active) return;
         setSummary(data);
+        // Fresh install: nothing to manage yet and the setup assistant was
+        // never finished or skipped, so open it instead of an empty dashboard.
+        if (data.hosts.length === 0) {
+          Promise.all([api.me(), api.settings()])
+            .then(([me, prefs]) => {
+              if (active && me.role !== "read_only" && !prefs.setup_done) router.replace("/setup");
+            })
+            .catch(() => {});
+        }
         const reachableHosts = data.hosts.filter((h) => h.status !== "offline" && h.status !== "disabled");
         const results = await Promise.all(
           reachableHosts.map(async (host) => {
@@ -164,7 +175,7 @@ export default function DashboardPage() {
     return () => {
       active = false;
     };
-  }, [errorMessage]);
+  }, [errorMessage, router]);
 
   const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift"].includes(p.problem_type));
   const securityWarningsLoading = problems === null || firmwareWarnings === null;
@@ -212,7 +223,7 @@ export default function DashboardPage() {
           {summary === null ? (
             <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-10" />)}</div>
           ) : summary.hosts.length === 0 ? (
-            <EmptyState icon={Network} title={t("dashboard.noHosts")} action={<Link href="/hosts" className="text-sm text-sky-700 hover:underline">{t("dashboard.toHosts")}</Link>} />
+            <EmptyState icon={Network} title={t("dashboard.noHosts")} action={<span className="flex flex-wrap justify-center gap-x-4 gap-y-1"><Link href="/setup" className="text-sm font-medium text-sky-700 hover:underline">{t("dashboard.startSetup")}</Link><Link href="/hosts" className="text-sm text-sky-700 hover:underline">{t("dashboard.toHosts")}</Link></span>} />
           ) : (
             <ul className="divide-y divide-slate-100">
               {summary.hosts.map((host) => (
