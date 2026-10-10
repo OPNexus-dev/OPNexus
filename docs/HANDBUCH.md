@@ -183,10 +183,6 @@ fand.
   `aria-hidden`, Unternavigation als eigene Landmarke. Leere Tabellenköpfe
   tragen einen nur für Screenreader sichtbaren Text („Aktionen“). Der
   Host-Status (`StatusDot`) war fest deutsch und folgt jetzt der Sprache.
-- **Prüfen.** `scripts/verify_a11y.mjs` wiederholt den axe-Lauf (nur lesend:
-  schreibende Anfragen werden im Browser lokal beantwortet, das Theme wird nur
-  in der Antwort überschrieben). Aufruf siehe Skriptkopf; Exit-Code ≠ 0 bei
-  Verstößen.
 
 **Verifikation:** axe-core (WCAG 2.0/2.1/2.2 A + AA, Best Practices) auf allen
 18 Seiten, Hell/Dunkel bei 1440 px und Hell bei 375 px: 0 Verstöße. Zusätzlich
@@ -379,14 +375,7 @@ unter `frontend/lib/i18n/` (`de.json`/`en.json`, ca. 1.400 Schlüssel).
   Firewall-Daten (Aliase, Regelbeschreibungen) und die deutschen Suchbegriffe der
   Befehlspalette (sie bleiben zusätzlich zu den englischen Seitentiteln nutzbar).
 - **Prüfwerkzeuge:** `python3 scripts/check_i18n.py` (Katalog-Parität,
-  Platzhalter, Abdeckung aller `ErrorCode`s, referenzierte Schlüssel) und
-  `scripts/verify_i18n.mjs` (Browser: Umschalten über die Einstellungen, alle
-  lesenden Seiten samt „Neu“-Dialogen auf deutsche Restwörter prüfen, 375 px auf
-  horizontalen Überlauf; schreibende Requests werden abgefangen; `/updates` wird
-  ausgelassen, weil das Öffnen dort Update-Suchen auf den Firewalls startet).
-  Das Skript braucht `OPNEXUS_TEST_PASSWORD` und als `OPNEXUS_BASE_URL` den in
-  `FRONTEND_ORIGIN` konfigurierten Origin (sonst blockiert die CORS-Freigabe die
-  Anmeldung).
+  Platzhalter, Abdeckung aller `ErrorCode`s, referenzierte Schlüssel).
 
 **Verifiziert 2026-09-19:** DE→EN→DE mit DB-Persistenz und Reload; 17 Seiten und
 alle „Neu“-Dialoge im Englischen ohne deutsche Restwörter (Treffer nur aus
@@ -909,7 +898,7 @@ bestätigt, bevor mit dem Picker begonnen wurde).
 
 ## Restore, Stufe 1: Vorschau + manuelle Übergabe (2026-09-09)
 
-Setzt `docs/restore-plan.md` (8. September) in seiner ersten Ausbaustufe um:
+Erste Ausbaustufe des Restore-Assistenten (geplant am 8. September):
 eine lokal gespeicherte OPNsense-Konfigurationssicherung (`backup_store.py`,
 bereits vorhandenes "Backups"-Panel) prüfen, sicher als Vorschau anzeigen und
 den Wechsel auf das OPNsense-Webinterface dokumentiert übergeben — **OPNexus
@@ -2096,7 +2085,7 @@ Details: `docs/verification/log-search-*`.
   Tabelle werden durch einen Datenbank-Trigger blockiert; Datenbankadministratoren
   können technisch weiterhin das Schema ändern. Keine rückwirkende Rekonstruktion
   früherer Aktionen. XML-Backups, Passwörter und API-Secrets werden nicht protokolliert.
-- **Restore**: separat ausgearbeiteter [Restore-Plan](restore-plan.md).
+- **Restore**: separat ausgearbeitet, siehe Abschnitt „Restore, Stufe 1“.
   Es gibt keine implementierte Restore-Ausführung. Der Plan unterscheidet lokale
   OPNexus-XML-Dateien von bereits auf der Firewall vorhandenen Revisionen.
 
@@ -2519,37 +2508,6 @@ dem `opnexus`-Skript und einer Kurzanleitung. Das Archiv wird manuell an die
 Release-Seite angehängt (GitHub und Forgejo haben dafür verschiedene APIs, die
 CI lädt es deshalb nicht hoch). Anwender brauchen damit nur Docker und diese
 vier Dateien.
-
-**Ein Release veröffentlichen:** Versionsdateien und `CHANGELOG.md` anpassen,
-committen, dann `git tag v1.9.1 && git push origin v1.9.1`. Der Release-
-Workflow prüft per `scripts/check_version.sh`, dass Tag, `version.py`,
-`version.ts` und CHANGELOG zusammenpassen, lässt die Tests laufen und pusht
-erst dann die Tags `1.9.1`, `1.9` und `1` (Vorabversionen wie `v1.10.0-rc1`
-nur mit vollem Tag).
-
-**Entwicklungs-Repo und öffentliches Repo (seit 2026-10-05):** Entwickelt wird
-im privaten Repo (volle Historie). Öffentlich ist `git.opnexus.dev/opnexus/opnexus`,
-und dort landet pro Release nur ein sauberer Snapshot-Commit — nie die
-Entwicklungs-Historie (frühere Lizenzstände, interne Übergaben,
-Live-Verifikation mit echten Adressen). Ablauf eines Releases:
-
-```bash
-git tag v1.11.0                                   # im Entwicklungs-Repo, nach check_version.sh
-scripts/publish_public.sh v1.11.0                 # Trockenlauf: Snapshot nach .public-repo/ prüfen
-scripts/publish_public.sh v1.11.0 --push          # Snapshot + Tag ins öffentliche Repo
-scripts/build_release_images.sh v1.11.0 --push    # Images bauen + in die Registry (ohne CI-Runner)
-scripts/make_update_feed.sh v1.11.0               # erst jetzt: Feed für updates.opnexus.dev
-```
-
-`publish_public.sh` exportiert den Tag (nicht den Working Tree), lässt
-`.claude/`, `docs/HANDOFF-*`, `docs/verification*` und `.env` weg und bricht
-ab, wenn im Export interne Adressen/Hostnamen (Muster stehen im Skript) oder
-Schlüsselblöcke stehen — ein Sicherheitsnetz, kein Ersatz fürs Durchsehen.
-Folge: Verweise auf `docs/verification*` laufen im öffentlichen Repo ins Leere
-(siehe Hinweis oben im Handbuch). Hinter dem Cloudflare-Proxy (Free) sind
-Uploads auf 100 MB pro Request begrenzt; der Push des 1.10.0-rc1 ging
-problemlos durch, bei größeren Layern die Registry-Domain auf „DNS only“
-stellen oder aus dem LAN pushen.
 
 **Registry ist reine Konfiguration**, nicht Teil der Workflow-Datei —
 Repository-Variablen `REGISTRY` (Default `ghcr.io`) und `IMAGE_NAMESPACE`
