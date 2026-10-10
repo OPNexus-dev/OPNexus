@@ -2566,8 +2566,8 @@ GitHub/Forgejo `releases/latest`, den man in `.env` einträgt:
 UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json
 ```
 
-Das ist der offizielle Feed des Projekts (statische JSON-Datei aus
-`website/latest.json`, siehe `website/README.md`). Jeder andere Feed im
+Das ist der offizielle Feed des Projekts (eine statische JSON-Datei, ausgeliefert als
+`updates.opnexus.dev/latest.json`). Jeder andere Feed im
 selben Format funktioniert ebenso, etwa `…/api/v1/repos/<owner>/opnexus/releases/latest`
 auf einer eigenen Forgejo/GitHub-Instanz.
 

@@ -5,7 +5,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 [Website](https://opnexus.dev) · [Changelog](CHANGELOG.md) · [Handbook (German)](docs/HANDBUCH.md) · [Deutsch](README.de.md)
 
-![Central firewall rules](website/assets/screenshots/en/rules-light-desktop.webp)
+![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
 > **Status:** `1.15.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
@@ -23,7 +23,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Access** — HTTPS with pinned firewall certificates, optional two-factor sign-in, roles (admin / read-only), keyboard operation, dark mode, German and English UI.
 
-![Cluster view](website/assets/screenshots/en/cluster-light-desktop.webp)
+![Cluster view](docs/screenshots/readme-cluster-en.webp)
 
 All screenshots show fictitious sample data.
 

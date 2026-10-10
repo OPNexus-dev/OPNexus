@@ -5,7 +5,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 [Website](https://opnexus.dev/) · [Changelog](CHANGELOG.md) · [Handbuch](docs/HANDBUCH.md) · [English](README.md)
 
-![Zentrale Firewall-Regeln](website/assets/screenshots/de/rules-light-desktop.webp)
+![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
 > **Stand:** `1.15.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
