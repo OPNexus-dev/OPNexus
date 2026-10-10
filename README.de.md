@@ -52,7 +52,7 @@ scripts/opnexus password
 
 Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassistent**: eigenes Passwort setzen, optional Zwei-Faktor-Anmeldung einschalten, die erste Firewall verbinden (samt Anleitung für den API-Key in OPNsense). Er lässt sich überspringen und jederzeit unter System › Einrichtung wieder öffnen.
 
-Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-von-außerhalb-dieser-vm--produktivbetrieb-mit-tls).
+Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls).
 
 **Fertige Images** (amd64) liegen in der Registry dieses Gitea. In der `.env`:
 

@@ -28,9 +28,8 @@ services:
     logging: *default-logging
     # Docker's default 64MB /dev/shm is too small for Postgres's parallel
     # vacuum/query workers on anything but a toy dataset — found the hard
-    # way running VACUUM on a multi-GB table (see docs/HANDBUCH.md's "Backup &
-    # Restore" section for how that table got that large in the first
-    # place). Official Postgres image docs recommend raising this.
+    # way running VACUUM on a multi-GB table (see docs/HANDBUCH.md's "Logs" section for how
+    # large that table gets). Official Postgres image docs recommend raising this.
     shm_size: "256mb"
     environment:
       # Datenbank- und Benutzername. Wirken nur beim allerersten Start eines
@@ -62,8 +61,8 @@ services:
   # path at all. Reuses the postgres image directly (pg_dump is already
   # in it) rather than adding a new image to build/maintain.
   # Excludes firewall_log_entries/host_resource_samples: high-volume,
-  # disposable operational history (see docs/HANDBUCH.md's "Backup & Restore"
-  # section for exactly how large this got in practice) rather than
+  # disposable operational history (see docs/HANDBUCH.md's "Logs" section for
+  # how large these get) rather than
   # config a disaster recovery actually needs — including them would
   # make the backup itself multi-GB and a disk-usage risk in its own
   # right, working against the point of this service.
@@ -142,7 +141,7 @@ services:
     # Bound to loopback only by default — reachable from this host, not
     # the network. Set BIND_ADDRESS in .env (e.g. to 0.0.0.0, or a
     # specific interface IP) for network-wide access instead of editing
-    # this file — see docs/HANDBUCH.md's "Produktivbetrieb" for the TLS-proxy
+    # this file — see docs/HANDBUCH.md's "Zugriff aus dem Netz und TLS" for the TLS-proxy
     # alternative, which is safer than widening this directly.
     ports:
       - "${BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8100}:8000"

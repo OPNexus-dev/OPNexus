@@ -54,7 +54,7 @@ scripts/opnexus password
 
 After the first sign-in a short **setup assistant** opens on its own: set your own password, optionally enable two-factor sign-in, connect your first firewall (including how to create the API key in OPNsense). You can skip it and reopen it any time under System › Setup.
 
-For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-von-außerhalb-dieser-vm--produktivbetrieb-mit-tls) (German).
+For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) (German).
 
 **Prebuilt images** (amd64) are published to this Gitea's registry. In `.env`:
 
