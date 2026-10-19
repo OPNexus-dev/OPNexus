@@ -112,13 +112,15 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
             if user is not None:
                 parts = request.url.path.strip("/").split("/")
-                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system"}
+                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system", "backups": "backup"}
                 writing = request.method in ("POST", "PUT", "PATCH", "DELETE")
                 if len(parts) > 1 and parts[1] in _SECURITY_KINDS:
                     event = {**_security_event(parts, request.method), "details": {"method": request.method, "path": request.url.path}}
                     kind = event["kind"]
                 else:
                     kind = kinds.get(parts[1]) if len(parts) > 1 else None
+                    if len(parts) > 2 and parts[1] == "settings":
+                        kind = "settings"  # where OPNexus stores/sends things (own prefs at /api/settings stay unaudited)
                     action = ("delete" if request.method == "DELETE" else parts[-1] if len(parts) > 3 else "edit" if request.method in ("PUT", "PATCH") else "create")
                     event = {"kind": kind, "action": action, "entity_id": parts[2] if len(parts) > 2 else None,
                              "host_id": parts[2] if kind == "host" and len(parts) > 2 else None,
@@ -143,6 +145,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         status_code=403,
                         content={"detail": {"code": ErrorCode.READ_ONLY_ACCESS.value, "params": {}}},
                     )
+                if user.role == "operator" and api_token_service.operator_denies(request.method, request.url.path):
+                    if tracked:
+                        ctx = audit_service.context.set({"actor": user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150], "id": str(uuid.uuid4()), "action": event["action"]})
+                        try:
+                            await audit_service.persist(**event, status="denied", message="Nur für Administratoren")
+                        finally:
+                            audit_service.context.reset(ctx)
+                    return JSONResponse(status_code=403, content={"detail": {"code": ErrorCode.ADMIN_REQUIRED.value, "params": {}}})
                 request.state.user = user
                 request.state.api_token = api_token
                 actor = user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150]

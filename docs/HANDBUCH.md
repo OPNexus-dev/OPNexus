@@ -215,10 +215,18 @@ Alle Einstellungen stehen in der `.env` neben der `docker-compose.yml`. Nach ein
 
 ## Benutzer, Rollen und Anmeldung
 
-**Rollen.** Es gibt zwei: `admin` (voller Zugriff, inklusive Benutzerverwaltung) und
-`read_only`. Ein Nur-Lesen-Benutzer sieht alles, kann aber nichts ändern: alle
-Schreibaktionen sind in der Oberfläche gesperrt und werden vom Backend mit 403
-abgelehnt. Nur das eigene Passwort sowie Farbschema und Sprache bleiben änderbar.
+**Rollen.** Es gibt drei:
+
+| Rolle | Darf |
+|---|---|
+| `admin` | alles, inklusive Benutzer, Einstellungen, Hosts anlegen/löschen, OPNexus-Update, Roh-Download von Konfigurationssicherungen |
+| `operator` | ausrollen und betreiben: Regeln, Aliase, NAT, VPN, Zertifikate, Wartung, Sicherungen, Sicherheitsprüfung. **Nicht:** Benutzer, Einstellungen (Benachrichtigungen, Backups, Audit-Export, Logs), Hosts anlegen/ändern/löschen, OPNexus-Update, Roh-Backups herunterladen |
+| `read_only` | sieht alles, ändert nichts |
+
+Ein Nur-Lesen-Benutzer kann nichts ändern: alle Schreibaktionen sind in der
+Oberfläche gesperrt und werden vom Backend mit 403 abgelehnt. Ein Operator bekommt bei
+den Admin-Aktionen ebenfalls 403 („erfordert die Rolle Admin“); der Versuch steht im
+Audit. Nur das eigene Passwort sowie Farbschema und Sprache bleiben für jede Rolle änderbar.
 
 **Benutzerverwaltung** (System › Benutzer, nur Admins): Benutzer anlegen, Rolle
 ändern, Passwort zurücksetzen, Zwei-Faktor eines anderen Benutzers zurücksetzen,
@@ -707,6 +715,28 @@ Auf der Host-Detailseite sicherst du die Konfiguration einer Firewall
 (**Jetzt sichern**) und siehst die lokal gespeicherten Sicherungen. Das ist nicht
 die Sicherung von OPNexus selbst, siehe [Sichern und Wiederherstellen](#sichern-und-wiederherstellen).
 
+**Geplant und ausgelagert** (Einstellungen › Backups): OPNexus sichert jede Firewall
+automatisch (Standard: täglich) und behält die neuesten (Standard 30 je Firewall). Optional wird jede
+Sicherung **auf deinem Server mit einer Passphrase verschlüsselt** (AES-256-GCM, Schlüssel per scrypt
+aus der Passphrase) und auf **S3-kompatiblen Speicher** hochgeladen (AWS S3, MinIO, Backblaze B2,
+Wasabi, Cloudflare R2, Hetzner Object Storage …; Endpunkt muss `https://` sein). „Ziel testen“
+schreibt, liest und löscht ein Prüfobjekt. Jede Sicherung geht nur einmal hoch, gelöscht wird
+offsite nie (dafür die Lifecycle-Regeln des Buckets nutzen). **Ohne die Passphrase ist eine
+Offsite-Kopie unlesbar** – bewahre sie außerhalb von OPNexus auf. Entschlüsseln:
+
+```bash
+docker compose exec -T -e BACKUP_PASSPHRASE='…' backend python -m app.backup_decrypt < datei.opxbak > config.xml
+```
+
+Die Benachrichtigung „Kein aktuelles Backup“ meldet sich, wenn ein Host drei Intervalle (mindestens
+6 Stunden) ohne Sicherung war, „Offsite-Backup fehlgeschlagen“ bei Problemen mit dem Ziel. Die
+Offsite-Anbindung ist gegen die offiziellen AWS-Signaturbeispiele geprüft, aber noch nicht gegen einen
+laufenden S3-Anbieter; „Ziel testen“ zeigt dir sofort, ob dein Anbieter funktioniert.
+
+**Änderungen ansehen:** Der Knopf „Änderungen“ neben einer Sicherung zeigt, was sich gegenüber der
+vorherigen geändert hat. Geheimnisse (Passwörter, Schlüssel, Tokens, Zertifikate) erscheinen nur als
+Hash: ein geändertes Geheimnis zeigt sich als geänderter Hash, der Wert verlässt den Server nie.
+
 **Wiederherstellen** prüft eine gespeicherte Sicherung als Vorschau (Format,
 Metadaten, geheime Felder werden unkenntlich gemacht) und übergibt dann an das
 OPNsense-Webinterface. **OPNexus schreibt dabei nichts auf die Firewall.** Du
@@ -718,6 +748,17 @@ Sicherung) zeigt die Vorschau eine Warnung.
 ---
 
 ## Überwachung: Dashboard, Logs, Audit, Benachrichtigungen
+
+### Regelnutzung
+
+Auf der Seite **Sicherheitslage** zeigt die Tabelle „Regelnutzung“, wann jede Regel
+zuletzt Verkehr getroffen hat. OPNexus liest dafür die Paketzähler der Firewall. Weil diese
+bei jeder Änderung und jedem Neustart von vorn beginnen, merkt sich OPNexus den Zeitpunkt, an dem
+ein Zähler zuletzt gewachsen ist (Auflösung: eine Prüfung, also bis zu 6 Stunden). Eine Regel gilt
+als **ungenutzt**, wenn OPNexus sie mindestens 30 Tage beobachtet hat, ohne einen Treffer zu sehen;
+bis dahin steht sie auf „Daten werden gesammelt“, damit eine neue Installation keinen Fehlalarm
+auslöst. Nur Regeln aus dem Regel-Editor bzw. der API werden erfasst (die automatischen Regeln von
+OPNsense nicht). Ungenutzte Regeln fließen als Befund „Regeln in Benutzung“ in die Sicherheitslage ein.
 
 ### Dashboard
 
@@ -761,6 +802,17 @@ Zeitpunkt, Korrelations-ID und Inhalt. Filter, Seitenwechsel und JSON-Export sin
 vorhanden. Einträge bleiben auch nach dem Löschen einer Regel oder eines Hosts
 erhalten; ein Datenbank-Trigger verhindert Änderungen und Löschen. Passwörter,
 API-Secrets und Konfigurationsdateien werden nicht protokolliert.
+
+### Audit-Export
+
+Unter **Einstellungen › Audit-Export** leitest du das Audit (wer hat wann was mit welchem
+Ergebnis geändert) an einen **Syslog-Server** (RFC 5424 über UDP, TCP oder TLS; Facility local0,
+Schweregrad „warning“ bei abgelehnten oder fehlgeschlagenen Aktionen) und/oder einen **Webhook**
+(JSON-Stapel, optional mit HMAC-SHA256-Signatur im Header `X-OPNexus-Signature`) weiter, damit es
+auch außerhalb von OPNexus vorliegt. Gesendet werden nur neue Ereignisse ab dem Einschalten; der
+Inhalt von Firewall-Objekten (Vorher-/Nachher-Daten) ist nie dabei. Die Zustellung ist „mindestens
+einmal“: scheitert das Ziel, versucht OPNexus dieselben Ereignisse erneut, jedes trägt seine ID zum
+Entdoppeln. Der Status der letzten Zustellung steht in den Einstellungen.
 
 ### Benachrichtigungen
 
@@ -920,12 +972,22 @@ mit den Rechten des Tokens: ein „Lesen“-Token sieht auch hier keine Geheimni
 entsteht vor jeder Schema-Migration ein Dump (die letzten 5 bleiben).
 **Manuell:** `./opnexus backup` schreibt sofort `manual-<zeit>.dump`.
 
+**Vollsicherung (empfohlen):** Der Dump allein reicht nicht, um einen OPNexus-Server neu aufzubauen,
+denn die Geheimnisse liegen in eigenen Volumes. `./opnexus backup --full [DATEI]` packt Datenbank
+und alle Geheimnis-Volumes (Firewall-Zugänge, Zwei-Faktor, VPN- und Zertifikatsschlüssel,
+Konfigurationssicherungen) in **eine mit Passphrase verschlüsselte Datei** (`.opxfull`). Die Passphrase
+wird abgefragt (oder `OPNEXUS_BACKUP_PASSPHRASE`). Auf einer frischen Installation (gleiche oder
+neuere Version) spielt `./opnexus restore DATEI` alles zurück: Es prüft die Datei, fragt nach, stoppt die
+Dienste, legt eine Sicherheitskopie des jetzigen Zustands an, spielt Datenbank und Volumes ein und
+startet neu. Nicht enthalten: Log-Erfassung, Messwerte und `caddy_data` (die interne CA: nach einer
+Wiederherstellung auf neuer Hardware importierst du das CA-Zertifikat im Browser erneut).
+Datei und Passphrase getrennt vom Server aufbewahren.
+
 **Was nicht im Dump ist:**
 - Die Tabellen der **Log-Erfassung** und der **Systemauslastung** (nur das Schema).
   Nach einer Wiederherstellung sind sie leer und füllen sich aus den Firewalls.
 - **Geheimnisse** (API-Secrets, VPN- und Zertifikatsschlüssel, Zwei-Faktor): sie
-  liegen in den eigenen Volumes. Für eine vollständige Sicherung auch diese Volumes
-  und `caddy_data` sichern.
+  liegen in den eigenen Volumes. Für eine vollständige Sicherung `./opnexus backup --full` (siehe oben) verwenden.
 
 **Wiederherstellen** in eine **leere** Datenbank (nicht mit `--clean` in eine
 bestehende):

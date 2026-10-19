@@ -19,7 +19,8 @@ export default function TokensPage() {
   const { t, errorMessage, locale } = useLanguage();
   const toast = useToast();
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<string>("read_only");
+  const isAdmin = role === "admin";
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [created, setCreated] = useState<(ApiToken & { token: string }) | null>(null);
@@ -28,7 +29,7 @@ export default function TokensPage() {
     try {
       const [list, me] = await Promise.all([api.listApiTokens(), api.me()]);
       setTokens(list);
-      setIsAdmin(me.role === "admin");
+      setRole(me.role ?? "read_only");
       setError(null);
     } catch (e) {
       setError(errorMessage(e, "tokens.loadFailed"));
@@ -121,7 +122,7 @@ export default function TokensPage() {
 
       {showCreate && (
         <CreateTokenModal
-          isAdmin={isAdmin}
+          role={role}
           onClose={() => setShowCreate(false)}
           onCreated={async (token) => {
             setShowCreate(false);
@@ -136,11 +137,11 @@ export default function TokensPage() {
 }
 
 function CreateTokenModal({
-  isAdmin,
+  role,
   onClose,
   onCreated,
 }: {
-  isAdmin: boolean;
+  role: string;
   onClose: () => void;
   onCreated: (token: ApiToken & { token: string }) => void;
 }) {
@@ -180,8 +181,8 @@ function CreateTokenModal({
         <FieldGroup label={t("tokens.colScope")} hint={t(`tokens.scopeHint.${scope}`)}>
           <Select value={scope} onChange={(e) => setScope(e.target.value as TokenScope)}>
             <option value="read">{t("tokens.scope.read")}</option>
-            {isAdmin && <option value="deploy">{t("tokens.scope.deploy")}</option>}
-            {isAdmin && <option value="admin">{t("tokens.scope.admin")}</option>}
+            {(role === "admin" || role === "operator") && <option value="deploy">{t("tokens.scope.deploy")}</option>}
+            {role === "admin" && <option value="admin">{t("tokens.scope.admin")}</option>}
           </Select>
         </FieldGroup>
         <FieldGroup label={t("tokens.colExpires")}>

@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
-from app.services import backup_store
+from app.services import backup_store, rule_hit_service
 from app.services import opnsense_client as client
 from app.services.opnsense_client import OpnsenseAPIError
 
@@ -171,7 +171,8 @@ def _listing(items: list[str]) -> dict:
     return {"count": len(items), "examples": items[:MAX_EXAMPLES]}
 
 
-def evaluate(xml_bytes: bytes, *, firmware_status: str | None, newest_backup_age_s: float | None) -> list[dict]:
+def evaluate(xml_bytes: bytes, *, firmware_status: str | None, newest_backup_age_s: float | None,
+             unused_rules: dict | None = None) -> list[dict]:
     if len(xml_bytes) > MAX_CONFIG_BYTES or not xml_bytes.strip():
         raise ValueError("config.xml missing or too large")
     root = safe_ET.fromstring(xml_bytes)
@@ -211,6 +212,11 @@ def evaluate(xml_bytes: bytes, *, firmware_status: str | None, newest_backup_age
     findings.append(_finding("rules_duplicate", "low", not analysis["duplicates"], **_listing(analysis["duplicates"])))
     undocumented = [f"{r['action']} {r['src']} → {r['dst']}" for r in all_rules if r["enabled"] and not r["descr"]]
     findings.append(_finding("rules_documented", "low", not undocumented, **_listing(undocumented)))
+
+    # Usage (from the pf counters OPNexus has been sampling; None = no data yet)
+    if unused_rules is not None:
+        names = unused_rules["unused"]
+        findings.append(_finding("rules_unused", "low", None if (not names and unused_rules["collecting"]) else not names, **_listing(names)))
 
     # Operations
     findings.append(_finding("ntp_configured", "low", bool(_text(root, "system/timeservers"))))
@@ -257,7 +263,12 @@ async def check_host(db: AsyncSession, host: OpnsenseHost) -> ComplianceResult:
             firmware_status = None
         snapshots = backup_store.list_snapshots(host.id)
         age = (datetime.now(timezone.utc) - snapshots[0]["created_at"]).total_seconds() if snapshots else None
-        findings = evaluate(xml, firmware_status=firmware_status, newest_backup_age_s=age)
+        try:
+            await rule_hit_service.sample_host(db, host)
+        except OpnsenseAPIError:
+            pass  # usage data is a bonus; the check does not depend on it
+        findings = evaluate(xml, firmware_status=firmware_status, newest_backup_age_s=age,
+                            unused_rules=await rule_hit_service.unused_summary(db, host.id))
         row.findings, row.score, row.error = findings, score(findings), None
     except OpnsenseAPIError as exc:
         row.findings, row.score, row.error = [], None, "unreachable"

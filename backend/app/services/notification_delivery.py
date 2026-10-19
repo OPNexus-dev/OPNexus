@@ -34,6 +34,8 @@ _LABELS = {
     "network_drift": "Netzwerk-Abweichung im Cluster",
     "carp_auto_revert_failed": "CARP-Auto-Revert fehlgeschlagen",
     "scheduled_maintenance_failed": "Geplante Wartung nicht ausgeführt",
+    "backup_stale": "Kein aktuelles Backup",
+    "backup_offsite_failed": "Offsite-Backup fehlgeschlagen",
 }
 
 

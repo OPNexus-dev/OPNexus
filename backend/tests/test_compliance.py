@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
+from sqlalchemy import select
 
 from app.services import compliance_service as cs
 from tests.test_api_tokens import _bearer, _make
@@ -158,6 +159,8 @@ def _mock_host(respx_mock, xml, firmware_status="none"):
     respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(200, content=xml))
     respx_mock.get(url__regex=r".*/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": firmware_status}))
+    respx_mock.get(url__regex=r".*/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
+    respx_mock.get(url__regex=r".*/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
 @pytest.mark.asyncio
@@ -212,3 +215,112 @@ async def test_metrics_expose_the_score(client, respx_mock):
     text = (await client.get("/api/metrics")).text
     assert f'opnexus_host_compliance_score{{host="fw1",cluster=""}} {result["score"]}' in text
     assert 'opnexus_host_compliance_findings{severity="critical",host="fw1",cluster=""} 1' in text
+
+
+# ── rule usage (pf counters) ─────────────────────────────────────────────
+
+from app.database import SessionLocal  # noqa: E402
+from app.models.host import OpnsenseHost  # noqa: E402
+from app.models.rule_hit import RuleHit  # noqa: E402
+from app.services import rule_hit_service as rh  # noqa: E402
+
+U1, U2, U3 = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222", "33333333-3333-4333-8333-333333333333"
+
+
+def _pf(**packets):
+    """pfStatistics/rules shaped like the real answer: one entry per pf line, label = rule uuid."""
+    lines = {f'@{i} pass in quick on vtnet0 inet all flags S/SA keep state label "{u}"': {"evaluations": 10, "packets": p, "bytes": p * 100}
+             for i, (u, p) in enumerate(packets.items())}
+    lines['@99 pass out log quick on vtnet0 inet6 proto udp from fe80::/10 to any keep state label "2f2c37025cd02b5cd29fd330f8e48954"'] = {"evaluations": 5, "packets": 9, "bytes": 9}
+    return {"rules": {"filter rules": lines}}
+
+
+def _search(*uuids, disabled=()):
+    rows = [{"uuid": u, "description": f"rule {u[0]}", "enabled": "0" if u in disabled else "1"} for u in uuids]
+    rows.append({"uuid": "autoautoauto", "description": "Default deny", "enabled": "1", "is_automatic": True})
+    return {"rows": rows}
+
+
+def test_pf_counters_are_tied_to_rule_uuids_and_summed_over_expanded_lines():
+    stats = _pf(**{U1: 5})
+    stats["rules"]["filter rules"][f'@7 pass in quick on vtnet0 inet6 all label "{U1}"'] = {"evaluations": 2, "packets": 3, "bytes": 30}
+    got = rh.parse_counters(stats)
+    assert got[U1] == {"packets": 8, "bytes": 530, "evaluations": 12}
+    assert "2f2c37025cd02b5cd29fd330f8e48954" not in got  # md5 labels are automatic rules, not user rules
+    assert rh.parse_counters({}) == {} and rh.parse_counters({"rules": None}) == {}
+
+
+def test_configured_rules_skip_automatic_ones():
+    assert set(rh.configured_rules(_search(U1, U2, disabled=(U2,)))) == {U1, U2}
+    assert rh.configured_rules(_search(U1, U2, disabled=(U2,)))[U2]["enabled"] is False
+
+
+async def _sample(host_id, stats, search, at):
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, __import__("uuid").UUID(host_id))
+        from unittest.mock import AsyncMock, patch
+        with patch.object(rh.client, "get_pf_rule_statistics", AsyncMock(return_value=stats)), \
+             patch.object(rh.client, "search_rules", AsyncMock(return_value=search)):
+            return await rh.sample_host(db, host, now=at)
+
+
+async def _rows(host_id):
+    async with SessionLocal() as db:
+        return {r.rule_uuid: r for r in (await db.scalars(select(RuleHit))).all()}
+
+
+@pytest.mark.asyncio
+async def test_last_hit_tracking_survives_counter_resets(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    day0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    day = lambda n: day0 + timedelta(days=n)  # noqa: E731
+    await _sample(host["id"], _pf(**{U1: 0, U2: 7, U3: 0}), _search(U1, U2, U3), day(0))
+    rows = await _rows(host["id"])
+    assert rows[U1].last_hit_at is None and rows[U2].last_hit_at == day(0)       # already matching when first seen
+    await _sample(host["id"], _pf(**{U1: 0, U2: 7, U3: 4}), _search(U1, U2, U3), day(1))
+    rows = await _rows(host["id"])
+    assert rows[U2].last_hit_at == day(0) and rows[U3].last_hit_at == day(1)     # U2 flat, U3 grew
+    # pf reloaded (counters restart): U2 is lower but above zero -> hit since the reload; U1 at zero tells nothing
+    await _sample(host["id"], _pf(**{U1: 0, U2: 2, U3: 0}), _search(U1, U2, U3), day(2))
+    rows = await _rows(host["id"])
+    assert rows[U2].last_hit_at == day(2) and rows[U3].last_hit_at == day(1) and rows[U1].last_hit_at is None
+    # a rule that disappeared from the firewall is forgotten
+    await _sample(host["id"], _pf(**{U1: 0, U2: 2}), _search(U1, U2), day(3))
+    assert set(await _rows(host["id"])) == {U1, U2}
+
+
+@pytest.mark.asyncio
+async def test_unused_only_after_the_observation_window(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    now = datetime.now(timezone.utc)
+    await _sample(host["id"], _pf(**{U1: 0, U2: 5}), _search(U1, U2, U3, disabled=(U3,)), now - timedelta(days=10))
+    async with SessionLocal() as db:
+        states = {r.rule_uuid: rh.classify(r, now) for r in (await db.scalars(select(RuleHit))).all()}
+        summary = await rh.unused_summary(db, __import__("uuid").UUID(host["id"]))
+    assert states == {U1: "collecting", U2: "used", U3: "disabled"}
+    assert summary == {"unused": [], "collecting": 1}
+    await _sample(host["id"], _pf(**{U1: 0, U2: 5}), _search(U1, U2, U3, disabled=(U3,)), now - timedelta(days=1))
+    async with SessionLocal() as db:
+        row = (await db.scalars(select(RuleHit).where(RuleHit.rule_uuid == U1))).one()
+        row.first_seen_at = now - timedelta(days=45)  # watched long enough
+        await db.commit()
+        summary = await rh.unused_summary(db, __import__("uuid").UUID(host["id"]))
+    assert summary["unused"] == ["rule 1"]
+    body = (await client.get(f"/api/hosts/{host['id']}/rule-hits")).json()
+    assert body[0]["state"] == "unused" and body[0]["rule_uuid"] == U1  # unused rules first
+
+
+def test_unused_finding_is_unknown_while_collecting_and_a_low_finding_when_found():
+    xml = _config()
+    ids = lambda f: {x["id"]: x for x in f}  # noqa: E731
+    none_yet = ids(cs.evaluate(xml, firmware_status="none", newest_backup_age_s=1))
+    assert "rules_unused" not in none_yet
+    collecting = ids(cs.evaluate(xml, firmware_status="none", newest_backup_age_s=1, unused_rules={"unused": [], "collecting": 3}))
+    assert collecting["rules_unused"]["passed"] is None
+    clean = ids(cs.evaluate(xml, firmware_status="none", newest_backup_age_s=1, unused_rules={"unused": [], "collecting": 0}))
+    assert clean["rules_unused"]["passed"] is True
+    found = ids(cs.evaluate(xml, firmware_status="none", newest_backup_age_s=1, unused_rules={"unused": ["old vpn rule"], "collecting": 0}))
+    assert found["rules_unused"]["passed"] is False and found["rules_unused"]["severity"] == "low"
+    assert found["rules_unused"]["params"] == {"count": 1, "examples": ["old vpn rule"]}

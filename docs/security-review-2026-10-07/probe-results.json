@@ -1,0 +1,70 @@
+[
+  {
+    "probe": "read_only_backup_download",
+    "status": 200,
+    "synthetic_marker_returned": true
+  },
+  {
+    "probe": "read_only_write_control",
+    "status": 403
+  },
+  {
+    "probe": "validation_error_secret_echo",
+    "status": 422,
+    "synthetic_marker_returned": true
+  },
+  {
+    "probe": "password_reset_revoke",
+    "sql_statements": [],
+    "commits": 1
+  },
+  {
+    "probe": "totp_parallel_replay",
+    "accepted": [
+      true,
+      true
+    ]
+  },
+  {
+    "probe": "recovery_parallel_replay",
+    "accepted": [
+      true,
+      true
+    ]
+  },
+  {
+    "probe": "status_error_disclosure",
+    "synthetic_marker_returned": true
+  },
+  {
+    "probe": "smtp_default_tls_context",
+    "verify_mode": 0,
+    "check_hostname": false
+  },
+  {
+    "probe": "cross_scheme_origin",
+    "accepted": true
+  },
+  {
+    "probe": "plaintext_firewall_url",
+    "accepted": true,
+    "verify_tls": true
+  },
+  {
+    "probe": "expired_throttle_records",
+    "before": 200,
+    "after": 200,
+    "username_counters": 100
+  },
+  {
+    "probe": "ambiguous_apply_rollback",
+    "status": "error",
+    "revert_deadline": null,
+    "previous_payload": null,
+    "remote_uuid_known": true
+  },
+  {
+    "probe": "vpn_preview_secret_binding",
+    "same_token_after_secret_change": true
+  }
+]

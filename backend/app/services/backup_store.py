@@ -42,7 +42,8 @@ def list_snapshots(host_id: uuid.UUID) -> list[dict]:
             "created_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
             "size": stat.st_size,
         })
-    return sorted(items, key=lambda i: i["created_at"], reverse=True)
+    # Names are sortable timestamps: they break ties between files written within one mtime tick.
+    return sorted(items, key=lambda i: (i["created_at"], i["id"]), reverse=True)
 
 
 def read_snapshot(host_id: uuid.UUID, backup_id: str) -> bytes | None:
@@ -53,3 +54,11 @@ def read_snapshot(host_id: uuid.UUID, backup_id: str) -> bytes | None:
     if backup_id != path.name or not path.is_file():
         return None
     return path.read_bytes()
+
+
+def delete_snapshot(host_id: uuid.UUID, backup_id: str) -> bool:
+    path = _host_dir(host_id) / backup_id
+    if backup_id != path.name or not path.is_file():
+        return False
+    path.unlink()
+    return True

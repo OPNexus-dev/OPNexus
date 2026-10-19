@@ -10,19 +10,21 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { api, AliasOption, Host, HostBackup, LiveRule, PolicyAlias, RestoreOperation, Rule } from "@/lib/api";
-import { ArrowLeft, Download, ExternalLink, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { ArrowLeft, Download, ExternalLink, GitCompare, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { BackupDiffModal } from "@/components/BackupDiffModal";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Collapsible } from "@/components/ui/Collapsible";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin } from "@/lib/useReadOnly";
 
 export default function HostDetailPage() {
   const { t, ts, errorMessage, locale } = useLanguage();
   const { id } = useParams<{ id: string }>();
   // The raw config.xml contains secrets: its download is admin-only on the server too.
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
+  const [diffTarget, setDiffTarget] = useState<{ older: string; newer: string } | null>(null);
   const [host, setHost] = useState<Host | null>(null);
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [liveRules, setLiveRules] = useState<LiveRule[] | null>(null);
@@ -391,11 +393,17 @@ export default function HostDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {backups.map((backup) => (
+                  {backups.map((backup, index) => (
                     <tr key={backup.id} className="border-b border-slate-100 last:border-0">
                       <td className="px-5 py-3 text-slate-900">{new Date(backup.created_at).toLocaleString(locale)}</td>
                       <td className="px-5 py-3 text-slate-500">{formatSize(backup.size)}</td>
                       <td className="px-5 py-3 text-right">
+                        {index + 1 < backups.length && (
+                          <Button variant="ghost" onClick={() => setDiffTarget({ older: backups[index + 1].id, newer: backup.id })}>
+                            <GitCompare size={14} />
+                            {t("hostDetail.changes")}
+                          </Button>
+                        )}
                         {!readOnly && (
                           <Button variant="ghost" onClick={() => handleDownloadBackup(backup.id)}>
                             <Download size={14} />
@@ -447,6 +455,7 @@ export default function HostDetailPage() {
           )}
         </>
       )}
+      {diffTarget && host && <BackupDiffModal hostId={host.id} older={diffTarget.older} newer={diffTarget.newer} onClose={() => setDiffTarget(null)} />}
       {restoreTarget && (
         <RestoreWizard
           hostId={id}

@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { api, UpdaterStatus } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin } from "@/lib/useReadOnly";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import clsx from "clsx";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -22,7 +22,7 @@ const RELOAD_DELAY_MS = 3500;
  */
 export function OpnexusUpdateSection() {
   const { t, errorMessage, locale } = useLanguage();
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const [status, setStatus] = useState<UpdaterStatus | null>(null);
   const [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"update" | "rollback" | null>(null);

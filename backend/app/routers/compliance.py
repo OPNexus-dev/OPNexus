@@ -5,6 +5,7 @@ for dashboards, Prometheus and MCP. A check (POST) downloads the host's config
 read-only, evaluates it and stores the result; see services/compliance_service.py.
 """
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -14,7 +15,8 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
-from app.services import compliance_service
+from app.models.rule_hit import RuleHit
+from app.services import compliance_service, rule_hit_service
 
 router = APIRouter(tags=["compliance"])
 
@@ -65,3 +67,22 @@ async def check_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     host = await _host(db, host_id)
     row = await compliance_service.check_host(db, host)
     return _read(host, row, detail=True)
+
+
+@router.get("/hosts/{host_id}/rule-hits")
+async def rule_hits(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """When each rule last matched something, as observed by OPNexus (see services/rule_hit_service.py)."""
+    await _host(db, host_id)
+    now = datetime.now(timezone.utc)
+    rows = (await db.scalars(select(RuleHit).where(RuleHit.host_id == host_id))).all()
+    return sorted(
+        (
+            {
+                "rule_uuid": r.rule_uuid, "description": r.description, "enabled": r.enabled,
+                "state": rule_hit_service.classify(r, now), "packets": r.last_packets, "bytes": r.last_bytes,
+                "last_hit_at": r.last_hit_at, "first_seen_at": r.first_seen_at, "last_sampled_at": r.last_sampled_at,
+            }
+            for r in rows
+        ),
+        key=lambda item: (item["state"] != "unused", item["last_hit_at"] or datetime.min.replace(tzinfo=timezone.utc), item["description"]),
+    )

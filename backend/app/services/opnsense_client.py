@@ -369,6 +369,15 @@ async def get_source_nat_settings(host: OpnsenseHost) -> dict:
 # Core controllers, checked against OPNsense core source:
 # https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Core/Api/FirmwareController.php
 # https://github.com/opnsense/core/blob/master/src/opnsense/mvc/app/controllers/OPNsense/Core/Api/SystemController.php
+async def get_pf_rule_statistics(host: OpnsenseHost) -> dict:
+    """`diagnostics/firewall/pfStatistics/rules` (Diagnostics Api FirewallController):
+    {"rules": {"filter rules": {"@N <pf rule text> label \"<uuid>\"": {evaluations, packets,
+    bytes, states, ...}}}}. Verified live on OPNsense 26.7: the pf label of a rule created in
+    the rule editor/API is its UUID, so counters can be tied to rules; automatic rules carry
+    an md5 label instead."""
+    return await _request(host, "GET", "/diagnostics/firewall/pfStatistics/rules")
+
+
 async def get_firmware_status(host: OpnsenseHost) -> dict:
     # GET reads cached results. POST would trigger a synchronous probe.
     return await _request(host, "GET", "/core/firmware/status")

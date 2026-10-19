@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { useToast } from "@/components/ui/Toast";
 import { api, Host, HostCreate, HostUpdate, PolicyHierarchyGroup } from "@/lib/api";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin } from "@/lib/useReadOnly";
 import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -29,7 +29,7 @@ const emptyForm: HostCreate = {
 };
 
 export default function HostsPage() {
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const toast = useToast();
   const { t, errorMessage } = useLanguage();
   const [hosts, setHosts] = useState<Host[] | null>(null);

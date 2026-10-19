@@ -64,6 +64,7 @@
         "natDrift": "NAT-Drift im Cluster",
         "carpAutoRevertFailed": "CARP-Auto-Revert fehlgeschlagen",
         "scheduledFailed": "Geplante Wartung nicht ausgeführt",
+        "backupFailed": "Kein aktuelles Backup / Offsite-Kopie fehlgeschlagen",
         "networkDrift": "Netzwerk-Abweichung im Cluster"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
@@ -583,9 +584,11 @@
     "UPDATE_MAJOR_CHANGE": "Hauptversions-Sprünge bitte bewusst auf dem Server mit „opnexus update“ ausführen.",
     "ADMIN_REQUIRED": "Diese Funktion erfordert die Rolle „Admin“.",
     "API_TOKEN_LIMIT_REACHED": "Es sind höchstens {limit} API-Tokens pro Benutzer möglich. Widerrufe zuerst nicht mehr benötigte Tokens.",
+    "BACKUP_UNLESBAR": "Das Backup lässt sich nicht lesen: {reason}",
+    "OFFSITE_TEST_FAILED": "Der Test des Offsite-Ziels ist fehlgeschlagen: {reason}",
     "API_TOKEN_NOT_FOUND": "API-Token nicht gefunden",
     "API_TOKEN_SCOPE_FORBIDDEN": "Dieses API-Token (Bereich „{scope}“) darf diese Aktion nicht ausführen.",
-    "API_TOKEN_SCOPE_TOO_HIGH": "Nur-Lese-Konten können nur Tokens mit dem Bereich „Lesen“ anlegen."
+    "API_TOKEN_SCOPE_TOO_HIGH": "Mit deiner Rolle ist dieser Token-Bereich nicht möglich (Nur-Lesen: „Lesen“, Operator: bis „Ausrollen“)."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -1430,6 +1433,64 @@
     "peerPsk": "Peer-PSK",
     "pskPlaceholder": "PSK einfügen"
   },
+  "auditExport": {
+    "title": "Audit-Export",
+    "intro": "Leitet das Audit (wer hat was mit welchem Ergebnis geändert) an einen Syslog-Server und/oder einen Webhook weiter, damit es auch außerhalb von OPNexus vorliegt. Gesendet werden nur neue Ereignisse ab dem Einschalten; Inhalte von Firewall-Objekten sind nie dabei. Die Zustellung ist mindestens einmal: jedes Ereignis trägt seine ID.",
+    "saved": "Audit-Export gespeichert",
+    "testSent": "Testnachricht gesendet",
+    "testFailed": "Die Testnachricht konnte nicht zugestellt werden",
+    "syslog": "Syslog (RFC 5424)",
+    "host": "Host",
+    "port": "Port",
+    "protocol": "Protokoll",
+    "webhook": "Webhook",
+    "webhookUrl": "Webhook-URL",
+    "secret": "Signaturschlüssel ({state})",
+    "isSet": "gesetzt",
+    "notSet": "nicht gesetzt",
+    "keep": "leer lassen zum Behalten",
+    "optional": "optional",
+    "removeSecret": "Signaturschlüssel entfernen",
+    "test": "Testnachricht senden",
+    "lastError": "Letzte Zustellung fehlgeschlagen {when}: {message}",
+    "lastSuccess": "Letzte Zustellung {when}"
+  },
+  "backupSettings": {
+    "title": "Backups",
+    "intro": "Sichert die Konfiguration jeder Firewall nach Zeitplan und behält die neuesten. Optional wird eine Kopie hier mit deiner Passphrase verschlüsselt und auf S3-kompatiblen Speicher hochgeladen (AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Hetzner …), damit ein verlorener OPNexus-Server oder eine verlorene Firewall nicht das Ende deiner Konfiguration ist. Alte Offsite-Kopien löschst du über die Lifecycle-Regeln des Buckets.",
+    "saved": "Backup-Einstellungen gespeichert",
+    "scheduled": "Alle Firewalls nach Zeitplan sichern",
+    "interval": "Wie oft",
+    "everyHours": "alle {n} Stunden",
+    "keep": "Die neuesten behalten (je Firewall)",
+    "offsite": "Backups auf S3-kompatiblen Speicher kopieren (verschlüsselt)",
+    "endpoint": "Endpunkt",
+    "region": "Region",
+    "bucket": "Bucket",
+    "prefix": "Ordner im Bucket",
+    "accessKey": "Zugriffsschlüssel",
+    "secretKey": "Geheimer Schlüssel ({state})",
+    "pathStyle": "Path-Style-Adressierung (funktioniert überall; nur abschalten, wenn der Anbieter bucket.host verlangt)",
+    "passphrase": "Passphrase zur Verschlüsselung ({state})",
+    "passphraseNew": "mindestens 12 Zeichen",
+    "passphraseHint": "Backups werden verschlüsselt, bevor sie diesen Server verlassen. Ohne die Passphrase ist eine Offsite-Kopie nicht lesbar — bewahre sie außer in OPNexus noch an einem sicheren Ort auf. Eine Änderung gilt nur für neue Uploads.",
+    "offsiteError": "Offsite-Kopie fehlgeschlagen: {message}",
+    "offsiteOk": "Letzte Offsite-Kopie {when}",
+    "lastRun": "Letzter geplanter Lauf {when}",
+    "test": "Ziel testen",
+    "testOk": "Das Ziel funktioniert (geschrieben, zurückgelesen, gelöscht)",
+    "testFailed": "Der Test des Ziels ist fehlgeschlagen",
+    "runNow": "Jetzt sichern",
+    "ran": "{taken} gesichert, {failed} fehlgeschlagen, {uploaded} hochgeladen"
+  },
+  "backupDiff": {
+    "title": "Änderungen seit dem vorherigen Backup",
+    "hint": "Geheimnisse (Passwörter, Schlüssel, Tokens, Zertifikate) erscheinen nur als Hash: ein geändertes Geheimnis zeigt sich als geänderter Hash.",
+    "identical": "Keine Unterschiede.",
+    "summary": "{added} Zeilen hinzugefügt, {removed} entfernt",
+    "truncated": "Die Liste ist abgeschnitten; den Rest in OPNsense vergleichen.",
+    "failed": "Der Vergleich ist fehlgeschlagen"
+  },
   "security": {
     "title": "Sicherheitslage",
     "intro": "Prüft die Konfiguration jeder Firewall auf typische Schwachstellen (offene Regeln, schwaches SSH/SNMP, fehlende Backups …) und vergibt einen Wert von 0 bis 100. Nur lesend: an den Firewalls wird nichts geändert. Automatisch alle 6 Stunden geprüft.",
@@ -1546,6 +1607,27 @@
         "ok": "Das neueste Backup ist {days} Tag(e) alt.",
         "fail": "Es gibt kein Backup aus den letzten 7 Tagen.",
         "fix": "Auf der Host-Seite „Jetzt sichern“ ausführen oder eine Wartung planen."
+      },
+      "rules_unused": {
+        "title": "Regeln in Benutzung",
+        "ok": "Jede Regel hat in den letzten 30 Tagen Verkehr getroffen.",
+        "fail": "{count} Regel(n) haben seit mindestens 30 Tagen nichts getroffen.",
+        "unknown": "Noch in der Datensammlung: eine Regel gilt erst nach 30 Tagen ohne Treffer als ungenutzt.",
+        "fix": "Prüfen, ob die Regel noch gebraucht wird, und sie deaktivieren oder löschen."
+      }
+    },
+    "hits": {
+      "title": "Regelnutzung",
+      "intro": "Wann jede Regel zuletzt Verkehr getroffen hat, wie OPNexus es beobachtet. Die Zähler der Firewall beginnen bei jeder Änderung und jedem Neustart von vorn, deshalb merkt sich OPNexus, wann ein Zähler zuletzt gewachsen ist. Nach 30 Tagen ohne Treffer gilt eine Regel als ungenutzt.",
+      "rule": "Regel",
+      "state": "Status",
+      "lastHit": "Letzter beobachteter Treffer",
+      "packets": "Pakete seit Neuladen",
+      "states": {
+        "used": "in Benutzung",
+        "unused": "ungenutzt",
+        "collecting": "Daten werden gesammelt",
+        "disabled": "deaktiviert"
       }
     }
   },
@@ -1589,6 +1671,7 @@
     "done": "Fertig"
   },
   "users": {
+    "roleOperator": "Operator",
     "roleAdmin": "Admin",
     "roleReadOnly": "Nur-Lesen",
     "loadFailed": "Benutzer konnten nicht geladen werden",
@@ -1596,7 +1679,7 @@
     "deleted": "Benutzer „{name}“ gelöscht",
     "title": "Benutzer",
     "new": "Neuer Benutzer",
-    "intro": "„Admin“ darf alles, „Nur-Lesen“ kann alle Seiten und Daten ansehen, aber keine Änderungen speichern, Regeln deployen oder Einstellungen ändern — nur das eigene Passwort bleibt jederzeit änderbar.",
+    "intro": "„Admin“ darf alles. „Operator“ rollt aus und betreibt (Regeln, NAT, VPN, Wartung), verwaltet aber keine Benutzer, Einstellungen oder Hosts. „Nur-Lesen“ sieht alle Seiten und Daten, kann aber nichts speichern — nur das eigene Passwort lässt sich immer ändern.",
     "colUsername": "Benutzername",
     "colRole": "Rolle",
     "colCreated": "Angelegt",
@@ -1719,7 +1802,8 @@
       "preview": "Vorschau",
       "schedule": "Eingeplant",
       "major_update": "Major-Upgrade",
-      "download": "Download",
+      "changes": "Änderungen",
+    "download": "Download",
       "push": "Übertragen",
       "register": "Registrieren",
       "sign": "Signieren",
@@ -1791,6 +1875,7 @@
     "noBackups": "Noch keine Sicherung vorhanden.",
     "colTime": "Zeitpunkt",
     "colSize": "Größe",
+    "changes": "Änderungen",
     "download": "Herunterladen",
     "restore": "Wiederherstellen",
     "restoreHistory": "Restore-Historie",

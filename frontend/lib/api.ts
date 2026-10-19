@@ -433,6 +433,40 @@ export interface AliasOption {
   enabled: boolean;
 }
 
+export interface BackupDiff {
+  a: string;
+  b: string;
+  identical: boolean;
+  added: number;
+  removed: number;
+  truncated: boolean;
+  lines: string[];
+}
+
+export interface BackupSettings {
+  scheduled_enabled: boolean;
+  interval_hours: number;
+  keep_count: number;
+  offsite_enabled: boolean;
+  last_run_at: string | null;
+  last_offsite_ok_at: string | null;
+  last_offsite_error: string | null;
+  s3_endpoint: string | null;
+  s3_region: string;
+  s3_bucket: string | null;
+  s3_prefix: string;
+  s3_access_key: string | null;
+  s3_path_style: boolean;
+  s3_secret_set: boolean;
+  passphrase_set: boolean;
+}
+
+export type BackupSettingsUpdate = Partial<Pick<BackupSettings, "scheduled_enabled" | "interval_hours" | "keep_count" | "offsite_enabled" | "s3_endpoint" | "s3_region" | "s3_bucket" | "s3_prefix" | "s3_access_key" | "s3_path_style">> & {
+  s3_secret_key?: string;
+  clear_s3_secret?: boolean;
+  passphrase?: string;
+};
+
 export interface HostBackup {
   id: string;
   created_at: string;
@@ -662,7 +696,7 @@ export interface LogFilterOptions {
   protocols: string[];
 }
 
-export type UserRole = "admin" | "read_only";
+export type UserRole = "admin" | "operator" | "read_only";
 
 export interface AuthState {
   authenticated: boolean;
@@ -693,6 +727,17 @@ export interface ComplianceFinding {
   params: { count?: number; examples?: string[]; reason?: string; protocol?: string; age_days?: number | null };
 }
 
+export interface RuleHit {
+  rule_uuid: string;
+  description: string;
+  enabled: boolean;
+  state: "used" | "unused" | "collecting" | "disabled";
+  packets: number;
+  bytes: number;
+  last_hit_at: string | null;
+  first_seen_at: string;
+}
+
 export interface ComplianceHost {
   host_id: string;
   host_name: string;
@@ -705,6 +750,24 @@ export interface ComplianceHost {
   counts: Record<Severity, number> | null;
   findings?: ComplianceFinding[];
 }
+
+export interface AuditExportSettings {
+  syslog_enabled: boolean;
+  syslog_host: string | null;
+  syslog_port: number;
+  syslog_protocol: "udp" | "tcp" | "tls";
+  webhook_enabled: boolean;
+  webhook_url: string | null;
+  webhook_signing_secret_set: boolean;
+  last_success_at: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
+}
+
+export type AuditExportUpdate = Partial<Omit<AuditExportSettings, "webhook_signing_secret_set" | "last_success_at" | "last_error" | "last_error_at">> & {
+  webhook_signing_secret?: string;
+  clear_webhook_signing_secret?: boolean;
+};
 
 export interface User {
   id: string;
@@ -1139,6 +1202,9 @@ export const api = {
   saveNotificationSettings: (data: NotificationSettingsUpdate) => request<NotificationSettings>("/notifications/settings", { method: "PUT", body: JSON.stringify(data) }),
   logSettings: () => request<LogSettings>("/logs/settings"),
   saveLogSettings: (data: LogSettingsUpdate) => request<LogSettings>("/logs/settings", { method: "PUT", body: JSON.stringify(data) }),
+  getAuditExport: () => request<AuditExportSettings>("/settings/audit-export"),
+  updateAuditExport: (data: Partial<AuditExportUpdate>) => request<AuditExportSettings>("/settings/audit-export", { method: "PUT", body: JSON.stringify(data) }),
+  testAuditExport: () => request<{ success: boolean }>("/settings/audit-export/test", { method: "POST" }),
   testNotification: (channel: "webhook" | "email") => request<{ success: boolean }>("/notifications/test", { method: "POST", body: JSON.stringify({ channel }) }),
   notificationProblems: (includeResolved = false) => request<NotificationProblem[]>(`/notifications/problems?include_resolved=${includeResolved}`),
   carpEvents: (clusterName?: string) => request<CarpEvent[]>(`/cluster/carp-events${clusterName ? `?cluster_name=${encodeURIComponent(clusterName)}` : ""}`),
@@ -1239,6 +1305,16 @@ export const api = {
   getHostCas: (id: string) => request<HostCa[]>(`/hosts/${id}/cas`),
   listHostBackups: (id: string) => request<HostBackup[]>(`/hosts/${id}/backups`),
   triggerHostBackup: (id: string) => request<HostBackup>(`/hosts/${id}/backups`, { method: "POST" }),
+  getBackupDiff: (id: string, a?: string, b?: string) => {
+    const query = new URLSearchParams();
+    if (a) query.set("a", a);
+    if (b) query.set("b", b);
+    return request<BackupDiff>(`/hosts/${id}/backup-diff${query.size ? `?${query}` : ""}`);
+  },
+  getBackupSettings: () => request<BackupSettings>("/settings/backups"),
+  updateBackupSettings: (data: BackupSettingsUpdate) => request<BackupSettings>("/settings/backups", { method: "PUT", body: JSON.stringify(data) }),
+  testBackupOffsite: () => request<{ success: boolean }>("/settings/backups/test-offsite", { method: "POST" }),
+  runBackupsNow: () => request<{ hosts: number; taken: number; failed: number; pruned: number; uploaded: number }>("/backups/run", { method: "POST" }),
   downloadHostBackup: (id: string, backupId: string) => requestBlob(`/hosts/${id}/backups/${backupId}`),
 
   previewRestore: (id: string, backupId: string) =>
@@ -1324,6 +1400,7 @@ export const api = {
 
   listCompliance: () => request<ComplianceHost[]>("/compliance"),
   getHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance`),
+  getRuleHits: (id: string) => request<RuleHit[]>(`/hosts/${id}/rule-hits`),
   checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
   checkFleetCompliance: () => request<ComplianceHost[]>("/compliance/check", { method: "POST" }),
 
@@ -1600,6 +1677,7 @@ export interface NotificationSettings {
   network_drift_enabled: boolean;
   carp_auto_revert_failed_enabled: boolean;
   scheduled_maintenance_failed_enabled: boolean;
+  backup_failed_enabled: boolean;
   poll_interval_seconds: number;
   updated_at: string;
 }
@@ -1628,6 +1706,7 @@ export interface NotificationSettingsUpdate {
   network_drift_enabled?: boolean;
   carp_auto_revert_failed_enabled?: boolean;
   scheduled_maintenance_failed_enabled?: boolean;
+  backup_failed_enabled?: boolean;
   poll_interval_seconds?: number;
 }
 
@@ -1651,7 +1730,9 @@ export interface LogSettingsUpdate {
 export type ProblemType =
   | "host_offline" | "cert_expiry" | "rule_drift" | "revert_failed" | "maintenance_unknown"
   | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed" | "network_drift"
-  | "scheduled_maintenance_failed";
+  | "scheduled_maintenance_failed"
+  | "backup_stale"
+  | "backup_offsite_failed";
 
 export interface CarpEvent {
   id: string;

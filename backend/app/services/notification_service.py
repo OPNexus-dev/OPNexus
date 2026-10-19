@@ -31,6 +31,8 @@ _CHECKS = [
     ("network_drift", "network_drift_enabled", notification_checks.check_network_drift),
     ("carp_auto_revert_failed", "carp_auto_revert_failed_enabled", notification_checks.check_carp_auto_revert_failed),
     ("scheduled_maintenance_failed", "scheduled_maintenance_failed_enabled", notification_checks.check_scheduled_maintenance_failed),
+    ("backup_stale", "backup_failed_enabled", notification_checks.check_backup_stale),
+    ("backup_offsite_failed", "backup_failed_enabled", notification_checks.check_backup_offsite),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no

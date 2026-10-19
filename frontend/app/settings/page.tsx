@@ -8,7 +8,9 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useLanguage } from "@/components/LanguageProvider";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Field";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin, useReadOnly } from "@/lib/useReadOnly";
+import { BackupSettingsSection } from "@/components/BackupSettingsSection";
+import { AuditExportSection } from "@/components/AuditExportSection";
 import { APP_CODENAME, APP_MAINTAINER, APP_VERSION } from "@/lib/version";
 import { translate } from "@/lib/i18n";
 
@@ -29,7 +31,7 @@ function SetupAssistantSection() {
 
 function NotificationsSection() {
   const { t, errorMessage } = useLanguage();
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const [ns, setNs] = useState<NotificationSettings | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -61,6 +63,7 @@ function NotificationsSection() {
   const [networkDrift, setNetworkDrift] = useState(true);
   const [carpAutoRevertFailed, setCarpAutoRevertFailed] = useState(true);
   const [scheduledFailed, setScheduledFailed] = useState(true);
+  const [backupFailed, setBackupFailed] = useState(true);
   const [pollInterval, setPollInterval] = useState(300);
 
   function applyFromServer(data: NotificationSettings) {
@@ -84,6 +87,7 @@ function NotificationsSection() {
     setNetworkDrift(data.network_drift_enabled);
     setCarpAutoRevertFailed(data.carp_auto_revert_failed_enabled);
     setScheduledFailed(data.scheduled_maintenance_failed_enabled);
+    setBackupFailed(data.backup_failed_enabled);
     setPollInterval(data.poll_interval_seconds);
     setWebhookSecret("");
     setClearWebhookSecret(false);
@@ -125,6 +129,7 @@ function NotificationsSection() {
         network_drift_enabled: networkDrift,
         carp_auto_revert_failed_enabled: carpAutoRevertFailed,
         scheduled_maintenance_failed_enabled: scheduledFailed,
+        backup_failed_enabled: backupFailed,
         poll_interval_seconds: pollInterval,
       });
       applyFromServer(data);
@@ -257,6 +262,7 @@ function NotificationsSection() {
             [t("settings.notify.event.networkDrift"), networkDrift, setNetworkDrift],
             [t("settings.notify.event.carpAutoRevertFailed"), carpAutoRevertFailed, setCarpAutoRevertFailed],
             [t("settings.notify.event.scheduledFailed"), scheduledFailed, setScheduledFailed],
+            [t("settings.notify.event.backupFailed"), backupFailed, setBackupFailed],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />
@@ -310,7 +316,7 @@ function LogUsage({ used, entries, limitGb, oldest }: { used: number; entries: n
 
 function LogIngestSection() {
   const { t, errorMessage } = useLanguage();
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const [ls, setLs] = useState<LogSettings | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -396,5 +402,5 @@ export default function SettingsPage(){
   async function saveTheme(value:Theme){setSaving(true);setError('');setNotice('');const old=theme;setTheme(value);try{setSettings(await api.saveSettings({theme:value,language}));setNotice(t('settings.appearanceSaved'));}catch(e){setTheme(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function saveLanguage(value:"de"|"en"){setSaving(true);setError('');setNotice('');const old=language;setLanguage(value);try{setSettings(await api.saveSettings({theme,language:value}));setNotice(translate(value,'settings.language.saved'));}catch(e){setLanguage(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function changePassword(e:React.FormEvent){e.preventDefault();setError('');setNotice('');if(password!==repeat){setError(t('settings.passwordMismatch'));return;}setSaving(true);try{await api.changePassword(current,password);setCurrent('');setPassword('');setRepeat('');setNotice(t('settings.passwordChanged'));}catch(e){setError(errorMessage(e,'settings.passwordFailed'));}finally{setSaving(false);}}
-  return <div className="mx-auto max-w-3xl space-y-6"><h1 className="text-2xl font-semibold">{t("settings.title")}</h1>{error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}<section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.appearance')}<InfoTip text={t('settings.appearanceHint')} /></h2><div role="radiogroup" aria-label={t('settings.colorScheme')} className="flex flex-wrap gap-3">{(['light','dark','system'] as const).map((v)=><label key={v} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${theme===v?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="theme" checked={theme===v} disabled={saving || !settings} onChange={()=>saveTheme(v)}/>{t(`settings.theme.${v}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.language.label')}</h2><div role="radiogroup" aria-label={t('settings.language.label')} className="flex flex-wrap gap-3">{(['de','en'] as const).map(value=><label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${language===value?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="language" checked={language===value} disabled={saving || !settings} onChange={()=>saveLanguage(value)}/>{t(`settings.language.${value}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.account')} {settings?.username ? `· ${settings.username}`:''}</h2><form onSubmit={changePassword} className="space-y-4"><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.currentPassword')}</span><Input aria-label={t('settings.currentPassword')} type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.newPassword')}</span><Input aria-label={t('settings.newPassword')} type="password" autoComplete="new-password" minLength={10} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.repeatPassword')}</span><Input aria-label={t('settings.repeatPassword')} type="password" autoComplete="new-password" minLength={10} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label><Button type="submit" disabled={saving}>{t('settings.changePassword')}</Button></form></section><section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.operational')}<InfoTip text={t('settings.serverManaged')} /></h2>{settings?<dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.deployWindow')}</dt><dd>{t('settings.seconds',{n:settings.deploy_confirm_window_seconds})}</dd><dt>{t('settings.sessionLifetime')}</dt><dd>{t('settings.days',{n:Math.round(settings.session_lifetime_seconds/86400)})}</dd></dl>:<p className="text-sm text-slate-500">{t('common.loading')}</p>}</section><SetupAssistantSection/><TwoFactorSection/><NotificationsSection/><LogIngestSection/><OpnexusUpdateSection/><section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.about')}<InfoTip text={t('settings.changelogNote',{file:'CHANGELOG.md'})} /></h2><dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.version')}</dt><dd>{APP_VERSION} {language==='en'?'“':'„'}{APP_CODENAME}{language==='en'?'”':'“'}</dd><dt>{t('settings.development')}</dt><dd>{APP_MAINTAINER}</dd></dl></section></div>;
+  return <div className="mx-auto max-w-3xl space-y-6"><h1 className="text-2xl font-semibold">{t("settings.title")}</h1>{error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}<section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.appearance')}<InfoTip text={t('settings.appearanceHint')} /></h2><div role="radiogroup" aria-label={t('settings.colorScheme')} className="flex flex-wrap gap-3">{(['light','dark','system'] as const).map((v)=><label key={v} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${theme===v?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="theme" checked={theme===v} disabled={saving || !settings} onChange={()=>saveTheme(v)}/>{t(`settings.theme.${v}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.language.label')}</h2><div role="radiogroup" aria-label={t('settings.language.label')} className="flex flex-wrap gap-3">{(['de','en'] as const).map(value=><label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${language===value?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="language" checked={language===value} disabled={saving || !settings} onChange={()=>saveLanguage(value)}/>{t(`settings.language.${value}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.account')} {settings?.username ? `· ${settings.username}`:''}</h2><form onSubmit={changePassword} className="space-y-4"><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.currentPassword')}</span><Input aria-label={t('settings.currentPassword')} type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.newPassword')}</span><Input aria-label={t('settings.newPassword')} type="password" autoComplete="new-password" minLength={10} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.repeatPassword')}</span><Input aria-label={t('settings.repeatPassword')} type="password" autoComplete="new-password" minLength={10} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label><Button type="submit" disabled={saving}>{t('settings.changePassword')}</Button></form></section><section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.operational')}<InfoTip text={t('settings.serverManaged')} /></h2>{settings?<dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.deployWindow')}</dt><dd>{t('settings.seconds',{n:settings.deploy_confirm_window_seconds})}</dd><dt>{t('settings.sessionLifetime')}</dt><dd>{t('settings.days',{n:Math.round(settings.session_lifetime_seconds/86400)})}</dd></dl>:<p className="text-sm text-slate-500">{t('common.loading')}</p>}</section><SetupAssistantSection/><TwoFactorSection/><NotificationsSection/><LogIngestSection/><BackupSettingsSection/><AuditExportSection/><OpnexusUpdateSection/><section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.about')}<InfoTip text={t('settings.changelogNote',{file:'CHANGELOG.md'})} /></h2><dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.version')}</dt><dd>{APP_VERSION} {language==='en'?'“':'„'}{APP_CODENAME}{language==='en'?'”':'“'}</dd><dt>{t('settings.development')}</dt><dd>{APP_MAINTAINER}</dd></dl></section></div>;
 }

@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     # reachable both by IP and by name: "https://10.0.0.5,https://opnexus.lan".
     frontend_origin: str = ""
     opnsense_secret_dir: str = "/data/opnsense-secrets"
+    # Lab only: allow an http:// endpoint for offsite backups (credentials in the clear).
+    allow_insecure_offsite: bool = False
     opnsense_backup_dir: str = "/data/opnsense-backups"
     opnsense_timeout: float = 10.0
     # Firewall API credentials are sent as HTTP Basic auth. Plain http://

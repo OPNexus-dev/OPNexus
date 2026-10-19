@@ -6,5 +6,5 @@ convention — but both are bumped together whenever a release ships).
 Versioning scheme: see CHANGELOG.md ("Versionierung").
 """
 
-APP_VERSION = "1.18.0"
-APP_CODENAME = "Kestrel"
+APP_VERSION = "1.19.0"
+APP_CODENAME = "Lanner"

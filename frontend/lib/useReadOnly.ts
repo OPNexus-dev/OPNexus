@@ -26,3 +26,25 @@ export function useReadOnly(): boolean {
 
   return readOnly;
 }
+
+// True once we know the session's role is NOT admin (read_only or operator). For the
+// few things only an admin may do: users, settings, hosts, OPNexus updates, raw backups.
+// Same "false until known" rule as useReadOnly.
+export function useNotAdmin(): boolean {
+  const [notAdmin, setNotAdmin] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .me()
+      .then((state) => {
+        if (active) setNotAdmin(state.role !== undefined && state.role !== "admin");
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return notAdmin;
+}

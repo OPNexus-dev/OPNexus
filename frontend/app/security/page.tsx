@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { api, ComplianceFinding, ComplianceHost, Severity } from "@/lib/api";
+import { api, ComplianceFinding, ComplianceHost, RuleHit, Severity } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useReadOnly } from "@/lib/useReadOnly";
 import { CheckCircle2, CircleHelp, Info, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
@@ -32,6 +32,7 @@ export default function SecurityPage() {
   const [hosts, setHosts] = useState<ComplianceHost[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<ComplianceHost | null>(null);
+  const [hits, setHits] = useState<RuleHit[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,6 +54,7 @@ export default function SecurityPage() {
   useEffect(() => {
     if (!selected) { setDetail(null); return; }
     let active = true;
+    api.getRuleHits(selected).then((h) => active && setHits(h)).catch(() => active && setHits([]));
     api.getHostCompliance(selected).then((d) => active && setDetail(d)).catch((e) => active && setError(errorMessage(e, "security.loadFailed")));
     return () => { active = false; };
   }, [selected, hosts]);
@@ -143,6 +145,41 @@ export default function SecurityPage() {
               <FindingRow key={finding.id} finding={finding} />
             ))}
           </ul>
+        </Card>
+      )}
+
+      {detail && hits.length > 0 && (
+        <Card className="mt-6 p-0">
+          <div className="border-b border-slate-100 px-5 py-3">
+            <h2 className="flex items-center gap-2 font-medium text-slate-900">
+              {t("security.hits.title")}
+              <InfoTip text={t("security.hits.intro")} />
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">{t("security.hits.rule")}</th>
+                  <th className="px-5 py-3 font-medium">{t("security.hits.state")}</th>
+                  <th className="px-5 py-3 font-medium">{t("security.hits.lastHit")}</th>
+                  <th className="px-5 py-3 text-right font-medium">{t("security.hits.packets")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hits.map((hit) => (
+                  <tr key={hit.rule_uuid} className="border-b border-slate-100 last:border-0">
+                    <td className="px-5 py-2 text-slate-900">{hit.description || hit.rule_uuid}</td>
+                    <td className="px-5 py-2">
+                      <Badge tone={hit.state === "unused" ? "warning" : hit.state === "used" ? "success" : "neutral"}>{t(`security.hits.states.${hit.state}`)}</Badge>
+                    </td>
+                    <td className="px-5 py-2 text-slate-500">{hit.last_hit_at ? new Date(hit.last_hit_at).toLocaleString(locale) : <span className="text-slate-300">—</span>}</td>
+                    <td className="px-5 py-2 text-right tabular-nums text-slate-500">{hit.packets.toLocaleString(locale)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </Card>
       )}
     </div>

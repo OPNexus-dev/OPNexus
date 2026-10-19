@@ -64,6 +64,7 @@
         "natDrift": "NAT drift in the cluster",
         "carpAutoRevertFailed": "CARP auto-revert failed",
         "scheduledFailed": "Scheduled maintenance did not run",
+        "backupFailed": "No recent backup / offsite copy failed",
         "networkDrift": "Network differences in the cluster"
       },
       "pollInterval": "Check interval (seconds)",
@@ -583,9 +584,11 @@
     "UPDATE_MAJOR_CHANGE": "Please run major version jumps deliberately on the server with “opnexus update”.",
     "ADMIN_REQUIRED": "This function requires the “Admin” role.",
     "API_TOKEN_LIMIT_REACHED": "At most {limit} API tokens are allowed per user. Revoke tokens you no longer need first.",
+    "BACKUP_UNLESBAR": "The backup cannot be read: {reason}",
+    "OFFSITE_TEST_FAILED": "The offsite target test failed: {reason}",
     "API_TOKEN_NOT_FOUND": "API token not found",
     "API_TOKEN_SCOPE_FORBIDDEN": "This API token (scope “{scope}”) is not allowed to perform this action.",
-    "API_TOKEN_SCOPE_TOO_HIGH": "Read-only accounts can only create tokens with the “read” scope."
+    "API_TOKEN_SCOPE_TOO_HIGH": "Your role does not allow a token with this scope (read-only: read, operator: up to deploy)."
   },
   "workflow": {
     "attention": "Check errors",
@@ -1430,6 +1433,64 @@
     "peerPsk": "Peer PSK",
     "pskPlaceholder": "Paste PSK"
   },
+  "auditExport": {
+    "title": "Audit export",
+    "intro": "Forwards the audit trail (who changed what, with status) to a syslog server and/or a webhook, so it also exists outside OPNexus. Only new events are sent from the moment you switch it on; firewall object contents are never included. Delivery is at least once: every event carries its id.",
+    "saved": "Audit export saved",
+    "testSent": "Test message sent",
+    "testFailed": "The test message could not be delivered",
+    "syslog": "Syslog (RFC 5424)",
+    "host": "Host",
+    "port": "Port",
+    "protocol": "Protocol",
+    "webhook": "Webhook",
+    "webhookUrl": "Webhook URL",
+    "secret": "Signing secret ({state})",
+    "isSet": "set",
+    "notSet": "not set",
+    "keep": "leave empty to keep",
+    "optional": "optional",
+    "removeSecret": "Remove the signing secret",
+    "test": "Send test message",
+    "lastError": "Last delivery failed {when}: {message}",
+    "lastSuccess": "Last delivery {when}"
+  },
+  "backupSettings": {
+    "title": "Backups",
+    "intro": "Takes a configuration backup of every firewall on a schedule and keeps the newest ones. Optionally a copy is encrypted here with your passphrase and uploaded to S3-compatible storage (AWS S3, MinIO, Backblaze B2, Wasabi, Cloudflare R2, Hetzner…), so a lost OPNexus server or a lost firewall is not the end of your configuration. Delete old offsite copies with the bucket's lifecycle rules.",
+    "saved": "Backup settings saved",
+    "scheduled": "Back up all firewalls on a schedule",
+    "interval": "How often",
+    "everyHours": "every {n} hours",
+    "keep": "Keep the newest (per firewall)",
+    "offsite": "Copy backups to S3-compatible storage (encrypted)",
+    "endpoint": "Endpoint",
+    "region": "Region",
+    "bucket": "Bucket",
+    "prefix": "Folder in the bucket",
+    "accessKey": "Access key",
+    "secretKey": "Secret key ({state})",
+    "pathStyle": "Path-style addressing (works everywhere; turn off only if your provider needs bucket.host)",
+    "passphrase": "Encryption passphrase ({state})",
+    "passphraseNew": "at least 12 characters",
+    "passphraseHint": "Backups are encrypted before they leave this server. Without the passphrase an offsite copy cannot be read — keep it somewhere safe besides OPNexus. Changing it only affects new uploads.",
+    "offsiteError": "Offsite copy failed: {message}",
+    "offsiteOk": "Last offsite copy {when}",
+    "lastRun": "Last scheduled run {when}",
+    "test": "Test the target",
+    "testOk": "The target works (written, read back, deleted)",
+    "testFailed": "The target test failed",
+    "runNow": "Back up now",
+    "ran": "{taken} backed up, {failed} failed, {uploaded} uploaded"
+  },
+  "backupDiff": {
+    "title": "Changes since the previous backup",
+    "hint": "Secrets (passwords, keys, tokens, certificates) are shown as hashes only: a changed secret appears as a changed hash.",
+    "identical": "No differences.",
+    "summary": "{added} lines added, {removed} removed",
+    "truncated": "The list is cut off; compare the files in OPNsense for the rest.",
+    "failed": "The comparison failed"
+  },
   "security": {
     "title": "Security posture",
     "intro": "Checks every firewall's configuration for common weaknesses (open rules, weak SSH/SNMP, missing backups…) and gives a score from 0 to 100. Read-only: nothing is changed on the firewalls. Checked automatically every 6 hours.",
@@ -1546,6 +1607,27 @@
         "ok": "The newest backup is {days} day(s) old.",
         "fail": "There is no backup from the last 7 days.",
         "fix": "Use “Back up now” on the host page or schedule maintenance."
+      },
+      "rules_unused": {
+        "title": "Rules in use",
+        "ok": "Every rule matched traffic in the last 30 days.",
+        "fail": "{count} rule(s) have matched nothing for at least 30 days.",
+        "unknown": "Still collecting data: a rule counts as unused only after 30 days without a hit.",
+        "fix": "Check whether the rule is still needed and disable or delete it."
+      }
+    },
+    "hits": {
+      "title": "Rule usage",
+      "intro": "When each rule last matched traffic, as observed by OPNexus. The firewall's own counters restart with every change and reboot, so OPNexus keeps the last time it saw one grow. A rule counts as unused after 30 days without a hit.",
+      "rule": "Rule",
+      "state": "Status",
+      "lastHit": "Last hit seen",
+      "packets": "Packets since reload",
+      "states": {
+        "used": "in use",
+        "unused": "unused",
+        "collecting": "collecting data",
+        "disabled": "disabled"
       }
     }
   },
@@ -1589,6 +1671,7 @@
     "done": "Done"
   },
   "users": {
+    "roleOperator": "Operator",
     "roleAdmin": "Admin",
     "roleReadOnly": "Read-only",
     "loadFailed": "Could not load users",
@@ -1596,7 +1679,7 @@
     "deleted": "User “{name}” deleted",
     "title": "Users",
     "new": "New user",
-    "intro": "“Admin” may do everything, “Read-only” can view all pages and data but cannot save changes, deploy rules or change settings — only your own password can always be changed.",
+    "intro": "“Admin” may do everything. “Operator” rolls out and operates (rules, NAT, VPN, maintenance) but cannot manage users, settings or hosts. “Read-only” can view all pages and data but cannot save changes — only your own password can always be changed.",
     "colUsername": "Username",
     "colRole": "Role",
     "colCreated": "Created",
@@ -1719,7 +1802,8 @@
       "preview": "Preview",
       "schedule": "Scheduled",
       "major_update": "Major upgrade",
-      "download": "Download",
+      "changes": "Changes",
+    "download": "Download",
       "push": "Push",
       "register": "Register",
       "sign": "Sign",
@@ -1791,6 +1875,7 @@
     "noBackups": "No backup available yet.",
     "colTime": "Time",
     "colSize": "Size",
+    "changes": "Changes",
     "download": "Download",
     "restore": "Restore",
     "restoreHistory": "Restore history",

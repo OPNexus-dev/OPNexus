@@ -7,6 +7,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class UserRole(str, Enum):
     admin = "admin"
+    # Rolls out and operates (rules, NAT, VPN, maintenance, tokens of its own) but cannot
+    # change who may access OPNexus or where it sends data (users, settings, hosts).
+    operator = "operator"
     read_only = "read_only"
 
 

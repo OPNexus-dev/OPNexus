@@ -2,7 +2,7 @@
 
 import { api, VersionCheck } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin } from "@/lib/useReadOnly";
 import { ArrowUpCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -25,7 +25,7 @@ function readDismissed(): string | null {
  */
 export function UpdateBanner() {
   const { t } = useLanguage();
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const [check, setCheck] = useState<VersionCheck | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
 

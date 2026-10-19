@@ -29,7 +29,29 @@ in der App auf der Login-Seite, im Footer jeder Seite, auf `/about` und in
 den Einstellungen.
 
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
-ansteht): Lanner, Merlin …
+ansteht): Merlin …
+
+## [1.19.0] "Lanner" — 2026-10-20
+
+Backups, Governance, Regelnutzung. Auf einem Test-Stack mit drei Test-Firewalls geprüft; die Vollsicherung Ende-zu-Ende
+(sichern, Schaden anrichten, zurückspielen), siehe Handbuch „Konfigurationssicherungen“, „Sichern und Wiederherstellen“.
+
+- **Rolle „Operator“**: rollt aus und betreibt (Regeln, NAT, VPN, Wartung, Sicherungen), verwaltet aber keine
+  Benutzer, Einstellungen oder Hosts und lädt keine Roh-Backups herunter. Abgelehnte Versuche stehen im Audit.
+  Tokens eines Operators gehen bis zum Bereich „Ausrollen“.
+- **Audit-Export** (Einstellungen): Syslog (RFC 5424, UDP/TCP/TLS) und/oder signierter Webhook, mindestens
+  einmal zugestellt, ohne Objektinhalte. Neue Tabelle `audit_export_settings` (Migration `0010`).
+- **Geplante Backups** mit Aufbewahrung, **verschlüsseltem Offsite-Ziel** (S3-kompatibel, AES-256-GCM,
+  Passphrase bleibt auf dem Server), Benachrichtigungen bei Problemen und einer **Änderungsansicht** zwischen
+  zwei Sicherungen (Geheimnisse nur als Hash). Neue Tabellen `backup_settings`, `backup_uploads`, Spalte
+  `notification_settings.backup_failed_enabled` (Migration `0011`). Die S3-Signatur ist gegen die offiziellen
+  AWS-Beispiele geprüft; ein Lauf gegen einen echten Anbieter steht noch aus.
+- **Vollsicherung** `opnexus backup --full` und `opnexus restore`: Datenbank und alle Geheimnis-Volumes in einer
+  verschlüsselten Datei; Ende-zu-Ende auf dem Test-Stack geprüft (Sichern, Schaden anrichten, Zurückspielen).
+- **Regelnutzung**: wann hat jede Regel zuletzt etwas getroffen (aus den pf-Zählern, überlebt Neuladen und
+  Neustart); Befund „Regeln in Benutzung“ in der Sicherheitslage nach 30 Tagen ohne Treffer. Neue Tabelle
+  `rule_hits` (Migration `0012`).
+- Änderungen an Einstellungen (`/api/settings/…`) und das Auslösen von Sicherungen stehen jetzt im Audit.
 
 ## [1.18.0] "Kestrel" — 2026-10-19
 

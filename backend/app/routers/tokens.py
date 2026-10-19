@@ -2,7 +2,7 @@
 
 Session-only: an API token cannot reach these endpoints (AuthMiddleware), so a
 leaked token can never mint a replacement or list/revoke its siblings. A
-read_only user may manage their own tokens, but only with read scope.
+read_only user may manage their own tokens, but only with read scope (an operator up to deploy).
 """
 import uuid
 
@@ -43,7 +43,8 @@ async def list_tokens(db: AsyncSession = Depends(get_db), user: AdminUser = Depe
 async def create_token(
     payload: ApiTokenCreate, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)
 ):
-    if user.role != "admin" and payload.scope != TokenScope.read:
+    allowed = {"admin": (TokenScope.read, TokenScope.deploy, TokenScope.admin), "operator": (TokenScope.read, TokenScope.deploy)}
+    if payload.scope not in allowed.get(user.role, (TokenScope.read,)):
         raise api_error(403, ErrorCode.API_TOKEN_SCOPE_TOO_HIGH)
     _check_account_budget(user, "create-token")
     if not await auth_service.verify_password_async(user.password_hash, payload.current_password):

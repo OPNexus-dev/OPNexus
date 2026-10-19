@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alias_deployment import AliasDeployment
+from app.models.backup_settings import BackupSettings
 from app.models.host import OpnsenseHost
 from app.models.host_operation import HostOperation
 from app.models.one_to_one_deployment import OneToOneDeployment
@@ -16,7 +17,7 @@ from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.rule_deployment import RuleDeployment
 from app.models.scheduled_maintenance import ScheduledMaintenance
-from app.services import nat_drift_service, network_drift_service, rule_drift_service
+from app.services import backup_store, nat_drift_service, network_drift_service, rule_drift_service
 from app.services.notification_dedup import Problems
 from app.services.host_status_service import get_statuses
 from app.services.live_certificates_service import get_live_certificates
@@ -290,3 +291,31 @@ async def check_scheduled_maintenance_failed(db: AsyncSession) -> dict[str, dict
             "message": (sched.result or {}).get("error"),
         }
     return problems
+
+
+async def check_backup_stale(db: AsyncSession) -> dict[str, dict]:
+    """Scheduled backups are on but a host has no recent one: three missed intervals
+    (at least 6 hours) cover a reboot or a short outage without crying wolf."""
+    cfg = await db.get(BackupSettings, 1)
+    if cfg is not None and not cfg.scheduled_enabled:
+        return {}
+    interval = cfg.interval_hours if cfg is not None else 24
+    limit = timedelta(hours=max(3 * interval, 6))
+    now = datetime.now(timezone.utc)
+    problems: dict[str, dict] = {}
+    for host in await _enabled_hosts(db):
+        snapshots = backup_store.list_snapshots(host.id)
+        newest = snapshots[0]["created_at"] if snapshots else None
+        if (newest is None and now - host.created_at > limit) or (newest is not None and now - newest > limit):
+            problems[str(host.id)] = {
+                "host_id": str(host.id), "host_name": host.name,
+                "last_backup": newest.isoformat() if newest else "noch nie",
+            }
+    return problems
+
+
+async def check_backup_offsite(db: AsyncSession) -> dict[str, dict]:
+    cfg = await db.get(BackupSettings, 1)
+    if cfg is None or not cfg.offsite_enabled or not cfg.last_offsite_error:
+        return {}
+    return {"offsite": {"message": cfg.last_offsite_error}}

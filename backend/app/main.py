@@ -18,7 +18,7 @@ from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddle
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
-from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router
+from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router
 from app.routers import one_to_one
 from app.services.one_to_one_deploy_service import sweep_expired_one_to_one_deployments
 from app.routers import outbound_nat
@@ -51,6 +51,8 @@ from app.services import resource_monitor_service
 from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.services import scheduled_maintenance_service
 from app.services import compliance_service
+from app.services import audit_export_service
+from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
 
 # Without this, Python's root logger defaults to WARNING with no handler,
@@ -274,6 +276,39 @@ async def _compliance_poll_loop():
         await asyncio.sleep(_COMPLIANCE_INTERVAL_SECONDS)
 
 
+_AUDIT_EXPORT_POLL_SECONDS = 10
+
+
+async def _audit_export_poll_loop():
+    """Seventh background loop: forwards new audit events (syslog / webhook) when configured.
+    Cheap when off (one settings read); keeps draining while batches come back full."""
+    while True:
+        shipped = 0
+        try:
+            async with SessionLocal() as db:
+                shipped = await audit_export_service.run_once(db)
+        except Exception:
+            logger.exception("Audit-Export fehlgeschlagen")
+        await asyncio.sleep(0 if shipped >= audit_export_service.BATCH else _AUDIT_EXPORT_POLL_SECONDS)
+
+
+_BACKUP_POLL_SECONDS = 15 * 60
+
+
+async def _backup_poll_loop():
+    """Eighth background loop: takes due scheduled config backups, prunes, copies offsite."""
+    await asyncio.sleep(90)
+    while True:
+        try:
+            async with SessionLocal() as db:
+                result = await backup_schedule_service.run_due(db)
+            if result["taken"] or result["failed"] or result["uploaded"]:
+                logger.info("Geplante Backups: %s", result)
+        except Exception:
+            logger.exception("Geplante Backups fehlgeschlagen")
+        await asyncio.sleep(_BACKUP_POLL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await migrate.run()
@@ -293,6 +328,8 @@ async def lifespan(app: FastAPI):
     resource_task = asyncio.create_task(_resource_poll_loop())
     scheduled_maintenance_task = asyncio.create_task(_scheduled_maintenance_poll_loop())
     compliance_task = asyncio.create_task(_compliance_poll_loop())
+    audit_export_task = asyncio.create_task(_audit_export_poll_loop())
+    backup_task = asyncio.create_task(_backup_poll_loop())
     try:
         yield
     finally:
@@ -302,7 +339,9 @@ async def lifespan(app: FastAPI):
         resource_task.cancel()
         scheduled_maintenance_task.cancel()
         compliance_task.cancel()
-        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task):
+        audit_export_task.cancel()
+        backup_task.cancel()
+        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task, audit_export_task, backup_task):
             try:
                 await task
             except asyncio.CancelledError:
@@ -402,6 +441,8 @@ app.include_router(tokens_router.router, prefix="/api")
 app.include_router(metrics_router.router, prefix="/api")
 app.include_router(mcp_router.router, prefix="/api")
 app.include_router(compliance_router.router, prefix="/api")
+app.include_router(audit_export_router.router, prefix="/api")
+app.include_router(backups_router.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(aliases.router, prefix="/api")

@@ -10,18 +10,19 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { api, User, UserRole } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
-import { useReadOnly } from "@/lib/useReadOnly";
+import { useNotAdmin } from "@/lib/useReadOnly";
 import { Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 function RoleBadge({ role }: { role: UserRole }) {
   const { t } = useLanguage();
-  return <Badge tone={role === "admin" ? "info" : "neutral"}>{role === "admin" ? t("users.roleAdmin") : t("users.roleReadOnly")}</Badge>;
+  const label = role === "admin" ? t("users.roleAdmin") : role === "operator" ? t("users.roleOperator") : t("users.roleReadOnly");
+  return <Badge tone={role === "admin" ? "info" : role === "operator" ? "accent" : "neutral"}>{label}</Badge>;
 }
 
 export default function UsersPage() {
   const { t, errorMessage, locale } = useLanguage();
-  const readOnly = useReadOnly();
+  const readOnly = useNotAdmin();
   const toast = useToast();
   const [users, setUsers] = useState<User[] | null>(null);
   const [ownUsername, setOwnUsername] = useState<string | null>(null);
@@ -207,6 +208,7 @@ function CreateUserModal({ onClose, onCreated }: { onClose: () => void; onCreate
         <FieldGroup label={t("users.colRole")}>
           <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
             <option value="read_only">{t("users.roleReadOnly")}</option>
+            <option value="operator">{t("users.roleOperator")}</option>
             <option value="admin">{t("users.roleAdmin")}</option>
           </Select>
         </FieldGroup>
@@ -256,6 +258,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: User; onClose: () => 
         <FieldGroup label={t("users.colRole")}>
           <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
             <option value="read_only">{t("users.roleReadOnly")}</option>
+            <option value="operator">{t("users.roleOperator")}</option>
             <option value="admin">{t("users.roleAdmin")}</option>
           </Select>
         </FieldGroup>

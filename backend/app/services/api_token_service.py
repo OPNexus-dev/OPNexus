@@ -41,7 +41,7 @@ _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 _SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)")
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
-_ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)")
+_ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/")
 # The MCP endpoint is POST (JSON-RPC) but its tools only ever read.
 _MCP_PATH = "/api/mcp"
 _ADMIN_ONLY_WRITES = re.compile(
@@ -72,6 +72,13 @@ def denies(scope: str, method: str, path: str) -> bool:
     if scope == "deploy" and _ADMIN_ONLY_WRITES.match(path):
         return True
     return False
+
+
+def operator_denies(method: str, path: str) -> bool:
+    """True if an `operator` account must not make this request: the writes that
+    change who may access OPNexus or where it sends data. (Their own theme at
+    PUT /api/settings stays open; account endpoints are not matched here.)"""
+    return method not in _SAFE_METHODS and path != "/api/settings" and bool(_ADMIN_ONLY_WRITES.match(path))
 
 
 def bearer_from_header(header: str) -> str | None:
