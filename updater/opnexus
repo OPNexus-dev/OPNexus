@@ -80,10 +80,21 @@ updater_enabled() {
   [[ ",$profiles," == *",updater,"* ]]
 }
 
+overlay_enabled() {
+  local profiles
+  profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
+  [[ ",$profiles," == *",overlay,"* ]]
+}
+
 # Welche Dienste `up` anfasst: im Updater-Container nur die Anwendung, auf dem
 # Host (CLI) alles — dort darf sich auch der Updater selbst erneuern.
 up_targets() {
-  if [ -n "${OPNEXUS_UPDATER:-}" ]; then printf '%s\n' "${SERVICES[@]}"; fi
+  if [ -n "${OPNEXUS_UPDATER:-}" ]; then
+    printf '%s\n' "${SERVICES[@]}"
+    # Der WireGuard-Hub (Profil "overlay") läuft mit dem Backend-Image und muss mit.
+    overlay_enabled && echo wg-hub
+  fi
+  return 0
 }
 
 psql_db() { c exec -T postgres psql -U "$DB_USER" -d "$DB_NAME" -Atq "$@"; }

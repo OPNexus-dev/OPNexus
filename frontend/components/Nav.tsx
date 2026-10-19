@@ -17,6 +17,7 @@ import {
   Boxes,
   KeyRound,
   LayoutDashboard,
+  Link2,
   Layers,
   ListChecks,
   LogOut,
@@ -164,6 +165,12 @@ export const navGroups: NavGroup[] = [
         label: "Benutzer",
         icon: Users,
         keywords: ["User", "Accounts", "Rollen", "Rechte", "Read-Only", "Nur-Lesen", "Admin-Rolle", "Passwort zurücksetzen"],
+      },
+      {
+        href: "/overlay",
+        label: "Management-Tunnel",
+        icon: Link2,
+        keywords: ["Overlay", "WireGuard", "NAT", "CGNAT", "Hub", "hinter NAT", "Fernzugriff", "Außenstelle", "Filiale", "ohne öffentliche IP"],
       },
       {
         href: "/tokens",

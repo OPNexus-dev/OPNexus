@@ -41,11 +41,11 @@ _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 _SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)")
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
-_ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/")
+_ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/|^/api/overlay/peers/[^/]+/instructions$")
 # The MCP endpoint is POST (JSON-RPC) but its tools only ever read.
 _MCP_PATH = "/api/mcp"
 _ADMIN_ONLY_WRITES = re.compile(
-    r"^/api/(users|settings|system|notifications)(/|$)"
+    r"^/api/(users|settings|system|notifications|overlay)(/|$)"
     r"|^/api/logs/settings$"
     r"|^/api/hosts(/tls-probe|/[^/]+)?$"
 )

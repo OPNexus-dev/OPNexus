@@ -45,6 +45,7 @@ _DATA_DIRS = {
     "acme_secrets": "acme_secret_dir",
     "totp_secrets": "totp_secret_dir",
     "notification_secrets": "notification_secret_dir",
+    "overlay": "overlay_dir",
 }
 
 

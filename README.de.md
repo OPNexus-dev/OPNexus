@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.20.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.21.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -62,7 +62,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.20.0
+OPNEXUS_VERSION=1.21.0
 ```
 
 ```bash

@@ -53,6 +53,9 @@ class Settings(BaseSettings):
     # reachable both by IP and by name: "https://10.0.0.5,https://opnexus.lan".
     frontend_origin: str = ""
     opnsense_secret_dir: str = "/data/opnsense-secrets"
+    # Management overlay (WireGuard hub in the optional `wg-hub` container, see services/overlay_service.py).
+    overlay_dir: str = "/data/overlay"
+    overlay_proxy_url: str = "http://wg-hub:8888"
     # Lab only: allow an http:// endpoint for offsite backups (credentials in the clear).
     allow_insecure_offsite: bool = False
     opnsense_backup_dir: str = "/data/opnsense-backups"

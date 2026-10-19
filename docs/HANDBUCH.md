@@ -340,6 +340,47 @@ ist der Schritt, der das Festsetzen absichert.
   zuerst die Deployments (Regel löschen oder früheres Ziel unter „Prüfen & Push“
   bereinigen).
 
+### Firewalls hinter NAT (Management-Tunnel)
+
+OPNexus muss die API einer Firewall erreichen können. Hat die Firewall keine öffentliche Adresse (hinter NAT,
+CGNAT, Mobilfunk-Router), baust du mit dem **Management-Tunnel** (System › Management-Tunnel) einen
+WireGuard-Hub auf dem OPNexus-Server auf: Die Firewall wählt sich **nach außen** dort ein, OPNexus erreicht
+ihre API durch den Tunnel. An der Firewall muss nichts aus dem Internet erreichbar sein. Der Tunnel ist
+nur für die Verwaltung gedacht; Nutzverkehr läuft nicht darüber.
+
+**Voraussetzungen:** der Hub ist ein optionaler Container. In `.env` `COMPOSE_PROFILES=overlay` setzen (bei
+mehreren Profilen kommagetrennt), `docker compose up -d`, und der UDP-Port `OVERLAY_PORT` (Standard 51820)
+des Servers muss aus dem Internet erreichbar sein (Port-Weiterleitung am Router des OPNexus-Servers). Der Hub
+läuft mit dem Image des Backends und braucht nur die Berechtigung `NET_ADMIN` für die WireGuard-Schnittstelle;
+das Linux-Kernelmodul `wireguard` muss auf dem Server vorhanden sein (jeder aktuelle Kernel).
+
+**Einrichten:** Im Management-Tunnel einschalten, die öffentliche Adresse (DNS-Name oder IP) des Servers
+eintragen, speichern. Dann pro Firewall **„Firewall hinzufügen“**: OPNexus vergibt eine Tunnel-Adresse (z. B.
+`10.99.0.2`) und einen Pre-Shared Key und zeigt eine Anleitung mit kopierbaren Werten:
+
+1. In OPNsense (VPN › WireGuard) eine **lokale Instanz** anlegen, Schlüsselpaar erzeugen lassen, die
+   Tunnel-Adresse eintragen.
+2. Den **Hub als Gegenstelle** eintragen (öffentlicher Schlüssel, Pre-Shared Key, Endpunkt, erlaubte IP
+   `10.99.0.1/32`, Keepalive 25).
+3. Eine **Firewall-Regel** auf der WireGuard-Schnittstellengruppe: TCP von der Hub-Adresse zu „Diese
+   Firewall“, Port der Weboberfläche (443).
+4. Den **öffentlichen Schlüssel** der neuen Instanz bei „Schlüssel / Host“ in OPNexus eintragen.
+5. Die Firewall wie gewohnt als **Host** anlegen, aber mit der Tunnel-Adresse (`https://10.99.0.2`). Der
+   Status im Management-Tunnel wechselt auf „verbunden“.
+
+Ab dann funktioniert alles wie bei jeder anderen Firewall (Regeln, Wartung, Logs, Sicherungen,
+Sicherheitslage). Das Festsetzen des Zertifikats funktioniert auch durch den Tunnel.
+
+**Sicherheit:** Der Hub nimmt von den Firewalls **keine neuen Verbindungen** an (iptables `INPUT … NEW`
+verworfen), eine kompromittierte Außenstelle erreicht also weder OPNexus noch andere Außenstellen. Der
+Proxy, über den OPNexus die Firewalls erreicht, ist nur im Compose-Netz erreichbar und verbindet
+ausschließlich in das Tunnel-Netz. Schlüssel liegen als Dateien im Volume `overlay_state` (dort auch der
+private Schlüssel des Hubs; die Vollsicherung enthält ihn). Je Firewall gibt es einen eigenen
+Pre-Shared Key; „Löschen“ entfernt sie sofort aus dem Hub. Hosts im Tunnel-Netz werden nur über IP-Adressen
+angesprochen (keine DNS-Namen). Nicht enthalten: Die Einrichtung auf der Firewall übernimmt OPNexus nicht
+(bei einer Firewall hinter NAT kann es sie ja nicht erreichen); bei einer erreichbaren Firewall kannst du
+alternativ unter VPN › WireGuard einen Tunnel mit denselben Werten verteilen.
+
 ---
 
 ## Regeln sicher ausrollen

@@ -18,6 +18,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import ExtensionOID, NameOID
 
+from app.services import overlay_service, proxy_connect
+
 MAX_PEM_BYTES = 32 * 1024
 
 
@@ -90,6 +92,23 @@ def verify_argument(verify_tls: bool, tls_ca_pem: str | None):
     return True
 
 
+async def _open_tls(base_url: str, parsed, ctx: ssl.SSLContext, timeout: float):
+    """TLS connection to the firewall: directly, or through the overlay hub's proxy for overlay addresses."""
+    proxy = overlay_service.proxy_for(base_url)
+    port = parsed.port or 443
+    if proxy is None:
+        return await asyncio.wait_for(
+            asyncio.open_connection(parsed.hostname, port, ssl=ctx, server_hostname=parsed.hostname), timeout
+        )
+    reader, writer = await proxy_connect.open_tunnel(proxy, parsed.hostname, port, timeout)
+    try:
+        await asyncio.wait_for(writer.start_tls(ctx, server_hostname=parsed.hostname), timeout)
+    except Exception:
+        writer.close()
+        raise
+    return reader, writer
+
+
 async def probe(base_url: str, timeout: float = 8.0) -> dict:
     """Fetch the certificate a firewall presents, *without* trusting it. The
     caller must show the fingerprint to a human to compare with the firewall."""
@@ -100,10 +119,7 @@ async def probe(base_url: str, timeout: float = 8.0) -> dict:
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
     try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(parsed.hostname, parsed.port or 443, ssl=ctx, server_hostname=parsed.hostname),
-            timeout,
-        )
+        _, writer = await _open_tls(base_url, parsed, ctx, timeout)
     except (OSError, ssl.SSLError, asyncio.TimeoutError) as exc:
         raise TlsPinError(f"Verbindung fehlgeschlagen: {exc}") from exc
     try:
@@ -122,10 +138,7 @@ async def verify_matches(base_url: str, pem: str, timeout: float = 8.0) -> None:
     presents anything else."""
     parsed = urlparse(base_url)
     try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(parsed.hostname, parsed.port or 443, ssl=pinned_context(pem), server_hostname=parsed.hostname),
-            timeout,
-        )
+        _, writer = await _open_tls(base_url, parsed, pinned_context(pem), timeout)
         writer.close()
     except ssl.SSLError as exc:
         raise TlsPinError("Das Zertifikat der Firewall passt nicht zum festgesetzten Zertifikat") from exc

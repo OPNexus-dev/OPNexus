@@ -20,6 +20,7 @@ os.environ["WIREGUARD_KEY_SECRET_DIR"] = "/tmp/opnexus-test-wireguard-secrets"
 os.environ["CERT_KEY_SECRET_DIR"] = "/tmp/opnexus-test-cert-key-secrets"
 os.environ["ACME_SECRET_DIR"] = "/tmp/opnexus-test-acme-secrets"
 os.environ["TOTP_SECRET_DIR"] = "/tmp/opnexus-test-totp-secrets"
+os.environ["OVERLAY_DIR"] = "/tmp/opnexus-test-overlay"
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 # Force-set rather than setdefault: docker-compose's backend service sets
 # ADMIN_PASSWORD="" (present-but-empty) by default, which setdefault would

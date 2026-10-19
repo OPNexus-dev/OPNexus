@@ -109,6 +109,7 @@ services:
       ACME_SECRET_DIR: /data/acme-secrets
       TOTP_SECRET_DIR: /data/totp-secrets
       NOTIFICATION_SECRET_DIR: /data/notification-secrets
+      OVERLAY_DIR: /data/overlay
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-}
@@ -132,6 +133,8 @@ services:
       - acme_secrets:/data/acme-secrets
       - totp_secrets:/data/totp-secrets
       - notification_secrets:/data/notification-secrets
+      # Management-Overlay: Konfiguration für den wg-hub und dessen Status.
+      - overlay_state:/data/overlay
       # Gleiches Volume wie der postgres-backup-Service: hier landet das
       # automatische Sicherheits-Backup vor einer Schema-Migration.
       - postgres_backups:/backups
@@ -200,6 +203,28 @@ services:
       - caddy_data:/data
       - caddy_config:/config
 
+  # ── Optional: Management-Overlay (WireGuard-Hub) ─────────────────────
+  # Standardmäßig NICHT gestartet. Aktivieren mit COMPOSE_PROFILES=overlay in
+  # .env und `docker compose up -d`. Damit erreicht OPNexus auch Firewalls hinter
+  # NAT/CGNAT: sie wählen sich per WireGuard hier ein (UDP-Port ${OVERLAY_PORT:-51820}
+  # muss vom Internet erreichbar sein). Gleiches Image wie das Backend, mit
+  # NET_ADMIN nur für die WireGuard-Schnittstelle. Einrichtung: Handbuch,
+  # "Firewalls hinter NAT".
+  wg-hub:
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-backend:${OPNEXUS_VERSION:-latest}
+    profiles: ["overlay"]
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["python", "-m", "app.overlay_hub"]
+    cap_add:
+      - NET_ADMIN
+    environment:
+      OVERLAY_DIR: /data/overlay
+    volumes:
+      - overlay_state:/data/overlay
+    ports:
+      - "${OVERLAY_PORT:-51820}:51820/udp"
+
   # ── Optional: Updates aus dem Webinterface ──────────────────────────
   # Standardmäßig NICHT gestartet. Aktivieren mit COMPOSE_PROFILES=updater in
   # .env und `docker compose up -d`. Dies ist der einzige Container mit
@@ -239,5 +264,6 @@ volumes:
   acme_secrets:
   totp_secrets:
   notification_secrets:
+  overlay_state:
   caddy_data:
   caddy_config:

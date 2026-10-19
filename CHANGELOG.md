@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.21.0] "Osprey" — 2026-10-20
+
+- **Management-Tunnel** (System › Management-Tunnel): Firewalls hinter NAT/CGNAT verwalten. Ein optionaler WireGuard-Hub auf dem
+  OPNexus-Server (Compose-Profil `overlay`, Container `wg-hub` aus dem Backend-Image mit `NET_ADMIN`) nimmt die Firewalls entgegen, die sich
+  nach außen einwählen; OPNexus erreicht deren API über einen kleinen CONNECT-Proxy des Hubs, der nur ins Tunnel-Netz verbindet. Je Firewall
+  eine Tunnel-Adresse und ein eigener Pre-Shared Key, Anleitung mit kopierbaren Werten, Live-Status (Handshake, Datenmenge). Der Hub nimmt
+  keine neuen Verbindungen aus dem Tunnel an. Ende-zu-Ende gegen eine echte OPNsense 26.7 geprüft (Handshake, API, Zertifikat festsetzen).
+  Neue Tabellen `overlay_settings`, `overlay_peers` (Migration `0015`); das Backend-Image enthält jetzt `wireguard-tools`, `iproute2`, `iptables`.
+
 ## [1.20.0] "Lilli" — 2026-10-20
 
 - **Single Sign-on (OIDC)**: Anmeldung über Authentik, Keycloak, Entra ID, Google u. a. (Authorization Code mit PKCE). Die Rolle

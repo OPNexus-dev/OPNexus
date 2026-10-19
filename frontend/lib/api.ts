@@ -784,6 +784,41 @@ export interface OidcSettings {
 
 export type OidcSettingsUpdate = Partial<Omit<OidcSettings, "client_secret_set">> & { client_secret?: string; clear_client_secret?: boolean };
 
+export interface OverlaySettings {
+  enabled: boolean;
+  endpoint: string | null;
+  subnet: string;
+  listen_port: number;
+  hub_public_key: string | null;
+  hub_address: string;
+  hub_state: "running" | "stale" | "absent";
+}
+
+export interface OverlayPeer {
+  id: string;
+  name: string;
+  ip: string;
+  public_key: string | null;
+  host_id: string | null;
+  host_name: string | null;
+  connected: boolean;
+  last_handshake_at: string | null;
+  rx_bytes: number;
+  tx_bytes: number;
+  remote_endpoint: string | null;
+}
+
+export interface OverlayInstructions {
+  hub_public_key: string;
+  endpoint: string | null;
+  tunnel_address: string;
+  allowed_ips: string;
+  psk: string;
+  keepalive: number;
+  hub_ip: string;
+  host_url: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -1426,6 +1461,16 @@ export const api = {
   testOidc: () => request<{ success: boolean; authorization_endpoint: string }>("/settings/oidc/test", { method: "POST" }),
   getGovernance: () => request<{ operators_may_deploy: boolean }>("/settings/governance"),
   updateGovernance: (operators_may_deploy: boolean) => request<{ operators_may_deploy: boolean }>("/settings/governance", { method: "PUT", body: JSON.stringify({ operators_may_deploy }) }),
+
+  getOverlay: () => request<{ settings: OverlaySettings; peers: OverlayPeer[] }>("/overlay"),
+  updateOverlay: (data: Partial<Pick<OverlaySettings, "enabled" | "endpoint" | "subnet" | "listen_port">>) =>
+    request<OverlaySettings>("/overlay/settings", { method: "PUT", body: JSON.stringify(data) }),
+  createOverlayPeer: (name: string) =>
+    request<{ id: string; name: string; ip: string; instructions: OverlayInstructions }>("/overlay/peers", { method: "POST", body: JSON.stringify({ name }) }),
+  overlayInstructions: (id: string) => request<OverlayInstructions>(`/overlay/peers/${id}/instructions`),
+  updateOverlayPeer: (id: string, data: { public_key?: string; host_id?: string; clear_host?: boolean }) =>
+    request<{ ok: boolean }>(`/overlay/peers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteOverlayPeer: (id: string) => request<void>(`/overlay/peers/${id}`, { method: "DELETE" }),
 
   listApiTokens: () => request<ApiToken[]>("/tokens"),
   createApiToken: (data: { name: string; scope: TokenScope; expires_in_days: number | null; current_password: string }) =>
