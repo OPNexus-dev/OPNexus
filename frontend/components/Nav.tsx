@@ -29,6 +29,7 @@ import {
   Server,
   Settings,
   Shield,
+  ShieldAlert,
   ShieldCheck,
   Tags,
   Users,
@@ -121,6 +122,7 @@ export const navGroups: NavGroup[] = [
     icon: ScrollText,
     items: [
       { href: "/logs", label: "Logs", icon: ScrollText, keywords: ["Firewall-Logs", "Geblockt", "Blocked", "Top Ports"] },
+      { href: "/security", label: "Sicherheitslage", icon: ShieldAlert, keywords: ["Compliance", "Härtung", "Score", "Regel-Hygiene", "Any-Any", "SSH", "Sicherheit", "Prüfung"] },
       { href: "/audit", label: "Audit", icon: ScrollText, keywords: ["Deploy-Historie", "Protokoll", "Verlauf"] },
     ],
   },
@@ -162,6 +164,12 @@ export const navGroups: NavGroup[] = [
         label: "Benutzer",
         icon: Users,
         keywords: ["User", "Accounts", "Rollen", "Rechte", "Read-Only", "Nur-Lesen", "Admin-Rolle", "Passwort zurücksetzen"],
+      },
+      {
+        href: "/tokens",
+        label: "API-Tokens",
+        icon: KeyRound,
+        keywords: ["API", "Token", "Bearer", "Prometheus", "Metriken", "Automatisierung", "CI", "Skript", "MCP", "Schlüssel"],
       },
       {
         href: "/setup",

@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models.user import AdminUser
 from app.routers.auth import current_user
 from app.schemas.user import UserCreate, UserPasswordReset, UserRead, UserRoleUpdate
-from app.services import auth_service, totp_service
+from app.services import api_token_service, auth_service, totp_service
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -79,6 +79,7 @@ async def reset_password(user_id: uuid.UUID, payload: UserPasswordReset, db: Asy
     # A reset is the answer to a suspected compromise: every session of the
     # account ends with the old password, atomically with the new hash.
     await auth_service.revoke_sessions(db, target.id, commit=False)
+    await api_token_service.revoke_all(db, target.id, commit=False)
     await db.commit()
     return target
 

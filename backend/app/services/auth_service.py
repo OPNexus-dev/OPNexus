@@ -1,7 +1,7 @@
 """Authentication core: password hashing, server-side sessions, brute-force
 protection and the initial admin bootstrap.
 
-Two roles ("admin", "read_only"), no orgs, no API keys — see
+Two roles ("admin", "read_only"), no orgs; API tokens live in api_token_service — see
 AdminUser/AuthMiddleware for how a role is enforced. Originally mirrored
 InfraPanel's own app/services/auth_service.py (single-admin-only); the role
 column and its enforcement are OPNexus-specific additions on top of that.

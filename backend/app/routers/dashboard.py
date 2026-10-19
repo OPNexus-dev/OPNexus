@@ -184,18 +184,8 @@ async def _carp_auto_revert_actions(db: AsyncSession) -> list[PendingAction]:
     return actions
 
 
-@router.get("", response_model=DashboardSummary)
-async def summary(db: AsyncSession = Depends(get_db)):
-    hosts = (await db.scalars(select(OpnsenseHost).order_by(OpnsenseHost.name))).all()
-    statuses = await get_statuses(hosts)
-    host_summaries = [
-        DashboardHost(
-            id=host.id, name=host.name, status=statuses.get(host.id, {}).get("status", "offline"),
-            carp_status=statuses.get(host.id, {}).get("carp_status"), cluster_name=host.cluster_name,
-        )
-        for host in hosts
-    ]
-
+async def collect_pending_actions(db: AsyncSession) -> list[PendingAction]:
+    """Everything that needs a human, newest first (shared with the metrics endpoint)."""
     pending_actions: list[PendingAction] = []
     pending_actions += await _rule_actions(db)
     pending_actions += await _nat_actions(db, PortForwardDeployment, PortForwardRule, "port_forward_id", "port_forward", "port-forward")
@@ -209,6 +199,22 @@ async def summary(db: AsyncSession = Depends(get_db)):
     pending_actions += await _stuck_host_operations(db)
     pending_actions += await _carp_auto_revert_actions(db)
     pending_actions.sort(key=lambda item: item.created_at, reverse=True)
+    return pending_actions
+
+
+@router.get("", response_model=DashboardSummary)
+async def summary(db: AsyncSession = Depends(get_db)):
+    hosts = (await db.scalars(select(OpnsenseHost).order_by(OpnsenseHost.name))).all()
+    statuses = await get_statuses(hosts)
+    host_summaries = [
+        DashboardHost(
+            id=host.id, name=host.name, status=statuses.get(host.id, {}).get("status", "offline"),
+            carp_status=statuses.get(host.id, {}).get("carp_status"), cluster_name=host.cluster_name,
+        )
+        for host in hosts
+    ]
+
+    pending_actions = await collect_pending_actions(db)
 
     activity_rows = (
         await db.scalars(select(AuditEvent).order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc()).limit(15))

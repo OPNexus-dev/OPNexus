@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
@@ -17,7 +18,7 @@ from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddle
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
-from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router
+from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router
 from app.routers import one_to_one
 from app.services.one_to_one_deploy_service import sweep_expired_one_to_one_deployments
 from app.routers import outbound_nat
@@ -49,6 +50,7 @@ from app.routers import resource_samples as resource_samples_router
 from app.services import resource_monitor_service
 from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.services import scheduled_maintenance_service
+from app.services import compliance_service
 from app.services import carp_event_service, carp_maintenance_window_service
 
 # Without this, Python's root logger defaults to WARNING with no handler,
@@ -254,6 +256,24 @@ async def _scheduled_maintenance_poll_loop():
         await asyncio.sleep(_RUNNING_MAINTENANCE_POLL_SECONDS if in_progress else _SCHEDULED_MAINTENANCE_POLL_SECONDS)
 
 
+_COMPLIANCE_FIRST_RUN_SECONDS = 120
+_COMPLIANCE_INTERVAL_SECONDS = 6 * 3600
+
+
+async def _compliance_poll_loop():
+    """Sixth background loop: refreshes every enabled host's security-posture result.
+    Each check is one read-only config download per firewall, so every six hours
+    is plenty; the first run waits a little so a restart is not a thundering herd."""
+    await asyncio.sleep(_COMPLIANCE_FIRST_RUN_SECONDS)
+    while True:
+        try:
+            async with SessionLocal() as db:
+                await compliance_service.check_all(db)
+        except Exception:
+            logger.exception("Sicherheitslage-Prüfung fehlgeschlagen")
+        await asyncio.sleep(_COMPLIANCE_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await migrate.run()
@@ -272,6 +292,7 @@ async def lifespan(app: FastAPI):
     log_ingest_task = asyncio.create_task(_log_ingest_poll_loop())
     resource_task = asyncio.create_task(_resource_poll_loop())
     scheduled_maintenance_task = asyncio.create_task(_scheduled_maintenance_poll_loop())
+    compliance_task = asyncio.create_task(_compliance_poll_loop())
     try:
         yield
     finally:
@@ -280,14 +301,44 @@ async def lifespan(app: FastAPI):
         log_ingest_task.cancel()
         resource_task.cancel()
         scheduled_maintenance_task.cancel()
-        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task):
+        compliance_task.cancel()
+        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task):
             try:
                 await task
             except asyncio.CancelledError:
                 pass
 
 
-app = FastAPI(title="OPNexus", version=APP_VERSION, lifespan=lifespan)
+API_DESCRIPTION = (
+    "REST API of OPNexus, the central management for OPNsense firewall fleets.\n\n"
+    "**Authentication:** send a personal API token as `Authorization: Bearer opx_...` "
+    "(create one under *System > API tokens*). Scopes: `read` (GET only), `deploy` "
+    "(+ roll out rules, NAT, VPN, maintenance), `admin` (+ users, settings, hosts). "
+    "A token never exceeds its owner's role. Token and account management is session-only.\n\n"
+    "Errors are `{\"detail\": {\"code\": \"...\", \"params\": {...}}}` with a stable `code`."
+)
+
+# The interactive Swagger/ReDoc pages load scripts from a CDN, which the proxy's
+# Content-Security-Policy forbids; the schema itself is served (behind auth) for
+# any client that renders it (Postman, openapi-generator, an AI assistant).
+app = FastAPI(
+    title="OPNexus", version=APP_VERSION, lifespan=lifespan, description=API_DESCRIPTION,
+    docs_url=None, redoc_url=None, openapi_url="/api/openapi.json",
+)
+
+
+def _custom_openapi():
+    if app.openapi_schema is None:
+        schema = get_openapi(title=app.title, version=app.version, description=app.description, routes=app.routes)
+        schema.setdefault("components", {}).setdefault("securitySchemes", {})["bearerAuth"] = {
+            "type": "http", "scheme": "bearer", "description": "Personal API token (opx_...)",
+        }
+        schema["security"] = [{"bearerAuth": []}]
+        app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
 
 @app.exception_handler(RequestValidationError)
 async def _safe_validation_error(request: Request, exc: RequestValidationError):
@@ -347,6 +398,10 @@ app.include_router(hosts.router, prefix="/api")
 app.include_router(rules.router, prefix="/api")
 app.include_router(search_router.router, prefix="/api")
 app.include_router(users_router.router, prefix="/api")
+app.include_router(tokens_router.router, prefix="/api")
+app.include_router(metrics_router.router, prefix="/api")
+app.include_router(mcp_router.router, prefix="/api")
+app.include_router(compliance_router.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(aliases.router, prefix="/api")

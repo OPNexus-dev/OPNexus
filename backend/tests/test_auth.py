@@ -92,13 +92,15 @@ async def test_health_stays_public_but_docs_require_auth(anon_client):
     # /docs/redoc/openapi.json used to be public — now require a session
     # like any other endpoint, since fully documenting a firewall-fleet
     # API surface to an anonymous caller is free recon for an attacker.
-    for path in ("/docs", "/redoc", "/openapi.json"):
+    for path in ("/docs", "/redoc", "/openapi.json", "/api/openapi.json"):
         resp = await anon_client.get(path)
         assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_docs_reachable_once_logged_in(client):
+async def test_openapi_schema_reachable_once_logged_in(client):
+    # The schema lives under /api (the proxy only routes /api to the backend); the
+    # interactive Swagger/ReDoc pages are gone (their CDN scripts violate the CSP).
+    assert (await client.get("/api/openapi.json")).status_code == 200
     for path in ("/docs", "/redoc", "/openapi.json"):
-        resp = await client.get(path)
-        assert resp.status_code == 200
+        assert (await client.get(path)).status_code == 404

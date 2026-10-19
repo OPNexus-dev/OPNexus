@@ -3,7 +3,7 @@
 For a fresh install whose generated first-start password scrolled out of the
 log, and for an admin who forgot theirs. Needs shell access to the server,
 which is the trust boundary for this tool anyway (same as app.reset_2fa).
-All sessions of the account are ended. Normally called through the host
+All sessions and API tokens of the account are ended. Normally called through the host
 CLI:
 
     ./opnexus password [username]
@@ -24,7 +24,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import SessionLocal
 from app.models.user import AdminUser
-from app.services import auth_service
+from app.services import api_token_service, auth_service
 
 
 async def main(username: str | None) -> int:
@@ -48,6 +48,7 @@ async def main(username: str | None) -> int:
         password = secrets.token_urlsafe(18)
         user.password_hash = await auth_service.hash_password_async(password)
         await auth_service.revoke_sessions(db, user.id, commit=False)
+        await api_token_service.revoke_all(db, user.id, commit=False)
         await db.commit()
         name = user.username
         has_totp = user.totp_enabled

@@ -670,6 +670,42 @@ export interface AuthState {
   role?: UserRole;
 }
 
+export type TokenScope = "read" | "deploy" | "admin";
+
+export interface ApiToken {
+  id: string;
+  name: string;
+  scope: TokenScope;
+  prefix: string;
+  owner: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  last_used_ip: string | null;
+}
+
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+
+export interface ComplianceFinding {
+  id: string;
+  severity: Severity;
+  passed: boolean | null;
+  params: { count?: number; examples?: string[]; reason?: string; protocol?: string; age_days?: number | null };
+}
+
+export interface ComplianceHost {
+  host_id: string;
+  host_name: string;
+  cluster_name: string | null;
+  enabled: boolean;
+  checked_at: string | null;
+  score: number | null;
+  grade: "good" | "fair" | "poor" | null;
+  error: "unreachable" | "invalid_config" | null;
+  counts: Record<Severity, number> | null;
+  findings?: ComplianceFinding[];
+}
+
 export interface User {
   id: string;
   username: string;
@@ -1285,6 +1321,16 @@ export const api = {
   resetUserPassword: (id: string, new_password: string) =>
     request<User>(`/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ new_password }) }),
   deleteUser: (id: string) => request<void>(`/users/${id}`, { method: "DELETE" }),
+
+  listCompliance: () => request<ComplianceHost[]>("/compliance"),
+  getHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance`),
+  checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
+  checkFleetCompliance: () => request<ComplianceHost[]>("/compliance/check", { method: "POST" }),
+
+  listApiTokens: () => request<ApiToken[]>("/tokens"),
+  createApiToken: (data: { name: string; scope: TokenScope; expires_in_days: number | null; current_password: string }) =>
+    request<ApiToken & { token: string }>("/tokens", { method: "POST", body: JSON.stringify(data) }),
+  revokeApiToken: (id: string) => request<void>(`/tokens/${id}`, { method: "DELETE" }),
 
   listPolicyHierarchyGroups: () => request<PolicyHierarchyGroup[]>("/policy-hierarchy/groups"),
   createPolicyHierarchyGroup: (data: PolicyHierarchyGroupWrite) => request<PolicyHierarchyGroup>("/policy-hierarchy/groups", { method: "POST", body: JSON.stringify(data) }),

@@ -8,7 +8,8 @@ from starlette.responses import JSONResponse
 from app.database import SessionLocal
 from app.errors import ErrorCode
 from app.routers.auth import COOKIE_NAME
-from app.services import auth_service
+from app.routers.auth import client_ip
+from app.services import api_token_service, auth_service
 
 _PUBLIC_PATHS = {
     "/api/auth/login",
@@ -35,6 +36,8 @@ _PUBLIC_PATHS = {
 _READ_ONLY_ALLOWED_WRITES = {
     "/api/auth/change-password",
     "/api/settings",
+    # Read-only JSON-RPC tools (see routers/mcp.py).
+    "/api/mcp",
     # Self-scoped: a user managing their own second factor.
     "/api/auth/2fa/setup",
     "/api/auth/2fa/enable",
@@ -48,6 +51,7 @@ _READ_ONLY_ALLOWED_WRITES = {
 _SECURITY_KINDS = {
     "ipsec": "ipsec_tunnel", "openvpn": "openvpn_instance", "wireguard": "wireguard_tunnel",
     "certificates": "certificate", "acme": "acme", "notifications": "notification", "auth": "auth",
+    "tokens": "api_token",
 }
 _COLLECTIONS = {"tunnels", "instances", "managed", "accounts", "certificates", "settings"}
 
@@ -86,10 +90,26 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
 
+        api_token = None
+        bearer = api_token_service.bearer_from_header(request.headers.get("authorization", ""))
         token = request.cookies.get(COOKIE_NAME, "")
-        if token:
+        if bearer is not None:
+            # An API token wins over a cookie; a bad one never falls back to it.
+            async with SessionLocal() as db:
+                resolved = await api_token_service.resolve(db, bearer, client_ip(request))
+            user, api_token = resolved if resolved is not None else (None, None)
+            token = bearer
+        elif token:
             async with SessionLocal() as db:
                 user = await auth_service.resolve_session(db, token)
+        if token:
+            if user is not None and api_token is not None and api_token_service.denies(
+                api_token.scope, request.method, request.url.path
+            ):
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": {"code": ErrorCode.API_TOKEN_SCOPE_FORBIDDEN.value, "params": {"scope": api_token.scope}}},
+                )
             if user is not None:
                 parts = request.url.path.strip("/").split("/")
                 kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system"}
@@ -109,10 +129,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     user.role == "read_only"
                     and request.method not in ("GET", "HEAD", "OPTIONS")
                     and request.url.path not in _READ_ONLY_ALLOWED_WRITES
+                    # Own API tokens (the router limits a read_only user to read scope).
+                    and not request.url.path.startswith("/api/tokens")
                 ):
                     if tracked:
                         # Refused attempts at security-relevant writes stay attributable.
-                        ctx = audit_service.context.set({"actor": user.username, "id": str(uuid.uuid4()), "action": event["action"]})
+                        ctx = audit_service.context.set({"actor": user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150], "id": str(uuid.uuid4()), "action": event["action"]})
                         try:
                             await audit_service.persist(**event, status="denied", message="Schreibzugriff für Nur-Lese-Konto verweigert")
                         finally:
@@ -122,7 +144,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         content={"detail": {"code": ErrorCode.READ_ONLY_ACCESS.value, "params": {}}},
                     )
                 request.state.user = user
-                token = audit_service.context.set({"actor": user.username, "id": str(uuid.uuid4()), "action": event["action"]})
+                request.state.api_token = api_token
+                actor = user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150]
+                token = audit_service.context.set({"actor": actor, "id": str(uuid.uuid4()), "action": event["action"]})
                 try:
                     if tracked:
                         await audit_service.persist(**event, status="requested")

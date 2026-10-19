@@ -212,9 +212,11 @@
       "certificates": "Zertifikate",
       "logs": "Logs",
       "audit": "Audit",
+      "security": "Sicherheitslage",
       "updates": "Update Center",
       "settings": "Einstellungen",
       "users": "Benutzer",
+      "tokens": "API-Tokens",
       "network-devices": "Geräte",
       "network-compare": "Abgleich",
       "hostsystem-tunables": "Tunables",
@@ -579,7 +581,11 @@
     "UPDATER_REJECTED": "Der Updater hat die Anfrage abgelehnt ({reason}).",
     "UPDATE_NOT_OFFERED": "Diese Version wird nicht zur Installation angeboten — nur die neueste stabile Version.",
     "UPDATE_MAJOR_CHANGE": "Hauptversions-Sprünge bitte bewusst auf dem Server mit „opnexus update“ ausführen.",
-    "ADMIN_REQUIRED": "Diese Funktion erfordert die Rolle „Admin“."
+    "ADMIN_REQUIRED": "Diese Funktion erfordert die Rolle „Admin“.",
+    "API_TOKEN_LIMIT_REACHED": "Es sind höchstens {limit} API-Tokens pro Benutzer möglich. Widerrufe zuerst nicht mehr benötigte Tokens.",
+    "API_TOKEN_NOT_FOUND": "API-Token nicht gefunden",
+    "API_TOKEN_SCOPE_FORBIDDEN": "Dieses API-Token (Bereich „{scope}“) darf diese Aktion nicht ausführen.",
+    "API_TOKEN_SCOPE_TOO_HIGH": "Nur-Lese-Konten können nur Tokens mit dem Bereich „Lesen“ anlegen."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -1423,6 +1429,164 @@
     "peerPskEditing": "Peer-PSK ({state})",
     "peerPsk": "Peer-PSK",
     "pskPlaceholder": "PSK einfügen"
+  },
+  "security": {
+    "title": "Sicherheitslage",
+    "intro": "Prüft die Konfiguration jeder Firewall auf typische Schwachstellen (offene Regeln, schwaches SSH/SNMP, fehlende Backups …) und vergibt einen Wert von 0 bis 100. Nur lesend: an den Firewalls wird nichts geändert. Automatisch alle 6 Stunden geprüft.",
+    "loadFailed": "Sicherheitslage konnte nicht geladen werden",
+    "checkFailed": "Die Prüfung ist fehlgeschlagen",
+    "checked": "Prüfung abgeschlossen",
+    "checkAll": "Alle prüfen",
+    "checkHost": "Erneut prüfen",
+    "noHosts": "Noch keine Firewalls",
+    "noHostsHint": "Verbinde eine Firewall, um ihre Sicherheitslage zu sehen.",
+    "notChecked": "Nicht geprüft",
+    "neverChecked": "Noch nicht geprüft",
+    "checkedAt": "Geprüft {when}",
+    "allGood": "Keine offenen Befunde",
+    "andMore": "… und {n} weitere",
+    "unknown": "unbekannt",
+    "failed": "nicht bestanden",
+    "passed": "bestanden",
+    "severity": {
+      "critical": "kritisch",
+      "high": "hoch",
+      "medium": "mittel",
+      "low": "niedrig",
+      "info": "Hinweis"
+    },
+    "error": {
+      "unreachable": "nicht erreichbar",
+      "invalid_config": "nicht lesbar"
+    },
+    "errorHint": {
+      "unreachable": "Die Firewall war nicht erreichbar und konnte deshalb nicht geprüft werden.",
+      "invalid_config": "Die Konfiguration konnte nicht gelesen werden."
+    },
+    "reason": {
+      "root_password": "root darf sich per Passwort über SSH anmelden",
+      "password": "SSH erlaubt die Anmeldung per Passwort"
+    },
+    "checks": {
+      "webgui_https": {
+        "title": "Web-Oberfläche nur über HTTPS",
+        "ok": "Die Verwaltungsoberfläche läuft über HTTPS.",
+        "fail": "Die Verwaltungsoberfläche läuft über unverschlüsseltes HTTP. Zugangsdaten sind im Netz mitlesbar.",
+        "fix": "System › Einstellungen › Administration: Protokoll auf HTTPS stellen."
+      },
+      "ssh_hardened": {
+        "title": "SSH abgesichert",
+        "ok": "SSH ist aus oder erlaubt nur Schlüssel.",
+        "fail": "{reason}.",
+        "fix": "SSH ausschalten, oder unter System › Einstellungen › Administration Root-Login und Passwort-Anmeldung abschalten und Schlüssel nutzen."
+      },
+      "snmp_community": {
+        "title": "SNMP-Community ist nicht „public“",
+        "ok": "SNMP nutzt eine eigene Community.",
+        "fail": "SNMP nutzt die voreingestellte Community „public“. Jeder im Netz kann Systemdaten lesen.",
+        "fix": "Eine eigene, lange Community setzen oder SNMP ausschalten."
+      },
+      "wan_any_any": {
+        "title": "Keine Allow-all-Regel am WAN",
+        "ok": "Am WAN erlaubt keine Regel allen Verkehr überallhin.",
+        "fail": "{count} Regel(n) am WAN erlauben jeden Verkehr zu jedem Ziel — die Firewall schützt dort nichts.",
+        "fix": "Regel auf die nötigen Quellen, Ziele und Ports beschränken oder löschen."
+      },
+      "internal_any_any": {
+        "title": "Keine Allow-all-Regel mit beliebiger Quelle (intern)",
+        "ok": "Keine interne Regel erlaubt beliebige Quellen zu beliebigen Zielen.",
+        "fail": "{count} Regel(n) erlauben beliebige Quellen zu beliebigen Zielen.",
+        "fix": "Die Quelle auf das jeweilige Netz beschränken."
+      },
+      "rules_shadowed": {
+        "title": "Keine verdeckten Regeln",
+        "ok": "Jede Regel wird erreicht.",
+        "fail": "{count} Regel(n) werden nie erreicht, weil eine frühere Regel sie schon abdeckt.",
+        "fix": "Reihenfolge prüfen; die überflüssige Regel entfernen oder davor einsortieren."
+      },
+      "rules_duplicate": {
+        "title": "Keine doppelten Regeln",
+        "ok": "Keine Regel kommt doppelt vor.",
+        "fail": "{count} Regel(n) sind identisch zu einer früheren.",
+        "fix": "Die doppelte Regel löschen."
+      },
+      "rules_documented": {
+        "title": "Regeln sind beschriftet",
+        "ok": "Alle aktiven Regeln haben eine Beschreibung.",
+        "fail": "{count} aktive Regel(n) haben keine Beschreibung.",
+        "fix": "Beschreibung ergänzen, damit später klar bleibt, wofür die Regel da ist."
+      },
+      "ntp_configured": {
+        "title": "Zeitserver gesetzt",
+        "ok": "Zeitserver sind eingetragen.",
+        "fail": "Kein Zeitserver konfiguriert. Logs und Zertifikate brauchen die richtige Uhrzeit.",
+        "fix": "Zeitserver in den Zeiteinstellungen eintragen."
+      },
+      "remote_logging": {
+        "title": "Logs liegen auch woanders",
+        "ok": "Ein externes Syslog-Ziel ist eingetragen.",
+        "fail": "Logs liegen nur auf der Firewall. Nach einem Einbruch oder Ausfall fehlen sie.",
+        "fix": "Unter System › Einstellungen › Logging einen Syslog-Server eintragen."
+      },
+      "ids_enabled": {
+        "title": "Einbruchserkennung aktiv",
+        "ok": "Die Einbruchserkennung ist an.",
+        "fail": "Die Einbruchserkennung (IDS/IPS) ist nicht eingeschaltet.",
+        "fix": "Optional: Dienste › Intrusion Detection aktivieren."
+      },
+      "firmware_current": {
+        "title": "Firmware aktuell",
+        "ok": "Keine Updates offen.",
+        "fail": "Es stehen Updates bereit.",
+        "fix": "Im Update Center einspielen.",
+        "unknown": "Der Updatestatus konnte nicht geprüft werden."
+      },
+      "backup_recent": {
+        "title": "Aktuelles Backup",
+        "ok": "Das neueste Backup ist {days} Tag(e) alt.",
+        "fail": "Es gibt kein Backup aus den letzten 7 Tagen.",
+        "fix": "Auf der Host-Seite „Jetzt sichern“ ausführen oder eine Wartung planen."
+      }
+    }
+  },
+  "tokens": {
+    "title": "API-Tokens",
+    "new": "Neues Token",
+    "intro": "Mit Tokens nutzen Skripte, CI-Jobs, Prometheus und KI-Assistenten die OPNexus-API ohne Anmeldung. Jedes Token gehört dir, hat einen Bereich und lässt sich jederzeit widerrufen. Es bekommt nie mehr Rechte als dein Konto.",
+    "loadFailed": "API-Tokens konnten nicht geladen werden",
+    "createFailed": "Token konnte nicht erstellt werden",
+    "empty": "Noch keine Tokens.",
+    "colName": "Name",
+    "colScope": "Bereich",
+    "colOwner": "Besitzer",
+    "colExpires": "Läuft ab",
+    "colLastUsed": "Zuletzt benutzt",
+    "never": "Nie",
+    "neverUsed": "Noch nicht benutzt",
+    "days": "{n} Tage",
+    "nameHint": "Wofür das Token gedacht ist, z. B. „Grafana“ oder „CI-Deploy“.",
+    "scope": {
+      "read": "Lesen",
+      "deploy": "Ausrollen",
+      "admin": "Admin"
+    },
+    "scopeHint": {
+      "read": "Nur lesen: alles ansehen, nichts ändern. Für Dashboards, Prometheus und KI-Assistenten.",
+      "deploy": "Lesen plus Regeln, Aliase, NAT, VPN und Wartung ausrollen. Kann keine Benutzer, Einstellungen oder Hosts verwalten.",
+      "admin": "Alles, was dein Konto darf, außer Tokens und dein eigenes Konto zu verwalten."
+    },
+    "password": "Dein Passwort",
+    "passwordHint": "Zum Erstellen eines Tokens ist dein aktuelles Passwort nötig.",
+    "create": "Token erstellen",
+    "revoke": "Widerrufen",
+    "revokeConfirm": "Token „{name}“ widerrufen? Alles, was es nutzt, funktioniert sofort nicht mehr.",
+    "revoked": "Token „{name}“ widerrufen",
+    "createdTitle": "Token „{name}“ erstellt",
+    "shownOnce": "Kopiere das Token jetzt. Es wird nur einmal angezeigt und lässt sich nicht erneut anzeigen.",
+    "copy": "Kopieren",
+    "copied": "Kopiert",
+    "example": "Beispiel",
+    "done": "Fertig"
   },
   "users": {
     "roleAdmin": "Admin",

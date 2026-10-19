@@ -29,7 +29,32 @@ in der App auf der Login-Seite, im Footer jeder Seite, auf `/about` und in
 den Einstellungen.
 
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
-ansteht): Merlin …
+ansteht): Lanner, Merlin …
+
+## [1.18.0] "Kestrel" — 2026-10-19
+
+Automatisierung und Sicherheitslage. Ende-zu-Ende gegen einen Test-Stack und drei Test-Firewalls geprüft,
+siehe Handbuch „Sicherheitslage“ und „Automatisierung“.
+
+- **API-Tokens** (System › API-Tokens): persönliche Tokens für Skripte, CI, Prometheus und KI-Assistenten,
+  Bereiche *Lesen*, *Ausrollen*, *Admin*. Nur als Hash gespeichert, einmal angezeigt, widerrufbar, mit
+  Ablaufdatum; Anlegen verlangt das Passwort. Ein Token überschreitet nie die Rechte seines Besitzers.
+  Tokens verwalten und das eigene Konto geht nur in einer normalen Anmeldung. Geheimnisse (Roh-Backups,
+  Benachrichtigungseinstellungen) liest nur der Bereich *Admin*. Das Audit nennt das Token. Neue Tabelle
+  `api_tokens` (Migration `0008`).
+- **Prometheus-Metriken** unter `GET /api/metrics` (Host erreichbar, Last, Speicher, Platte, CARP-Rolle,
+  offene Aktionen und Probleme, Sicherheitswert), nur aus der Datenbank, ohne Anfragen an die Firewalls.
+- **MCP-Endpunkt** `POST /api/mcp` (nur lesend) für KI-Assistenten: Flottenübersicht, Hosts, Auslastung, CARP-Ereignisse,
+  Audit, Suche und ein Leser für jeden GET-Endpunkt, mit den Rechten des Tokens.
+- **OpenAPI-Schema** jetzt unter `/api/openapi.json` (bisher unter `/openapi.json`, vom Proxy nicht
+  erreichbar); die Swagger-/ReDoc-Seiten entfallen (ihre CDN-Skripte verbietet die CSP).
+- **Sicherheitslage** (Monitoring › Sicherheitslage): Härtungs- und Regel-Hygiene-Prüfungen je Firewall mit Wert
+  0–100: Allow-all am WAN, HTTPS, SSH, SNMP, verdeckte/doppelte/unbeschriftete Regeln, Zeitserver, externe
+  Logs, Firmware, Backup-Alter. Liest die Konfiguration nur lesend, speichert sie nicht, alle 6 Stunden und
+  auf Knopfdruck. Neue Tabelle `compliance_results` (Migration `0009`).
+- Behoben: Änderungen am Benutzer in einer Anfrage (z. B. 2FA aktivieren) gingen verloren, wenn die
+  Middleware den Benutzer aus einer anderen Datenbank-Sitzung lieferte; er wird jetzt in der Sitzung der
+  Anfrage neu geladen.
 
 ## [1.17.0] "Imperial" — 2026-10-19
 

@@ -26,12 +26,13 @@ Eine Kurzfassung steht in der [README](../README.md), die Änderungen je Version
 12. [HA-Cluster und CARP](#ha-cluster-und-carp)
 13. [Wartung und Updates der Firewalls](#wartung-und-updates-der-firewalls)
 14. [Überwachung: Dashboard, Logs, Audit, Benachrichtigungen](#überwachung-dashboard-logs-audit-benachrichtigungen)
-15. [OPNexus betreiben](#opnexus-betreiben)
-16. [Sicherheit](#sicherheit)
-17. [Fehlerbehebung](#fehlerbehebung)
-18. [Grenzen](#grenzen)
-19. [Bedienung, Sprache, Barrierefreiheit](#bedienung-sprache-barrierefreiheit)
-20. [Lizenz und Datenschutz](#lizenz-und-datenschutz)
+15. [Automatisierung: API-Tokens, Prometheus, KI-Assistenten](#automatisierung-api-tokens-prometheus-ki-assistenten)
+16. [OPNexus betreiben](#opnexus-betreiben)
+17. [Sicherheit](#sicherheit)
+18. [Fehlerbehebung](#fehlerbehebung)
+19. [Grenzen](#grenzen)
+20. [Bedienung, Sprache, Barrierefreiheit](#bedienung-sprache-barrierefreiheit)
+21. [Lizenz und Datenschutz](#lizenz-und-datenschutz)
 
 ---
 
@@ -782,12 +783,117 @@ ausgeführt“: Sie bleibt drei Tage nach dem geplanten Zeitpunkt offen und schl
 ohne „behoben“-Meldung, weil sich ein verpasster Termin nicht von selbst behebt. Der
 Text der Benachrichtigungen ist nicht übersetzt.
 
+### Sicherheitslage
+
+Unter **Monitoring › Sicherheitslage** prüft OPNexus jede Firewall auf typische
+Schwachstellen und vergibt einen Wert von 0 bis 100 (ab 90 gut, ab 70 mittel, darunter
+schlecht). Die Prüfung liest die Konfiguration der Firewall einmal lesend herunter
+und wertet sie im Speicher aus; es wird nichts an der Firewall geändert und die
+Konfiguration nicht gespeichert. Alle sechs Stunden läuft die Prüfung von selbst,
+„Alle prüfen“ und „Erneut prüfen“ starten sie sofort.
+
+| Prüfung | Gewicht | Wann ein Befund entsteht |
+|---|---|---|
+| Keine Allow-all-Regel am WAN | kritisch | Eine aktive Regel am WAN (oder an einer Schnittstelle mit Upstream-Gateway) erlaubt jeden Verkehr von überall nach überall |
+| Web-Oberfläche nur über HTTPS | hoch | Die Verwaltungsoberfläche läuft über HTTP |
+| SSH abgesichert | hoch / mittel | SSH ist an und erlaubt Passwort-Anmeldung (hoch, wenn auch root per Passwort darf) |
+| SNMP-Community nicht „public“ | hoch | SNMP ist an und nutzt „public“ |
+| Keine Allow-all-Regel mit beliebiger Quelle (intern) | mittel | Eine interne Regel erlaubt beliebige Quellen zu beliebigen Zielen (die Standardregel „LAN to any“ zählt nicht) |
+| Keine verdeckten Regeln | mittel | Eine Regel wird nie erreicht, weil eine frühere sie schon abdeckt |
+| Firmware aktuell | mittel | Updates stehen bereit |
+| Aktuelles Backup | mittel | Das neueste lokale Backup ist 7 Tage oder älter |
+| Keine doppelten Regeln, Regeln beschriftet, Zeitserver, externe Logs | niedrig | Doppelte Regel, Regel ohne Beschreibung, kein Zeitserver, kein Syslog-Ziel |
+| Einbruchserkennung aktiv | Hinweis | IDS/IPS ist aus (kostet keine Punkte) |
+
+Ein kritischer Befund kostet 30 Punkte, ein hoher 15, ein mittlerer 8, ein niedriger 3.
+Nicht entscheidbare Prüfungen (etwa der Updatestatus einer gerade nicht erreichbaren
+Firewall) kosten nichts. Verdeckt oder doppelt meldet OPNexus nur, was sich beweisen
+lässt: Regeln werden Feld für Feld verglichen, Aliase werden nicht aufgelöst, also
+bleibt eine Überschneidung über Aliase unentdeckt, aber es gibt keine falschen
+Befunde. Beide Regelformate (OPNsense 26.x und ältere Installationen) werden gelesen.
+Die Werte stehen auch als Prometheus-Metriken zur Verfügung (siehe unten).
+
 ### Über OPNexus
 
 Ein Klick auf das Logo öffnet **About**: alle Hosts mit Status, CARP-Rolle, Cluster,
 installierter OPNsense-Version und Regelanzahl. Die Werte laden je Host nach; eine
 nicht erreichbare Firewall zeigt „nicht abrufbar“. Die eigene Version steht im Footer
 jeder Seite und in den Einstellungen.
+
+---
+
+## Automatisierung: API-Tokens, Prometheus, KI-Assistenten
+
+Unter **System › API-Tokens** legst du persönliche Tokens an. Mit einem Token
+sprechen Skripte, CI-Jobs, Prometheus und KI-Assistenten die OPNexus-API ohne
+Anmeldung an:
+
+```
+curl -H "Authorization: Bearer opx_…" https://opnexus.example/api/hosts
+```
+
+Ein Token gehört deinem Konto und hat nie mehr Rechte als du. Es wird nur einmal
+angezeigt und nur als Hash gespeichert. Zum Anlegen brauchst du dein Passwort. Standard
+ist eine Laufzeit von 90 Tagen; du kannst jedes Token jederzeit widerrufen, und ein
+Passwort-Reset des Kontos widerruft alle seine Tokens. Höchstens 50 Tokens je Benutzer.
+
+| Bereich | Darf |
+|---|---|
+| **Lesen** | Alles ansehen (GET), außer Dinge mit Geheimnissen: Roh-Download der Konfigurations-Backups und die Benachrichtigungseinstellungen. Für Dashboards, Prometheus, KI-Assistenten. |
+| **Ausrollen** | Zusätzlich ausrollen und warten: Regeln, Aliase, NAT, VPN, Zertifikate, Wartung, Sicherheitsprüfung. Nicht: Benutzer, Einstellungen, Benachrichtigungen, Hosts anlegen oder löschen, OPNexus-Update. |
+| **Admin** | Alles, was dein Konto darf, einschließlich der Dinge oben. |
+
+Für jeden Bereich gilt: Tokens verwalten und das eigene Konto (Passwort, Zwei-Faktor)
+geht nur in einer normalen Anmeldung, nie mit einem Token. Ein Nur-Lese-Konto kann
+nur „Lesen“-Tokens anlegen; wird das Konto zurückgestuft, sind alle seine Tokens
+sofort nur noch lesend. Im Audit steht bei Änderungen per Token „Benutzer (API: Name)“.
+
+**API-Beschreibung:** das OpenAPI-Schema liegt unter `/api/openapi.json` (mit
+Anmeldung oder Token abrufbar) und lässt sich in Postman, einen Code-Generator oder
+einen Assistenten laden. Eine interaktive Seite gibt es nicht. Fehler kommen als
+`{"detail": {"code": "…", "params": {…}}}` mit stabilem `code`.
+
+### Prometheus
+
+`GET /api/metrics` liefert den Zustand im Prometheus-Textformat. Die Antwort stammt
+nur aus der OPNexus-Datenbank (keine Anfragen an die Firewalls), ein häufiges Abfragen
+belastet also nichts. Mit einem „Lesen“-Token:
+
+```yaml
+scrape_configs:
+  - job_name: opnexus
+    scheme: https
+    metrics_path: /api/metrics
+    authorization: { credentials: "opx_…" }
+    static_configs: [{ targets: ["opnexus.example"] }]
+```
+
+| Metrik | Bedeutung |
+|---|---|
+| `opnexus_info{version}` | Version, immer 1 |
+| `opnexus_hosts` | Anzahl der Firewalls |
+| `opnexus_host_up{host,cluster}` | 1, wenn der Host in den letzten 3 Minuten geantwortet hat |
+| `opnexus_host_enabled`, `…_last_sample_timestamp_seconds` | Überwachung an; Zeit der letzten Messung |
+| `opnexus_host_memory_used_percent`, `opnexus_host_load1`, `opnexus_host_disk_used_percent` | Letzte Messung |
+| `opnexus_host_carp_master` | 1 = MASTER, 0 = BACKUP (fehlt, wenn unbekannt) |
+| `opnexus_host_compliance_score`, `opnexus_host_compliance_findings{severity}` | Sicherheitslage |
+| `opnexus_pending_actions{kind,status}` | Offene Aktionen wie auf dem Dashboard |
+| `opnexus_problems_open{type}` | Offene Probleme der Benachrichtigungen |
+| `opnexus_scheduled_maintenance_pending` | Noch nicht gelaufene geplante Wartungen |
+
+### KI-Assistenten (MCP)
+
+OPNexus spricht das Model Context Protocol, damit ein KI-Assistent die Flotte
+ansehen kann, **nur lesend**: Er kann nichts ändern. Beispiel für Claude Code:
+
+```
+claude mcp add --transport http opnexus https://opnexus.example/api/mcp \
+  --header "Authorization: Bearer opx_…"
+```
+
+Die Werkzeuge: `fleet_overview`, `list_hosts`, `host_resources`, `carp_events`,
+`recent_audit`, `search` und `api_get` (liest jeden anderen GET-Endpunkt). Alles läuft
+mit den Rechten des Tokens: ein „Lesen“-Token sieht auch hier keine Geheimnisse.
 
 ---
 

@@ -212,9 +212,11 @@
       "certificates": "Certificates",
       "logs": "Logs",
       "audit": "Audit",
+      "security": "Security posture",
       "updates": "Update Center",
       "settings": "Settings",
       "users": "Users",
+      "tokens": "API tokens",
       "network-devices": "Devices",
       "network-compare": "Compare",
       "hostsystem-tunables": "Tunables",
@@ -579,7 +581,11 @@
     "UPDATER_REJECTED": "The updater rejected the request ({reason}).",
     "UPDATE_NOT_OFFERED": "This version is not offered for installation — only the latest stable version.",
     "UPDATE_MAJOR_CHANGE": "Please run major version jumps deliberately on the server with “opnexus update”.",
-    "ADMIN_REQUIRED": "This function requires the “Admin” role."
+    "ADMIN_REQUIRED": "This function requires the “Admin” role.",
+    "API_TOKEN_LIMIT_REACHED": "At most {limit} API tokens are allowed per user. Revoke tokens you no longer need first.",
+    "API_TOKEN_NOT_FOUND": "API token not found",
+    "API_TOKEN_SCOPE_FORBIDDEN": "This API token (scope “{scope}”) is not allowed to perform this action.",
+    "API_TOKEN_SCOPE_TOO_HIGH": "Read-only accounts can only create tokens with the “read” scope."
   },
   "workflow": {
     "attention": "Check errors",
@@ -1423,6 +1429,164 @@
     "peerPskEditing": "Peer PSK ({state})",
     "peerPsk": "Peer PSK",
     "pskPlaceholder": "Paste PSK"
+  },
+  "security": {
+    "title": "Security posture",
+    "intro": "Checks every firewall's configuration for common weaknesses (open rules, weak SSH/SNMP, missing backups…) and gives a score from 0 to 100. Read-only: nothing is changed on the firewalls. Checked automatically every 6 hours.",
+    "loadFailed": "Could not load the security posture",
+    "checkFailed": "The check failed",
+    "checked": "Check finished",
+    "checkAll": "Check all",
+    "checkHost": "Check again",
+    "noHosts": "No firewalls yet",
+    "noHostsHint": "Connect a firewall to see its security posture.",
+    "notChecked": "Not checked",
+    "neverChecked": "Not checked yet",
+    "checkedAt": "Checked {when}",
+    "allGood": "No open findings",
+    "andMore": "… and {n} more",
+    "unknown": "unknown",
+    "failed": "failed",
+    "passed": "passed",
+    "severity": {
+      "critical": "critical",
+      "high": "high",
+      "medium": "medium",
+      "low": "low",
+      "info": "note"
+    },
+    "error": {
+      "unreachable": "unreachable",
+      "invalid_config": "unreadable"
+    },
+    "errorHint": {
+      "unreachable": "The firewall could not be reached, so it could not be checked.",
+      "invalid_config": "The configuration could not be read."
+    },
+    "reason": {
+      "root_password": "root may log in over SSH with a password",
+      "password": "SSH accepts password login"
+    },
+    "checks": {
+      "webgui_https": {
+        "title": "Web interface over HTTPS only",
+        "ok": "The management interface is served over HTTPS.",
+        "fail": "The management interface runs over unencrypted HTTP. Credentials can be read on the network.",
+        "fix": "System › Settings › Administration: set the protocol to HTTPS."
+      },
+      "ssh_hardened": {
+        "title": "SSH locked down",
+        "ok": "SSH is off or accepts keys only.",
+        "fail": "{reason}.",
+        "fix": "Switch SSH off, or disable root login and password login under System › Settings › Administration and use keys."
+      },
+      "snmp_community": {
+        "title": "SNMP community is not “public”",
+        "ok": "SNMP uses a custom community.",
+        "fail": "SNMP uses the default community “public”. Anyone on the network can read system data.",
+        "fix": "Set your own long community or turn SNMP off."
+      },
+      "wan_any_any": {
+        "title": "No allow-all rule on the WAN",
+        "ok": "No rule on the WAN allows all traffic to everywhere.",
+        "fail": "{count} rule(s) on the WAN allow all traffic to any destination — the firewall protects nothing there.",
+        "fix": "Restrict the rule to the sources, destinations and ports you need, or delete it."
+      },
+      "internal_any_any": {
+        "title": "No allow-all rule from any source (internal)",
+        "ok": "No internal rule allows any source to any destination.",
+        "fail": "{count} rule(s) allow any source to any destination.",
+        "fix": "Limit the source to the network the rule is meant for."
+      },
+      "rules_shadowed": {
+        "title": "No shadowed rules",
+        "ok": "Every rule can be reached.",
+        "fail": "{count} rule(s) are never reached because an earlier rule already covers them.",
+        "fix": "Check the order; remove the useless rule or move it up."
+      },
+      "rules_duplicate": {
+        "title": "No duplicate rules",
+        "ok": "No rule is repeated.",
+        "fail": "{count} rule(s) are identical to an earlier one.",
+        "fix": "Delete the duplicate."
+      },
+      "rules_documented": {
+        "title": "Rules are described",
+        "ok": "All active rules have a description.",
+        "fail": "{count} active rule(s) have no description.",
+        "fix": "Add a description so it stays clear later what the rule is for."
+      },
+      "ntp_configured": {
+        "title": "Time server set",
+        "ok": "Time servers are configured.",
+        "fail": "No time server is configured. Logs and certificates need the right time.",
+        "fix": "Enter NTP servers in the time settings."
+      },
+      "remote_logging": {
+        "title": "Logs are kept elsewhere too",
+        "ok": "A remote syslog target is configured.",
+        "fail": "Logs exist only on the firewall. After a break-in or a failure they are gone.",
+        "fix": "Add a syslog server under System › Settings › Logging."
+      },
+      "ids_enabled": {
+        "title": "Intrusion detection active",
+        "ok": "Intrusion detection is on.",
+        "fail": "Intrusion detection (IDS/IPS) is not switched on.",
+        "fix": "Optional: enable Services › Intrusion Detection."
+      },
+      "firmware_current": {
+        "title": "Firmware up to date",
+        "ok": "No updates are pending.",
+        "fail": "Updates are available.",
+        "fix": "Install them in the Update Center.",
+        "unknown": "Could not determine the update status."
+      },
+      "backup_recent": {
+        "title": "Recent backup",
+        "ok": "The newest backup is {days} day(s) old.",
+        "fail": "There is no backup from the last 7 days.",
+        "fix": "Use “Back up now” on the host page or schedule maintenance."
+      }
+    }
+  },
+  "tokens": {
+    "title": "API tokens",
+    "new": "New token",
+    "intro": "Tokens let scripts, CI jobs, Prometheus and AI assistants use the OPNexus API without a sign-in. Each token belongs to you, has a scope and can be revoked at any time. It never gets more rights than your account.",
+    "loadFailed": "Could not load API tokens",
+    "createFailed": "Could not create the token",
+    "empty": "No tokens yet.",
+    "colName": "Name",
+    "colScope": "Scope",
+    "colOwner": "Owner",
+    "colExpires": "Expires",
+    "colLastUsed": "Last used",
+    "never": "Never",
+    "neverUsed": "Not used yet",
+    "days": "{n} days",
+    "nameHint": "What the token is for, e.g. “Grafana” or “CI deploy”.",
+    "scope": {
+      "read": "Read",
+      "deploy": "Deploy",
+      "admin": "Admin"
+    },
+    "scopeHint": {
+      "read": "Read only: view everything, change nothing. For dashboards, Prometheus and AI assistants.",
+      "deploy": "Read plus roll out rules, aliases, NAT, VPN and maintenance. Cannot manage users, settings or hosts.",
+      "admin": "Everything your account may do, except managing tokens and your own account."
+    },
+    "password": "Your password",
+    "passwordHint": "Creating a token needs your current password.",
+    "create": "Create token",
+    "revoke": "Revoke",
+    "revokeConfirm": "Revoke token “{name}”? Anything using it stops working immediately.",
+    "revoked": "Token “{name}” revoked",
+    "createdTitle": "Token “{name}” created",
+    "shownOnce": "Copy the token now. It is shown only once and cannot be displayed again.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "example": "Example",
+    "done": "Done"
   },
   "users": {
     "roleAdmin": "Admin",

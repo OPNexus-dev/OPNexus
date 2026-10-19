@@ -9,7 +9,7 @@ from app.errors import ErrorCode, api_error
 from app.config import settings
 from app.database import get_db
 from app.models.user import AdminUser
-from app.services import auth_service, totp_service
+from app.services import api_token_service, auth_service, totp_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,14 @@ def _account_success(user: AdminUser, action: str) -> None:
 
 
 async def resolve_user(request: Request, db: AsyncSession) -> AdminUser:
+    # AuthMiddleware already resolved the caller (session cookie or API token), but
+    # in its own, closed DB session: re-load into this request's session so that
+    # changes made to the user (2FA, password...) are actually persisted.
+    resolved = getattr(request.state, "user", None)
+    if resolved is not None:
+        user = await db.get(AdminUser, resolved.id)
+        if user is not None:
+            return user
     token = request.cookies.get(COOKIE_NAME, "")
     user = await auth_service.resolve_session(db, token)
     if user is None:
@@ -262,6 +270,14 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
 
 @router.get("/me")
 async def me(request: Request, db: AsyncSession = Depends(get_db)):
+    raw = api_token_service.bearer_from_header(request.headers.get("authorization", ""))
+    if raw is not None:
+        resolved = await api_token_service.resolve(db, raw, client_ip(request))
+        if resolved is None:
+            return {"authenticated": False}
+        user, api_token = resolved
+        return {"authenticated": True, "username": user.username, "role": user.role,
+                "via": "token", "scope": api_token.scope, "token_name": api_token.name}
     token = request.cookies.get(COOKIE_NAME, "")
     user = await auth_service.resolve_session(db, token)
     if user is None:
