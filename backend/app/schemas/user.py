@@ -39,3 +39,4 @@ class UserRead(BaseModel):
     created_at: datetime
     last_login_at: datetime | None
     totp_enabled: bool = False
+    auth_source: str = "local"

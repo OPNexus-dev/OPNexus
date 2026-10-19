@@ -18,7 +18,7 @@ from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddle
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
-from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router
+from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router, oidc as oidc_router, governance as governance_router
 from app.routers import one_to_one
 from app.services.one_to_one_deploy_service import sweep_expired_one_to_one_deployments
 from app.routers import outbound_nat
@@ -443,6 +443,8 @@ app.include_router(mcp_router.router, prefix="/api")
 app.include_router(compliance_router.router, prefix="/api")
 app.include_router(audit_export_router.router, prefix="/api")
 app.include_router(backups_router.router, prefix="/api")
+app.include_router(oidc_router.router, prefix="/api")
+app.include_router(governance_router.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(aliases.router, prefix="/api")

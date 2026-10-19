@@ -113,6 +113,7 @@ export default function UsersPage() {
                   <td className="px-5 py-3">
                     <span className="inline-flex flex-wrap items-center gap-1.5">
                       <RoleBadge role={user.role} />
+                      {user.auth_source === "oidc" && <Tooltip content={t("users.ssoTip")} focusable><Badge tone="neutral">SSO</Badge></Tooltip>}
                       {user.totp_enabled && <Tooltip content={t("twofa.userOnTip")} focusable><Badge tone="success"><ShieldCheck size={12} />2FA</Badge></Tooltip>}
                     </span>
                   </td>
@@ -122,7 +123,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-5 py-3 text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => setEditing(user)}>
+                      <Button variant="outline" disabled={user.auth_source === "oidc"} title={user.auth_source === "oidc" ? t("users.ssoTip") : undefined} onClick={() => setEditing(user)}>
                         <Pencil size={14} />
                         {t("rules.edit")}
                       </Button>

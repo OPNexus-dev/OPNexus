@@ -12,3 +12,4 @@ pytest-asyncio==1.4.0
 respx==0.23.1
 cryptography==50.0.2
 alembic==1.20.0
+PyJWT==2.10.1

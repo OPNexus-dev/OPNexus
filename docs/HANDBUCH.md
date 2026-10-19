@@ -228,6 +228,35 @@ Oberfläche gesperrt und werden vom Backend mit 403 abgelehnt. Ein Operator beko
 den Admin-Aktionen ebenfalls 403 („erfordert die Rolle Admin“); der Versuch steht im
 Audit. Nur das eigene Passwort sowie Farbschema und Sprache bleiben für jede Rolle änderbar.
 
+**Single Sign-on (OIDC).** Unter Einstellungen › Single Sign-on (OIDC) verbindest du einen
+Identitätsanbieter (Authentik, Keycloak, Entra ID, Google, …). Auf der Anmeldeseite erscheint dann ein
+zusätzlicher Knopf („Mit … anmelden“). Du brauchst beim Anbieter einen Client mit dem Ablauf
+*Authorization Code* (OPNexus nutzt zusätzlich PKCE) und trägst dort die angezeigte
+Weiterleitungs-URI ein (`https://<dein-opnexus>/api/auth/oidc/callback`). In OPNexus gibst du
+Aussteller-URL, Client-ID, Client-Geheimnis und die **Gruppennamen** an, die die Rollen Admin, Operator
+und Nur-Lesen bekommen. „Anbieter testen“ prüft Discovery und Signaturschlüssel.
+
+- **Rolle aus Gruppen, bei jeder Anmeldung:** gilt die höchste passende Rolle; wer in keiner der Gruppen ist,
+  kommt nicht hinein (es wird auch kein Konto angelegt). Wird jemand aus der Gruppe entfernt, endet der Zugang
+  bei der nächsten Anmeldung (laufende Sitzungen enden nach ihrer Laufzeit; beim Anbieter gesperrte Personen
+  daher zusätzlich in der Benutzerliste löschen).
+- **Konten:** SSO-Benutzer werden bei der ersten Anmeldung angelegt (Kennzeichen „SSO“). Rolle und Passwort
+  ändern sich nur beim Anbieter; die Zwei-Faktor-Anmeldung übernimmt der Anbieter. Ein SSO-Konto wird nie mit
+  einem lokalen Konto gleichen Namens verknüpft: bei einem Namenskonflikt bekommt es ein Suffix (`~sso`).
+- **Lokale Konten bleiben:** Die Anmeldung mit Benutzername und Passwort funktioniert weiter, etwa für den
+  Notfall, wenn der Anbieter ausfällt.
+- **Geprüft** werden Signatur (nur asymmetrische Verfahren, nie `none` oder HMAC), Aussteller, Zielgruppe, Ablauf
+  und Nonce des ID-Tokens; jeder Anmeldeversuch (State) gilt genau einmal und 10 Minuten. Gruppen kommen aus dem
+  ID-Token, ersatzweise aus dem Userinfo-Endpunkt. Aussteller und Endpunkte müssen `https://` sein. Das ist
+  gegen einen nachgebauten Anbieter getestet (inklusive gefälschter Token), noch nicht gegen jeden echten
+  Anbieter: melde, was bei deinem nicht klappt.
+
+**Aufgabentrennung.** Einstellungen › Aufgabentrennung: Schaltest du „Operatoren dürfen Änderungen selbst
+ausrollen“ aus, bereiten Operatoren Änderungen nur vor (anlegen, bearbeiten, Vorschau), und **nur ein Admin
+rollt aus**: ausrollen, ein Deployment entfernen oder zurückrollen, Wartung ausführen oder planen,
+Netzwerkänderungen anwenden. Die Ablehnung („nur ein Administrator“) steht im Audit. Das ist ein Zwei-Personen-Schritt
+(Vorbereiten und Ausrollen durch verschiedene Personen), keine Freigabe-Warteschlange.
+
 **Benutzerverwaltung** (System › Benutzer, nur Admins): Benutzer anlegen, Rolle
 ändern, Passwort zurücksetzen, Zwei-Faktor eines anderen Benutzers zurücksetzen,
 löschen. Du kannst dich nicht selbst löschen und dich nicht zum letzten Admin

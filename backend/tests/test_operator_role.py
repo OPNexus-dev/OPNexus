@@ -99,3 +99,72 @@ async def test_demoting_an_admin_to_operator_takes_effect_at_once(client):
         assert (await user.post("/api/users", json={"username": "w", "password": "w" * 12})).status_code == 403
     finally:
         await user.aclose()
+
+
+# ── separation of duties ─────────────────────────────────────────────────
+
+@pytest.mark.parametrize("method,path,rollout", [
+    ("POST", "/api/rules/abc/deploy", True),
+    ("POST", "/api/aliases/abc/deploy", True),
+    ("POST", "/api/port-forward/abc/deploy", True),
+    ("POST", "/api/rules/abc/deployments/def/remove", True),
+    ("POST", "/api/rules/abc/deployments/def/retry-rollback", True),
+    ("POST", "/api/hosts/abc/maintenance/execute", True),
+    ("POST", "/api/hosts/abc/maintenance/carp-execute", True),
+    ("POST", "/api/hosts/abc/maintenance/schedule", True),
+    ("POST", "/api/hosts/abc/network/changes", True),
+    ("POST", "/api/rules/abc/preview", False),
+    ("POST", "/api/rules", False),
+    ("PUT", "/api/rules/abc", False),
+    ("POST", "/api/rules/abc/confirm", False),
+    ("GET", "/api/rules/abc/deploy", False),
+    ("POST", "/api/hosts/abc/network/changes/preview", False),
+])
+def test_what_counts_as_a_rollout(method, path, rollout):
+    from app.services import api_token_service
+    assert api_token_service.is_rollout(method, path) is rollout
+
+
+@pytest.mark.asyncio
+async def test_with_separation_of_duties_operators_prepare_but_only_admins_deploy(client):
+    op = await _operator(client, "dutyop")
+    try:
+        assert (await op.get("/api/settings/governance")).json() == {"operators_may_deploy": True}
+        assert (await op.put("/api/settings/governance", json={"operators_may_deploy": False})).status_code == 403
+        assert (await client.put("/api/settings/governance", json={"operators_may_deploy": False})).json() == {"operators_may_deploy": False}
+        # Preparing still works ...
+        assert (await op.post("/api/groups", json={"name": "prepared"})).status_code == 201
+        # ... rolling out does not, whatever the target (the 403 comes before any lookup).
+        for path in ("/api/rules/00000000-0000-0000-0000-000000000000/deploy", "/api/hosts/00000000-0000-0000-0000-000000000000/maintenance/execute"):
+            resp = await op.post(path, json={})
+            assert resp.status_code == 403 and resp.json()["detail"]["code"] == "DEPLOY_NEEDS_ADMIN", path
+        # An admin is not affected (404 = got past the gate and looked for the rule).
+        assert (await client.post("/api/rules/00000000-0000-0000-0000-000000000000/deploy", json={})).status_code in (404, 422)
+        # Switching it back lets the operator through the gate again.
+        await client.put("/api/settings/governance", json={"operators_may_deploy": True})
+        assert (await op.post("/api/rules/00000000-0000-0000-0000-000000000000/deploy", json={})).status_code in (404, 422)
+    finally:
+        await op.aclose()
+        await client.put("/api/settings/governance", json={"operators_may_deploy": True})
+
+
+@pytest.mark.asyncio
+async def test_the_refusal_is_audited_and_covers_operator_tokens(client):
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models.audit import AuditEvent
+    op = await _operator(client, "dutytok")
+    try:
+        token = (await op.post("/api/tokens", json={"name": "ci", "scope": "deploy", "current_password": PW})).json()["token"]
+    finally:
+        await op.aclose()
+    await client.put("/api/settings/governance", json={"operators_may_deploy": False})
+    try:
+        async with _bearer(token) as api:
+            resp = await api.post("/api/rules/00000000-0000-0000-0000-000000000000/deploy", json={})
+            assert resp.status_code == 403 and resp.json()["detail"]["code"] == "DEPLOY_NEEDS_ADMIN"
+    finally:
+        await client.put("/api/settings/governance", json={"operators_may_deploy": True})
+    async with SessionLocal() as db:
+        rows = (await db.scalars(select(AuditEvent).where(AuditEvent.status == "denied", AuditEvent.actor.like("dutytok%")))).all()
+    assert rows and rows[0].kind == "rule" and "dutytok (API: ci)" in {r.actor for r in rows}

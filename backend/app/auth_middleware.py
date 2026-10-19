@@ -8,6 +8,7 @@ from starlette.responses import JSONResponse
 from app.database import SessionLocal
 from app.errors import ErrorCode
 from app.routers.auth import COOKIE_NAME
+from app.routers import governance
 from app.routers.auth import client_ip
 from app.services import api_token_service, auth_service
 
@@ -16,6 +17,10 @@ _PUBLIC_PATHS = {
     "/api/auth/logout",
     "/api/auth/me",
     "/api/health",
+    # SSO: the browser arrives here without a session; every step is checked inside.
+    "/api/auth/oidc/config",
+    "/api/auth/oidc/start",
+    "/api/auth/oidc/callback",
 }
 
 # /docs, /redoc and /openapi.json used to be public — fully documenting a
@@ -153,6 +158,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         finally:
                             audit_service.context.reset(ctx)
                     return JSONResponse(status_code=403, content={"detail": {"code": ErrorCode.ADMIN_REQUIRED.value, "params": {}}})
+                if user.role == "operator" and api_token_service.is_rollout(request.method, request.url.path):
+                    async with SessionLocal() as gdb:
+                        allowed = (await governance.get_settings(gdb)).operators_may_deploy
+                    if not allowed:
+                        ctx = audit_service.context.set({"actor": user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150], "id": str(uuid.uuid4()), "action": event["action"]})
+                        try:
+                            await audit_service.persist(**event, status="denied", message="Ausrollen nur durch Administratoren (Aufgabentrennung)")
+                        finally:
+                            audit_service.context.reset(ctx)
+                        return JSONResponse(status_code=403, content={"detail": {"code": ErrorCode.DEPLOY_NEEDS_ADMIN.value, "params": {}}})
                 request.state.user = user
                 request.state.api_token = api_token
                 actor = user.username if api_token is None else f"{user.username} (API: {api_token.name})"[:150]

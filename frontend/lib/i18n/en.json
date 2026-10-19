@@ -432,7 +432,19 @@
     "developedBy": "Developed by {maintainer}",
     "code": "Two-factor code",
     "codeHint": "6-digit code from your authenticator app, or a recovery code.",
-    "back": "Back to sign-in"
+    "back": "Back to sign-in",
+    "sso": {
+      "button": "Sign in with {name}",
+      "errors": {
+        "no_role": "Your account is not in any group that may use OPNexus.",
+        "state": "The sign-in expired or was already used. Please try again.",
+        "token": "The identity provider's answer could not be verified.",
+        "provider": "The identity provider could not be reached or refused.",
+        "throttled": "Too many failed attempts. Please wait a few minutes.",
+        "disabled": "Single sign-on is not available.",
+        "failed": "Single sign-on failed."
+      }
+    }
   },
   "errors": {
     "BACKUP_EMPTY": "The backup file is empty.",
@@ -585,6 +597,9 @@
     "ADMIN_REQUIRED": "This function requires the “Admin” role.",
     "API_TOKEN_LIMIT_REACHED": "At most {limit} API tokens are allowed per user. Revoke tokens you no longer need first.",
     "BACKUP_UNLESBAR": "The backup cannot be read: {reason}",
+    "DEPLOY_NEEDS_ADMIN": "Only an administrator may roll out here (separation of duties). Prepare the change and have it approved.",
+    "OIDC_TEST_FAILED": "The identity provider test failed: {reason}",
+    "OIDC_MANAGED_USER": "This account is managed by single sign-on: change role and password at the identity provider.",
     "OFFSITE_TEST_FAILED": "The offsite target test failed: {reason}",
     "API_TOKEN_NOT_FOUND": "API token not found",
     "API_TOKEN_SCOPE_FORBIDDEN": "This API token (scope “{scope}”) is not allowed to perform this action.",
@@ -1491,6 +1506,28 @@
     "truncated": "The list is cut off; compare the files in OPNsense for the rest.",
     "failed": "The comparison failed"
   },
+  "sso": {
+    "title": "Single sign-on (OIDC)",
+    "intro": "Lets people sign in with your identity provider (Authentik, Keycloak, Entra ID, Google, …) instead of a password stored here. Roles come from the provider's groups at every login; without a mapped group nobody gets in. Local accounts keep working, so you can always sign in with the admin password if the provider is down.",
+    "saved": "SSO settings saved",
+    "testOk": "The provider answered (discovery and signing keys are fine)",
+    "testFailed": "The provider test failed",
+    "enable": "Offer single sign-on on the login page",
+    "redirectHint": "Register this redirect URI with your provider:",
+    "name": "Button text",
+    "issuer": "Issuer URL",
+    "clientId": "Client ID",
+    "clientSecret": "Client secret ({state})",
+    "scopes": "Scopes",
+    "claim": "Groups claim",
+    "mapping": "Which group gets which role",
+    "mappingHint": "Enter the group names as the provider sends them. The most privileged matching role wins; a person in none of them cannot sign in. Roles of SSO accounts are managed at the provider and refreshed at every login.",
+    "test": "Test the provider",
+    "dutiesTitle": "Separation of duties",
+    "dutiesIntro": "When switched off, operators can prepare changes (edit, preview) but only an administrator may roll them out: deploy, remove or roll back a deployment, run or schedule maintenance and apply network changes. The refusal is recorded in the audit.",
+    "operatorsDeploy": "Operators may roll out changes themselves",
+    "dutiesSaved": "Saved"
+  },
   "security": {
     "title": "Security posture",
     "intro": "Checks every firewall's configuration for common weaknesses (open rules, weak SSH/SNMP, missing backups…) and gives a score from 0 to 100. Read-only: nothing is changed on the firewalls. Checked automatically every 6 hours.",
@@ -1671,6 +1708,7 @@
     "done": "Done"
   },
   "users": {
+    "ssoTip": "Managed by single sign-on: role and password are changed at the identity provider.",
     "roleOperator": "Operator",
     "roleAdmin": "Admin",
     "roleReadOnly": "Read-only",

@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.19.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.20.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -25,6 +25,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Automatisierung** — persönliche API-Tokens (Lesen / Ausrollen / Admin), Prometheus-Metriken, ein nur lesender MCP-Endpunkt für KI-Assistenten und ein OpenAPI-Schema.
 - **Sicherheitslage** — ein Wert von 0 bis 100 je Firewall aus Härtungs- und Regel-Hygiene-Prüfungen (offene WAN-Regeln, schwaches SSH/SNMP, verdeckte Regeln, alte Backups …), nur lesend.
 - **Backups & Wiederherstellung** — geplante Konfigurationssicherungen mit Aufbewahrung, verschlüsselte Offsite-Kopie auf S3-kompatiblen Speicher, Änderungsansicht zwischen Sicherungen und eine vollständige verschlüsselte Sicherung von OPNexus selbst (`opnexus backup --full`).
+- **Single Sign-on** — Anmeldung über deinen Identitätsanbieter (OIDC); die Rolle kommt bei jeder Anmeldung aus dessen Gruppen.
 - **Zugang** — HTTPS mit gepinnten Firewall-Zertifikaten, optionale Zwei-Faktor-Anmeldung, Rollen (Admin / Operator / Nur-Lesen), Tastaturbedienung, Dark Mode, Oberfläche auf Deutsch und Englisch.
 
 Alle Screenshots zeigen fiktive Beispieldaten.
@@ -61,7 +62,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.19.0
+OPNEXUS_VERSION=1.20.0
 ```
 
 ```bash

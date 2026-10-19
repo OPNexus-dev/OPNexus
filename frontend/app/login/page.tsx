@@ -9,7 +9,7 @@ import { api, ApiError } from "@/lib/api";
 import { LOGIN_INFO_STORAGE_KEY } from "@/lib/loginInfo";
 import { APP_CODENAME, APP_MAINTAINER, APP_VERSION } from "@/lib/version";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
 
 export default function LoginPage() {
@@ -23,6 +23,17 @@ export default function LoginPage() {
   const [needCode, setNeedCode] = useState(false);
   const [code, setCode] = useState("");
   const shakeRef = useRef<HTMLDivElement>(null);
+  const [sso, setSso] = useState<{ enabled: boolean; name: string | null } | null>(null);
+
+  useEffect(() => {
+    api.oidcConfig().then(setSso).catch(() => setSso(null));
+    const code = new URLSearchParams(window.location.search).get("sso_error");
+    if (code) setError(t(`login.sso.errors.${["no_role", "state", "token", "provider", "throttled", "disabled"].includes(code) ? code : "failed"}`));
+  }, []);
+
+  function signInWithSso() {
+    window.location.href = `/api/auth/oidc/start?origin=${encodeURIComponent(window.location.origin)}`;
+  }
 
   function shake() {
     const el = shakeRef.current;
@@ -103,6 +114,13 @@ export default function LoginPage() {
                 </Button>
               </div>
             </form>
+            {sso?.enabled && !needCode && (
+              <div className="login-rise mt-4 border-t border-slate-200 pt-4" style={rise(340)}>
+                <Button type="button" variant="outline" onClick={signInWithSso} className="w-full justify-center">
+                  {t("login.sso.button", { name: sso.name ?? "SSO" })}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
         <p className="login-rise mt-4 text-center text-xs text-slate-400" style={rise(380)}>

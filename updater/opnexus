@@ -7,6 +7,14 @@
 #                             bei Fehler automatisch zurückrollen
 #   opnexus rollback          Letztes Update rückgängig machen
 #   opnexus backup            Sofort-Backup der OPNexus-Datenbank
+#   opnexus backup --full [DATEI]
+#                             Vollsicherung: Datenbank UND alle Geheimnisse
+#                             (Firewall-Zugänge, 2FA, VPN-/Zertifikatsschlüssel,
+#                             Konfigurations-Backups) in einer verschlüsselten
+#                             Datei (.opxfull). Passphrase wird abgefragt
+#                             (oder OPNEXUS_BACKUP_PASSPHRASE).
+#   opnexus restore DATEI     Vollsicherung zurückspielen (überschreibt Datenbank
+#                             und Geheimnisse dieser Installation; --yes: ohne Rückfrage)
 #   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
 #                             anzeigen (--yes: ohne Rückfrage)
 #   opnexus status --porcelain  Zustand als key=value-Zeilen (für den Updater)
@@ -144,6 +152,58 @@ cmd_backup() {
     --exclude-table-data=firewall_log_entries --exclude-table-data=host_resource_samples \
     -f "/backups/$name"
   say "Backup geschrieben: /backups/$name (Volume postgres_backups)"
+}
+
+# Passphrase für Vollsicherungen: aus OPNEXUS_BACKUP_PASSPHRASE oder vom Terminal (ohne Echo).
+ask_passphrase() {
+  if [ -n "${OPNEXUS_BACKUP_PASSPHRASE:-}" ]; then printf '%s' "$OPNEXUS_BACKUP_PASSPHRASE"; return; fi
+  [ -r /dev/tty ] || die "Keine Passphrase: OPNEXUS_BACKUP_PASSPHRASE setzen oder an einem Terminal ausführen."
+  local one two
+  read -rsp "Passphrase (mind. 12 Zeichen): " one </dev/tty; echo >&2
+  if [ "${1:-}" = confirm ]; then
+    read -rsp "Passphrase wiederholen: " two </dev/tty; echo >&2
+    [ "$one" = "$two" ] || die "Die Passphrasen stimmen nicht überein."
+  fi
+  printf '%s' "$one"
+}
+
+cmd_backup_full() {
+  local out="${1:-./opnexus-full-$(date -u +%Y%m%d-%H%M%S).opxfull}" pass
+  [ ! -e "$out" ] || die "$out existiert schon."
+  c exec -T backend true >/dev/null 2>&1 || die "Das Backend läuft nicht — erst starten (docker compose up -d)."
+  pass="$(ask_passphrase confirm)"
+  ( umask 077
+    FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create > "$out.partial" ) \
+    || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen."; }
+  mv "$out.partial" "$out"; chmod 600 "$out"
+  say "Vollsicherung geschrieben: $out ($(du -h "$out" | cut -f1))"
+  say "Ohne die Passphrase ist die Datei wertlos. Beides getrennt vom Server aufbewahren."
+}
+
+cmd_restore() {
+  local file="" yes=0 pass arg
+  for arg in "$@"; do case "$arg" in --yes|-y) yes=1 ;; *) file="$arg" ;; esac; done
+  [ -n "$file" ] && [ -f "$file" ] || die "Aufruf: opnexus restore DATEI.opxfull [--yes]"
+  pass="$(ask_passphrase)"
+  say "Prüfe die Datei …"
+  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup info < "$file" \
+    || die "Die Datei lässt sich nicht öffnen (falsche Passphrase oder keine Vollsicherung)."
+  if [ "$yes" != 1 ]; then
+    read -rp "Das überschreibt Datenbank und Geheimnisse dieser Installation. Fortfahren? [j/N] " ans </dev/tty
+    [[ "$ans" =~ ^[jJyY]$ ]] || die "Abgebrochen."
+  fi
+  c up -d postgres >/dev/null
+  say "Stoppe Backend, Frontend und Proxy …"
+  c stop proxy frontend backend >/dev/null 2>&1 || true
+  say "Sicherheitskopie des jetzigen Zustands …"
+  cmd_backup || say "(Sicherheitskopie nicht möglich — fahre trotzdem fort, weil die Installation leer sein kann)"
+  say "Spiele zurück …"
+  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup restore < "$file" \
+    || die "Zurückspielen fehlgeschlagen. Der vorherige Stand liegt als Dump in /backups; Dienste sind gestoppt."
+  say "Starte die Dienste …"
+  c up -d backend frontend proxy >/dev/null
+  wait_healthy || die "Nicht alle Dienste sind gesund — 'docker compose logs' prüfen."
+  say "Wiederhergestellt."
 }
 
 cmd_update() {
@@ -302,6 +362,7 @@ case "${1:-}" in
   status)   if [ "${2:-}" = "--porcelain" ]; then cmd_status_porcelain; else cmd_status; fi ;;
   update)   shift; cmd_update "${1:-}" ;;
   rollback) cmd_rollback ;;
-  backup)   cmd_backup ;;
-  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  backup)   if [ "${2:-}" = "--full" ]; then shift 2; cmd_backup_full "$@"; else cmd_backup; fi ;;
+  restore)  shift; cmd_restore "$@" ;;
+  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

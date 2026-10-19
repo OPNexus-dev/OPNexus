@@ -31,6 +31,17 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.20.0] "Lilli" — 2026-10-20
+
+- **Single Sign-on (OIDC)**: Anmeldung über Authentik, Keycloak, Entra ID, Google u. a. (Authorization Code mit PKCE). Die Rolle
+  kommt bei jeder Anmeldung aus den Gruppen des Anbieters, ohne zugeordnete Gruppe kommt niemand hinein; SSO-Konten werden nie mit
+  lokalen Konten verknüpft; lokale Anmeldung bleibt als Notzugang. ID-Token werden streng geprüft (Signatur nur asymmetrisch, Aussteller,
+  Zielgruppe, Ablauf, Nonce, einmaliger State), gegen einen nachgebauten Anbieter getestet (inkl. Fälschungsversuche). Neue Tabellen
+  `oidc_settings`, `oidc_login_states`, Spalten `admin_users.auth_source/oidc_subject` (Migration `0013`). Neue Abhängigkeit: PyJWT.
+- **Behoben:** `opnexus backup --full` und `opnexus restore` (Vollsicherung, in 1.19.0 beschrieben) fehlten im 1.19.0-Bundle und -Updater-Image,
+  weil die Änderung am Skript nicht mit eingecheckt war; sie sind erst ab dieser Version enthalten.
+- **Aufgabentrennung**: Schalter, mit dem nur Admins ausrollen dürfen, Operatoren aber vorbereiten (Migration `0014`).
+
 ## [1.19.0] "Lanner" — 2026-10-20
 
 Backups, Governance, Regelnutzung. Auf einem Test-Stack mit drei Test-Firewalls geprüft; die Vollsicherung Ende-zu-Ende

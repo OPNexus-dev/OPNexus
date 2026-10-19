@@ -32,6 +32,10 @@ class AdminUser(Base):
     totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     totp_last_step: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
     totp_recovery_hashes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # "local" (password) or "oidc" (single sign-on: role follows the identity provider's groups at every
+    # login, the password hash is an unusable placeholder). oidc_subject is "<issuer>|<sub>".
+    auth_source: Mapped[str] = mapped_column(String(10), nullable=False, default="local", server_default="local")
+    oidc_subject: Mapped[Optional[str]] = mapped_column(String(600), nullable=True, unique=True, index=True)
 
     sessions: Mapped[list["Session"]] = relationship(
         "Session", back_populates="user", cascade="all, delete-orphan"

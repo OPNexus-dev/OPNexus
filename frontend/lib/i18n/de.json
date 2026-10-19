@@ -432,7 +432,19 @@
     "developedBy": "Eigenentwicklung von {maintainer}",
     "code": "Zwei-Faktor-Code",
     "codeHint": "6-stelliger Code aus der Authenticator-App oder ein Wiederherstellungscode.",
-    "back": "Zurück zur Anmeldung"
+    "back": "Zurück zur Anmeldung",
+    "sso": {
+      "button": "Mit {name} anmelden",
+      "errors": {
+        "no_role": "Dein Konto ist in keiner Gruppe, die OPNexus nutzen darf.",
+        "state": "Die Anmeldung ist abgelaufen oder wurde schon benutzt. Bitte erneut versuchen.",
+        "token": "Die Antwort des Identitätsanbieters ließ sich nicht verifizieren.",
+        "provider": "Der Identitätsanbieter war nicht erreichbar oder hat abgelehnt.",
+        "throttled": "Zu viele Fehlversuche. Bitte einige Minuten warten.",
+        "disabled": "Single Sign-on ist nicht verfügbar.",
+        "failed": "Single Sign-on ist fehlgeschlagen."
+      }
+    }
   },
   "errors": {
     "BACKUP_EMPTY": "Die Sicherungsdatei ist leer.",
@@ -585,6 +597,9 @@
     "ADMIN_REQUIRED": "Diese Funktion erfordert die Rolle „Admin“.",
     "API_TOKEN_LIMIT_REACHED": "Es sind höchstens {limit} API-Tokens pro Benutzer möglich. Widerrufe zuerst nicht mehr benötigte Tokens.",
     "BACKUP_UNLESBAR": "Das Backup lässt sich nicht lesen: {reason}",
+    "DEPLOY_NEEDS_ADMIN": "Ausrollen darf hier nur ein Administrator (Aufgabentrennung). Bereite die Änderung vor und lass sie freigeben.",
+    "OIDC_TEST_FAILED": "Der Test des Identitätsanbieters ist fehlgeschlagen: {reason}",
+    "OIDC_MANAGED_USER": "Dieses Konto wird vom Single Sign-on verwaltet: Rolle und Passwort ändern sich beim Identitätsanbieter.",
     "OFFSITE_TEST_FAILED": "Der Test des Offsite-Ziels ist fehlgeschlagen: {reason}",
     "API_TOKEN_NOT_FOUND": "API-Token nicht gefunden",
     "API_TOKEN_SCOPE_FORBIDDEN": "Dieses API-Token (Bereich „{scope}“) darf diese Aktion nicht ausführen.",
@@ -1491,6 +1506,28 @@
     "truncated": "Die Liste ist abgeschnitten; den Rest in OPNsense vergleichen.",
     "failed": "Der Vergleich ist fehlgeschlagen"
   },
+  "sso": {
+    "title": "Single Sign-on (OIDC)",
+    "intro": "Lässt Personen sich mit deinem Identitätsanbieter anmelden (Authentik, Keycloak, Entra ID, Google, …), statt mit einem hier gespeicherten Passwort. Die Rolle kommt bei jeder Anmeldung aus den Gruppen des Anbieters; ohne zugeordnete Gruppe kommt niemand hinein. Lokale Konten funktionieren weiter, du kommst also bei einem Ausfall des Anbieters immer mit dem Admin-Passwort hinein.",
+    "saved": "SSO-Einstellungen gespeichert",
+    "testOk": "Der Anbieter antwortet (Discovery und Signaturschlüssel sind in Ordnung)",
+    "testFailed": "Der Test des Anbieters ist fehlgeschlagen",
+    "enable": "Single Sign-on auf der Anmeldeseite anbieten",
+    "redirectHint": "Diese Weiterleitungs-URI beim Anbieter eintragen:",
+    "name": "Text des Knopfes",
+    "issuer": "Aussteller-URL",
+    "clientId": "Client-ID",
+    "clientSecret": "Client-Geheimnis ({state})",
+    "scopes": "Scopes",
+    "claim": "Gruppen-Claim",
+    "mapping": "Welche Gruppe welche Rolle bekommt",
+    "mappingHint": "Gruppennamen so eintragen, wie der Anbieter sie sendet. Die höchste passende Rolle gilt; wer in keiner Gruppe ist, kann sich nicht anmelden. Die Rolle von SSO-Konten wird beim Anbieter gepflegt und bei jeder Anmeldung aktualisiert.",
+    "test": "Anbieter testen",
+    "dutiesTitle": "Aufgabentrennung",
+    "dutiesIntro": "Ist es ausgeschaltet, können Operatoren Änderungen vorbereiten (bearbeiten, Vorschau), aber nur ein Administrator rollt sie aus: ausrollen, ein Deployment entfernen oder zurückrollen, Wartung ausführen oder planen und Netzwerkänderungen anwenden. Die Ablehnung steht im Audit.",
+    "operatorsDeploy": "Operatoren dürfen Änderungen selbst ausrollen",
+    "dutiesSaved": "Gespeichert"
+  },
   "security": {
     "title": "Sicherheitslage",
     "intro": "Prüft die Konfiguration jeder Firewall auf typische Schwachstellen (offene Regeln, schwaches SSH/SNMP, fehlende Backups …) und vergibt einen Wert von 0 bis 100. Nur lesend: an den Firewalls wird nichts geändert. Automatisch alle 6 Stunden geprüft.",
@@ -1671,6 +1708,7 @@
     "done": "Fertig"
   },
   "users": {
+    "ssoTip": "Wird per Single Sign-on verwaltet: Rolle und Passwort ändern sich beim Identitätsanbieter.",
     "roleOperator": "Operator",
     "roleAdmin": "Admin",
     "roleReadOnly": "Nur-Lesen",

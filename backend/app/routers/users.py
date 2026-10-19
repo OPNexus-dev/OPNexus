@@ -47,6 +47,8 @@ async def update_role(user_id: uuid.UUID, payload: UserRoleUpdate, db: AsyncSess
     target = await db.get(AdminUser, user_id)
     if target is None:
         raise api_error(404, ErrorCode.BENUTZER_NICHT_GEFUNDEN)
+    if target.auth_source == "oidc":
+        raise api_error(409, ErrorCode.OIDC_MANAGED_USER)  # the identity provider's groups decide, at every login
     if target.role == "admin" and payload.role.value != "admin" and await _admin_count(db, exclude_id=target.id) == 0:
         raise api_error(409, ErrorCode.MINDESTENS_EIN_ADMIN_ACCOUNT_MUSS_BESTEHEN_BLEIBEN)
     target.role = payload.role.value
@@ -75,6 +77,8 @@ async def reset_password(user_id: uuid.UUID, payload: UserPasswordReset, db: Asy
     target = await db.get(AdminUser, user_id)
     if target is None:
         raise api_error(404, ErrorCode.BENUTZER_NICHT_GEFUNDEN)
+    if target.auth_source == "oidc":
+        raise api_error(409, ErrorCode.OIDC_MANAGED_USER)
     target.password_hash = await auth_service.hash_password_async(payload.new_password)
     # A reset is the answer to a suspected compromise: every session of the
     # account ends with the old password, atomically with the new hash.

@@ -81,6 +81,17 @@ def operator_denies(method: str, path: str) -> bool:
     return method not in _SAFE_METHODS and path != "/api/settings" and bool(_ADMIN_ONLY_WRITES.match(path))
 
 
+# Writes that put a change onto the fleet (as opposed to preparing one): deploy, remove/rollback a deployment,
+# maintenance (reboot/update/CARP switch), scheduling it, and applying network changes.
+_ROLLOUT = re.compile(
+    r"/(deploy|deployments/[^/]+/(remove|retry-rollback)|maintenance/(execute|carp-execute|schedule)|network/changes)$"
+)
+
+
+def is_rollout(method: str, path: str) -> bool:
+    return method == "POST" and bool(_ROLLOUT.search(path))
+
+
 def bearer_from_header(header: str) -> str | None:
     """The token of an ``Authorization: Bearer opx_...`` header, else None."""
     scheme, _, value = header.partition(" ")

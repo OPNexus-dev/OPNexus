@@ -769,6 +769,21 @@ export type AuditExportUpdate = Partial<Omit<AuditExportSettings, "webhook_signi
   clear_webhook_signing_secret?: boolean;
 };
 
+export interface OidcSettings {
+  enabled: boolean;
+  display_name: string;
+  issuer: string | null;
+  client_id: string | null;
+  client_secret_set: boolean;
+  scopes: string;
+  groups_claim: string;
+  admin_group: string | null;
+  operator_group: string | null;
+  read_only_group: string | null;
+}
+
+export type OidcSettingsUpdate = Partial<Omit<OidcSettings, "client_secret_set">> & { client_secret?: string; clear_client_secret?: boolean };
+
 export interface User {
   id: string;
   username: string;
@@ -776,6 +791,7 @@ export interface User {
   created_at: string;
   last_login_at: string | null;
   totp_enabled?: boolean;
+  auth_source?: "local" | "oidc";
 }
 
 export interface LoginResult extends AuthState {
@@ -1403,6 +1419,13 @@ export const api = {
   getRuleHits: (id: string) => request<RuleHit[]>(`/hosts/${id}/rule-hits`),
   checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
   checkFleetCompliance: () => request<ComplianceHost[]>("/compliance/check", { method: "POST" }),
+
+  oidcConfig: () => request<{ enabled: boolean; name: string | null }>("/auth/oidc/config"),
+  getOidcSettings: () => request<OidcSettings>("/settings/oidc"),
+  updateOidcSettings: (data: OidcSettingsUpdate) => request<OidcSettings>("/settings/oidc", { method: "PUT", body: JSON.stringify(data) }),
+  testOidc: () => request<{ success: boolean; authorization_endpoint: string }>("/settings/oidc/test", { method: "POST" }),
+  getGovernance: () => request<{ operators_may_deploy: boolean }>("/settings/governance"),
+  updateGovernance: (operators_may_deploy: boolean) => request<{ operators_may_deploy: boolean }>("/settings/governance", { method: "PUT", body: JSON.stringify({ operators_may_deploy }) }),
 
   listApiTokens: () => request<ApiToken[]>("/tokens"),
   createApiToken: (data: { name: string; scope: TokenScope; expires_in_days: number | null; current_password: string }) =>
