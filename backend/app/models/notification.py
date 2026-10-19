@@ -50,6 +50,7 @@ class NotificationSettings(Base):
     nat_drift_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     network_drift_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     carp_auto_revert_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    scheduled_maintenance_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
 
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=300)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
@@ -71,7 +72,7 @@ class NotificationProblem(Base):
     __table_args__ = (UniqueConstraint("problem_type", "dedup_key", name="uq_notification_problem_key"),)
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # host_offline | cert_expiry | rule_drift | revert_failed | maintenance_unknown
+    # host_offline | cert_expiry | rule_drift | revert_failed | maintenance_unknown | ... (see ProblemType)
     problem_type: Mapped[str] = mapped_column(String(32))
     dedup_key: Mapped[str] = mapped_column(String(300))
     status: Mapped[str] = mapped_column(String(16), default="open")  # open | resolved

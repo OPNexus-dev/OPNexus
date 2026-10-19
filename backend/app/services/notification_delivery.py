@@ -33,6 +33,7 @@ _LABELS = {
     "nat_drift": "NAT-Drift im Cluster",
     "network_drift": "Netzwerk-Abweichung im Cluster",
     "carp_auto_revert_failed": "CARP-Auto-Revert fehlgeschlagen",
+    "scheduled_maintenance_failed": "Geplante Wartung nicht ausgeführt",
 }
 
 

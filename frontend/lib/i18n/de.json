@@ -63,6 +63,7 @@
         "carpHealth": "CARP-Zustand kritisch (Split-Brain / kein Master)",
         "natDrift": "NAT-Drift im Cluster",
         "carpAutoRevertFailed": "CARP-Auto-Revert fehlgeschlagen",
+        "scheduledFailed": "Geplante Wartung nicht ausgeführt",
         "networkDrift": "Netzwerk-Abweichung im Cluster"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
@@ -468,6 +469,8 @@
     "FUER_DIESEN_TUNNEL_IST_NOCH_KEIN_SERVER_PRIVATSCHLUESSEL_D7527998": "Für diesen Tunnel ist noch kein Server-Privatschlüssel hinterlegt",
     "FUER_DIESES_ZIEL_LIEGT_KEIN_WIEDERHOLBARER_ROLLBACK_VOR": "Für dieses Ziel liegt kein wiederholbarer Rollback vor",
     "GEPLANTE_WARTUNG_NICHT_GEFUNDEN": "Geplante Wartung nicht gefunden",
+    "GEPLANTE_WARTUNG_NUR_AUF_DEM_CARP_BACKUP_MOEGLICH": "Geplante Wartung ist nur auf dem CARP-BACKUP möglich. Diese Firewall ist gerade MASTER – zuerst den CARP-Wartungsmodus aktivieren oder den Partner-Knoten einplanen",
+    "CARP_UEBERGABE_BRAUCHT_EINEN_CLUSTER": "Die automatische CARP-Umschaltung gibt es nur für Hosts in einem Cluster",
     "GROUP_HAS_ASSIGNED_ITEMS": "Gruppe hat noch zugeordnete {label}. Diese zuerst verschieben oder löschen.",
     "GRUPPENMITGLIEDER_ODER_REGELN_WURDEN_GEAENDERT_AUSWIRKUNGEN_ERNEUT_PRUEFEN": "Gruppenmitglieder oder Regeln wurden geändert. Auswirkungen erneut prüfen.",
     "GRUPPENNAME_BEREITS_VERGEBEN": "Gruppenname bereits vergeben",
@@ -862,7 +865,8 @@
       "running": "läuft",
       "succeeded": "übergeben",
       "cancelled": "abgebrochen",
-      "failed": "fehlgeschlagen"
+      "failed": "fehlgeschlagen",
+      "completed": "abgeschlossen"
     },
     "history": "Verlauf",
     "opStatus": {
@@ -903,11 +907,16 @@
     "scheduleTitle": "Wartung später ausführen",
     "actionLabel": "Aktion",
     "timeLabel": "Zeitpunkt",
-    "unattendedWarning": "Läuft unbeaufsichtigt zum gewählten Zeitpunkt. Voraussetzungen (z. B. frisches Backup für ein Update) werden erst dann erneut geprüft — ist eine nicht erfüllt, wird die Aktion nicht ausgeführt und als fehlgeschlagen markiert, ohne erneuten Versuch.",
+    "unattendedWarning": "Läuft unbeaufsichtigt zum gewählten Zeitpunkt. Für Updates erstellt OPNexus unmittelbar davor selbst ein Konfigurationsbackup. Die übrigen Voraussetzungen werden erst dann erneut geprüft — ist eine nicht erfüllt, wird die Aktion nicht ausgeführt und als fehlgeschlagen markiert, ohne erneuten Versuch.",
     "unattendedAck": "Mir ist bewusst, dass niemand anwesend sein wird, wenn die Aktion ausgeführt wird.",
     "scheduling": "Wird geplant…",
     "scheduleIt": "Wartung einplanen",
-    "unattendedShort": "Läuft unbeaufsichtigt zum gewählten Zeitpunkt"
+    "unattendedShort": "Läuft unbeaufsichtigt zum gewählten Zeitpunkt",
+    "scheduleMasterBlocked": "Diese Firewall ist gerade CARP-MASTER. Geplante Wartung läuft nur auf dem BACKUP-Knoten, weil sonst der Verkehr ausfällt. Plane stattdessen den Partner-Knoten ein, oder aktiviere zuerst den CARP-Wartungsmodus an diesem Host.",
+    "handoverOption": "Vorher automatisch auf den Partner umschalten und danach zurückschalten (CARP)",
+    "handoverHint": "Ablauf: Wartungsmodus auf diesem Host, Partner wird MASTER (wird geprüft), dann läuft die Aktion, nach Rückkehr des Hosts wird der Wartungsmodus wieder verlassen. Bei Problemen bleibt der Partner MASTER und es kommt eine Benachrichtigung. Beim Zurückschalten kann der Host je nach CARP-Einstellung die MASTER-Rolle zurückholen (kurzer zweiter Wechsel).",
+    "handoverBadge": "mit CARP-Umschaltung",
+    "phase": {"handover_wait": "wartet auf Übernahme durch den Partner", "job_wait": "Auftrag läuft", "leave": "schaltet zurück", "leave_wait": "prüft den Normalbetrieb"}
   },
   "restore": {
     "handoffWarning": "OPNexus führt die Wiederherstellung NICHT selbst aus. Nach der Übergabe musst du die Sicherung manuell im OPNsense-Webinterface importieren. Solange dieser Vorgang offen ist, sind Regel-/Alias-/NAT-Pushes und Host-Wartung für diesen Host gesperrt.",
@@ -1856,7 +1865,7 @@
     "managementNote": "OPNexus erreicht diese Firewall über {device}. Änderungen an dieser Schnittstelle können die Verbindung trennen und werden später besonders abgesichert.",
     "managementUnknown": "Über welche Schnittstelle OPNexus diese Firewall erreicht, lässt sich nicht bestimmen (z. B. über NAT oder eine CARP-Adresse).",
     "unavailable": "Nicht abrufbar von dieser Firewall: {sections}.",
-    "cannotConfigure": "Diese OPNsense-Version erlaubt keine IP-Konfiguration von Schnittstellen per API (ab ca. 26.7.6).",
+    "cannotConfigure": "Diese Firewall ist zu alt, um Schnittstellen-IPs per API zu ändern (möglich ab OPNsense 26.7.6). Ändere die IP direkt in OPNsense oder aktualisiere die Firewall.",
     "sections": {
       "assignments": "Schnittstellen-Zuweisung",
       "vlans": "VLANs",
@@ -2067,7 +2076,7 @@
     "blocks": {
       "api_unavailable": "Diese Firewall stellt dafür keine API bereit ({section}).",
       "nothing_to_change": "Es gibt nichts zu ändern.",
-      "interface_api_unavailable": "Diese OPNsense-Version kann Schnittstellen nicht per API konfigurieren (ab ca. 26.7.6).",
+      "interface_api_unavailable": "Diese Firewall ist zu alt, um Schnittstellen per API zu konfigurieren (möglich ab OPNsense 26.7.6). Bitte direkt in OPNsense ändern oder aktualisieren.",
       "interface_changes_pending": "Auf der Firewall warten bereits vorgemerkte Schnittstellen-Änderungen auf das Anwenden. Zuerst dort prüfen und anwenden oder verwerfen.",
       "interface_locked": "Die Schnittstelle ist gesperrt. Zuerst die Sperre aufheben, dann löschen.",
       "tunable_default_row": "Das ist eine Vorgabe der Firewall. Zum Ändern einen eigenen Eintrag mit „Überschreiben“ anlegen."

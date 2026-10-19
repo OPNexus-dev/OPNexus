@@ -229,6 +229,7 @@ async def _resource_poll_loop():
 
 
 _SCHEDULED_MAINTENANCE_POLL_SECONDS = 60
+_RUNNING_MAINTENANCE_POLL_SECONDS = 15
 
 
 async def _scheduled_maintenance_poll_loop():
@@ -244,9 +245,13 @@ async def _scheduled_maintenance_poll_loop():
                         "Geplante Wartung: %d fällig, %d ausgeführt, %d blockiert/fehlgeschlagen",
                         result["due"], result["fired"], result["blocked_or_failed"],
                     )
+                in_progress = await scheduled_maintenance_service.advance_running(db)
         except Exception:
             logger.exception("Geplante-Wartung-Poll fehlgeschlagen")
-        await asyncio.sleep(_SCHEDULED_MAINTENANCE_POLL_SECONDS)
+            in_progress = 0
+        # A handover run is stepped quickly (the partner should take over within a minute or two);
+        # otherwise the relaxed cadence is plenty.
+        await asyncio.sleep(_RUNNING_MAINTENANCE_POLL_SECONDS if in_progress else _SCHEDULED_MAINTENANCE_POLL_SECONDS)
 
 
 @asynccontextmanager

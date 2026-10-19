@@ -10,6 +10,7 @@ SmtpSecurity = Literal["none", "starttls", "ssl"]
 ProblemType = Literal[
     "host_offline", "cert_expiry", "rule_drift", "revert_failed", "maintenance_unknown",
     "carp_split_brain", "nat_drift", "carp_auto_revert_failed", "network_drift",
+    "scheduled_maintenance_failed",
 ]
 
 
@@ -38,6 +39,7 @@ class NotificationSettingsRead(BaseModel):
     nat_drift_enabled: bool
     network_drift_enabled: bool = True
     carp_auto_revert_failed_enabled: bool
+    scheduled_maintenance_failed_enabled: bool = True
 
     poll_interval_seconds: int
     updated_at: datetime
@@ -74,6 +76,7 @@ class NotificationSettingsUpdate(BaseModel):
     nat_drift_enabled: bool | None = None
     network_drift_enabled: bool | None = None
     carp_auto_revert_failed_enabled: bool | None = None
+    scheduled_maintenance_failed_enabled: bool | None = None
 
     poll_interval_seconds: int | None = Field(
         default=None, ge=settings.notification_poll_min_interval_seconds

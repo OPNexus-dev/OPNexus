@@ -30,13 +30,21 @@ _CHECKS = [
     ("nat_drift", "nat_drift_enabled", notification_checks.check_nat_drift),
     ("network_drift", "network_drift_enabled", notification_checks.check_network_drift),
     ("carp_auto_revert_failed", "carp_auto_revert_failed_enabled", notification_checks.check_carp_auto_revert_failed),
+    ("scheduled_maintenance_failed", "scheduled_maintenance_failed_enabled", notification_checks.check_scheduled_maintenance_failed),
 ]
+
+# Event-like problems: when they drop out of the window nothing was "fixed", so no
+# "behoben" message goes out for them.
+_NO_RESOLVED_NOTICE = {"scheduled_maintenance_failed"}
 
 
 async def _deliver(settings_row: NotificationSettings, problem: NotificationProblem, transition: str) -> None:
     """Best-effort, not an audit trail: attempted once per transition and
     never retried, even on failure — avoids retry-storming a broken webhook
     URL or SMTP relay every poll cycle."""
+    if transition == "resolved" and problem.problem_type in _NO_RESOLVED_NOTICE:
+        problem.resolved_notified_at = _now()
+        return
     if settings_row.webhook_enabled:
         try:
             await notification_delivery.send_webhook(settings_row, problem, transition)

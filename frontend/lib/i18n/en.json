@@ -63,6 +63,7 @@
         "carpHealth": "CARP state critical (split-brain / no master)",
         "natDrift": "NAT drift in the cluster",
         "carpAutoRevertFailed": "CARP auto-revert failed",
+        "scheduledFailed": "Scheduled maintenance did not run",
         "networkDrift": "Network differences in the cluster"
       },
       "pollInterval": "Check interval (seconds)",
@@ -468,6 +469,8 @@
     "FUER_DIESEN_TUNNEL_IST_NOCH_KEIN_SERVER_PRIVATSCHLUESSEL_D7527998": "No server private key has been stored for this tunnel",
     "FUER_DIESES_ZIEL_LIEGT_KEIN_WIEDERHOLBARER_ROLLBACK_VOR": "No repeatable rollback exists for this target",
     "GEPLANTE_WARTUNG_NICHT_GEFUNDEN": "Scheduled maintenance not found",
+    "GEPLANTE_WARTUNG_NUR_AUF_DEM_CARP_BACKUP_MOEGLICH": "Scheduled maintenance is only possible on the CARP BACKUP. This firewall is currently MASTER – enable CARP maintenance mode first or schedule the partner node",
+    "CARP_UEBERGABE_BRAUCHT_EINEN_CLUSTER": "Automatic CARP switchover is only available for hosts in a cluster",
     "GROUP_HAS_ASSIGNED_ITEMS": "The group still has assigned {label}. Move or delete them first.",
     "GRUPPENMITGLIEDER_ODER_REGELN_WURDEN_GEAENDERT_AUSWIRKUNGEN_ERNEUT_PRUEFEN": "Group members or rules changed. Review the impact again.",
     "GRUPPENNAME_BEREITS_VERGEBEN": "Group name is already in use",
@@ -862,7 +865,8 @@
       "running": "running",
       "succeeded": "submitted",
       "cancelled": "cancelled",
-      "failed": "failed"
+      "failed": "failed",
+      "completed": "completed"
     },
     "history": "History",
     "opStatus": {
@@ -903,11 +907,16 @@
     "scheduleTitle": "Run maintenance later",
     "actionLabel": "Action",
     "timeLabel": "Time",
-    "unattendedWarning": "Runs unattended at the chosen time. Prerequisites (e.g. a fresh backup for an update) are only re-checked then — if one is not met, the action is not executed and is marked as failed, without a retry.",
+    "unattendedWarning": "Runs unattended at the chosen time. For updates, OPNexus takes a configuration backup itself right before. The other prerequisites are only re-checked then — if one is not met, the action is not executed and is marked as failed, without a retry.",
     "unattendedAck": "I understand that nobody will be present when the action runs.",
     "scheduling": "Scheduling…",
     "scheduleIt": "Schedule maintenance",
-    "unattendedShort": "Runs unattended at the chosen time"
+    "unattendedShort": "Runs unattended at the chosen time",
+    "scheduleMasterBlocked": "This firewall is currently the CARP MASTER. Scheduled maintenance only runs on the BACKUP node, otherwise traffic would drop. Schedule the partner node instead, or enable CARP maintenance mode on this host first.",
+    "handoverOption": "Switch to the partner first and switch back afterwards (CARP)",
+    "handoverHint": "Flow: maintenance mode on this host, the partner becomes MASTER (verified), then the action runs, and once the host is back the maintenance mode is left again. If anything goes wrong the partner stays MASTER and a notification is sent. When switching back, the host may take the MASTER role back depending on the CARP settings (a short second switchover).",
+    "handoverBadge": "with CARP switchover",
+    "phase": {"handover_wait": "waiting for the partner to take over", "job_wait": "job running", "leave": "switching back", "leave_wait": "verifying normal operation"}
   },
   "restore": {
     "handoffWarning": "OPNexus does NOT perform the restore itself. After the handover you must import the backup manually in the OPNsense web interface. While this operation is open, rule/alias/NAT pushes and host maintenance are blocked for this host.",
@@ -1856,7 +1865,7 @@
     "managementNote": "OPNexus reaches this firewall through {device}. Changes to this interface can cut the connection and will get extra safeguards later.",
     "managementUnknown": "Which interface OPNexus uses to reach this firewall cannot be determined (e.g. via NAT or a CARP address).",
     "unavailable": "Not available from this firewall: {sections}.",
-    "cannotConfigure": "This OPNsense version does not allow configuring interface IPs through its API (from about 26.7.6).",
+    "cannotConfigure": "This firewall is too old to change interface IPs through its API (possible from OPNsense 26.7.6). Change the IP directly in OPNsense or update the firewall.",
     "sections": {
       "assignments": "interface assignments",
       "vlans": "VLANs",
@@ -2067,7 +2076,7 @@
     "blocks": {
       "api_unavailable": "This firewall does not offer an API for this ({section}).",
       "nothing_to_change": "There is nothing to change.",
-      "interface_api_unavailable": "This OPNsense version cannot configure interfaces through its API (from about 26.7.6).",
+      "interface_api_unavailable": "This firewall is too old to configure interfaces through its API (possible from OPNsense 26.7.6). Please change it directly in OPNsense or update the firewall.",
       "interface_changes_pending": "Interface changes are already staged on the firewall and waiting to be applied. Check and apply or discard them there first.",
       "interface_locked": "The interface is locked. Remove the lock first, then delete.",
       "tunable_default_row": "This is a built-in default of the firewall. To change it, create your own entry with “Override”."

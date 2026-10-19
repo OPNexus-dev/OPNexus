@@ -60,6 +60,7 @@ function NotificationsSection() {
   const [natDrift, setNatDrift] = useState(true);
   const [networkDrift, setNetworkDrift] = useState(true);
   const [carpAutoRevertFailed, setCarpAutoRevertFailed] = useState(true);
+  const [scheduledFailed, setScheduledFailed] = useState(true);
   const [pollInterval, setPollInterval] = useState(300);
 
   function applyFromServer(data: NotificationSettings) {
@@ -82,6 +83,7 @@ function NotificationsSection() {
     setNatDrift(data.nat_drift_enabled);
     setNetworkDrift(data.network_drift_enabled);
     setCarpAutoRevertFailed(data.carp_auto_revert_failed_enabled);
+    setScheduledFailed(data.scheduled_maintenance_failed_enabled);
     setPollInterval(data.poll_interval_seconds);
     setWebhookSecret("");
     setClearWebhookSecret(false);
@@ -122,6 +124,7 @@ function NotificationsSection() {
         nat_drift_enabled: natDrift,
         network_drift_enabled: networkDrift,
         carp_auto_revert_failed_enabled: carpAutoRevertFailed,
+        scheduled_maintenance_failed_enabled: scheduledFailed,
         poll_interval_seconds: pollInterval,
       });
       applyFromServer(data);
@@ -253,6 +256,7 @@ function NotificationsSection() {
             [t("settings.notify.event.natDrift"), natDrift, setNatDrift],
             [t("settings.notify.event.networkDrift"), networkDrift, setNetworkDrift],
             [t("settings.notify.event.carpAutoRevertFailed"), carpAutoRevertFailed, setCarpAutoRevertFailed],
+            [t("settings.notify.event.scheduledFailed"), scheduledFailed, setScheduledFailed],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />

@@ -659,8 +659,37 @@ Neustart, Update oder Major-Upgrade lassen sich auf einen **einmaligen**
 zukünftigen Zeitpunkt legen. Das ist ausdrücklich „läuft unbeaufsichtigt“ und
 verlangt eine Bestätigung. Zum Zündzeitpunkt prüft OPNexus die Sperren und das
 frische Backup erneut. Eine blockierte Aktion wird als „fehlgeschlagen“ markiert
-und **nicht** wiederholt; sie meldet sich nicht per Benachrichtigung, sondern steht
-im Status der geplanten Wartung. Wiederkehrende Zeitpläne gibt es nicht.
+und **nicht** wiederholt. Sie steht im Status der geplanten Wartung und meldet sich
+zusätzlich per Benachrichtigung („Geplante Wartung nicht ausgeführt“, einzeln
+schaltbar), damit man es am nächsten Morgen nicht erst beim Nachsehen merkt.
+Wiederkehrende Zeitpläne gibt es nicht.
+
+In einem Cluster läuft unbeaufsichtigte Wartung standardmäßig **nur auf dem
+CARP-BACKUP**. Ist der Host beim Einplanen gerade MASTER, lehnt OPNexus das sofort mit
+Begründung ab, statt erst zur Uhrzeit zu scheitern.
+
+**Mit automatischer CARP-Umschaltung** (Option im Planungsdialog, nur für Cluster-Knoten,
+standardmäßig aus) darf auch der MASTER eingeplant werden. Zum Zeitpunkt läuft dann:
+
+1. Voraussetzungen prüfen (Partner erreichbar und BACKUP, keine offene Wartung, bei
+   Updates ein frisches Backup). Ist etwas nicht erfüllt, wird **nichts** verändert.
+2. CARP-Wartungsmodus auf dem Host einschalten. OPNexus wartet bis zu 3 Minuten, bis der
+   Partner tatsächlich MASTER ist. Wird er es nicht, schaltet OPNexus zurück und
+   aktualisiert nichts.
+3. Erst dann startet die Aktion (Neustart/Update/Major-Upgrade).
+4. OPNexus wartet, bis der Host wieder erreichbar und der Firmware-Auftrag beendet ist
+   (bei einem Neustart muss der Host erst als ausgefallen beobachtet worden sein).
+5. Wartungsmodus verlassen und prüfen, dass beide Knoten wieder erreichbar sind und genau
+   einen MASTER haben. Je nach CARP-Einstellung holt sich der Host dabei die MASTER-Rolle
+   zurück (ein kurzer zweiter Wechsel).
+
+Fällt nach Schritt 3 etwas aus (Zeitüberschreitung, unklare Antwort, Host kommt nicht
+wieder), bleibt der Host **absichtlich im Wartungsmodus** und der Partner weiter MASTER;
+der Plan steht auf „fehlgeschlagen“, die Wartungsaktion auf „unklar“, und es gibt die
+Benachrichtigung. Der CARP-Umschalter wird nie blind wiederholt. Beendest du die
+Wartungsaktion von Hand, stoppt der Ablauf und fasst nichts mehr an. Bei Erfolg schließt
+OPNexus die Wartungsaktion selbst ab. Sie läuft auch einen Neustart des OPNexus-Backends
+mitten im Ablauf weiter (der Zustand steht in der Datenbank).
 
 ### Dienste und Systemauslastung
 
@@ -745,10 +774,13 @@ Einstellungen › **Benachrichtigungen**. Kanäle:
 Ereignisse (jeweils einzeln schaltbar): Host nicht erreichbar, Zertifikat läuft ab,
 Regel-Drift im Cluster, NAT-Drift im Cluster, Netzwerk-Abweichung im Cluster,
 fehlgeschlagener Rollback, Wartungsergebnis unklar, CARP-Zustand kritisch
-(Split-Brain/kein Master), CARP-Auto-Revert fehlgeschlagen. Geprüft wird im
-eingestellten Intervall (Standard 300 s). Ein Problem meldet sich einmal und löst
-sich selbst auf, sobald es behoben ist; die Dashboard-Karte „Warnungen“ zeigt die
-offenen. Der Text der Benachrichtigungen ist nicht übersetzt.
+(Split-Brain/kein Master), CARP-Auto-Revert fehlgeschlagen, geplante Wartung nicht
+ausgeführt. Geprüft wird im eingestellten Intervall (Standard 300 s). Ein Problem
+meldet sich einmal und löst sich selbst auf, sobald es behoben ist; die
+Dashboard-Karte „Warnungen“ zeigt die offenen. Ausnahme „geplante Wartung nicht
+ausgeführt“: Sie bleibt drei Tage nach dem geplanten Zeitpunkt offen und schließt dann
+ohne „behoben“-Meldung, weil sich ein verpasster Termin nicht von selbst behebt. Der
+Text der Benachrichtigungen ist nicht übersetzt.
 
 ### Über OPNexus
 

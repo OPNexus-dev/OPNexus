@@ -59,7 +59,9 @@ async def _shared_change_blockers(db, fleet):
     return blocked
 
 
-async def inspect_host(db, host):
+async def inspect_host(db, host, *, skip_role_checks=False):
+    """skip_role_checks: for the planned CARP handover, where the node is still MASTER when
+    it is inspected and becomes BACKUP only afterwards (the role is verified separately)."""
     fleet = await peers(db, host)
     statuses, info, firmware, running = await asyncio.gather(
         get_statuses(fleet), client.get_firmware_info(host), client.get_firmware_status(host), client.get_firmware_running(host))
@@ -68,7 +70,7 @@ async def inspect_host(db, host):
     if statuses.get(host.id, {}).get("status") != "online": blocked.append("Host ist nicht erreichbar.")
     # Fail closed: only the verified ready value permits a disruptive action.
     if running.get("status") != "ready": blocked.append("Firmware-Auftrag läuft oder Status ist unbekannt.")
-    if host.cluster_name:
+    if host.cluster_name and not skip_role_checks:
         others = [h for h in fleet if h.id != host.id]
         if statuses.get(host.id, {}).get("carp_status") != "BACKUP":
             blocked.append("Cluster-Wartung nur auf dem CARP-BACKUP. Rollenwechsel separat in OPNsense durchführen.")

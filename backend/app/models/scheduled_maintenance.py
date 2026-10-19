@@ -13,7 +13,7 @@ table only tracks the *schedule* itself, not the resulting operation.
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, JSON, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, JSON, String
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -40,3 +40,10 @@ class ScheduledMaintenance(Base):
     # Set to the resulting HostOperation's id once fired, so the UI can
     # link from the schedule to the operation it produced.
     host_operation_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
+    # Opt-in: hand the traffic over to the CARP partner first, run the action, then switch back.
+    carp_handover: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Only while status == "running" with a handover: handover_wait | job_wait | leave | leave_wait.
+    # State lives here, not in memory, so a backend restart in the middle of a run resumes cleanly.
+    phase: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    phase_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

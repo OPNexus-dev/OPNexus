@@ -31,6 +31,33 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.17.0] "Imperial" — 2026-10-19
+
+Geplante Wartung: Fehler zeigen sich sofort statt erst um 3 Uhr nachts, und der Master lässt sich
+unbeaufsichtigt aktualisieren. Auf einem Test-Cluster live geprüft (Neustart und ein echtes Update
+mit Umschaltung), siehe Handbuch „Geplante Wartung“.
+
+- **Rollenprüfung beim Einplanen:** Ein Host, der in einem Cluster gerade CARP-MASTER ist,
+  lässt sich nicht mehr einplanen (Neustart/Update/Major-Upgrade). Bisher wurde der Plan
+  angenommen und scheiterte erst zur Uhrzeit. Der Planungsdialog zeigt den Grund an und
+  sperrt den Button. Ist die Rolle nicht feststellbar (Host gerade nicht erreichbar), wird
+  weiter angenommen; die volle Prüfung läuft wie bisher zum Zündzeitpunkt.
+- **Benachrichtigung „Geplante Wartung nicht ausgeführt“:** Eine fehlgeschlagene geplante
+  Wartung meldet sich per Webhook/E-Mail (einzeln schaltbar in den Einstellungen, standardmäßig
+  an). Offen für drei Tage nach dem geplanten Zeitpunkt, dann ohne „behoben“-Meldung geschlossen.
+  Neue Spalte `notification_settings.scheduled_maintenance_failed_enabled` (Migration `0006`).
+- **Automatische CARP-Umschaltung (Option pro Plan, standardmäßig aus):** Ein geplanter Neustart,
+  Update oder Major-Upgrade auf dem MASTER schaltet vorher auf den Partner um, prüft die
+  Übernahme, führt die Aktion aus, wartet auf die Rückkehr des Hosts und schaltet zurück. Fehler
+  vor dem Start der Aktion stellen den Normalbetrieb wieder her; danach bleibt der Host bewusst im
+  Wartungsmodus (Partner trägt den Verkehr) und es kommt eine Benachrichtigung. Der Ablauf steht in
+  der Datenbank und überlebt einen Neustart des Backends. Neue Spalten an `scheduled_maintenance`
+  (Migration `0007`).
+- **Backup vor geplantem Update:** Ein geplantes Update oder Major-Upgrade zieht unmittelbar vor
+  dem Start selbst ein Konfigurationsbackup (nur lesend auf der Firewall). Bisher scheiterte jeder
+  Plan, der mehr als 24 Stunden in der Zukunft lag, an der Backup-Aktualität. Schlägt das Backup
+  fehl, wird nicht aktualisiert.
+
 ## [1.16.0] "Hobby" — 2026-10-10
 
 Erste Schritte nach der Installation. Ende-zu-Ende gegen einen isolierten Stack getestet, siehe

@@ -3,6 +3,7 @@ whatever's currently bad. Pure detection — no delivery, no state tracking
 here (see notification_dedup.py for the open/resolved diffing that turns
 these snapshots into actual notifications)."""
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +15,7 @@ from app.models.one_to_one_deployment import OneToOneDeployment
 from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.rule_deployment import RuleDeployment
+from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.services import nat_drift_service, network_drift_service, rule_drift_service
 from app.services.notification_dedup import Problems
 from app.services.host_status_service import get_statuses
@@ -260,5 +262,31 @@ async def check_carp_auto_revert_failed(db: AsyncSession) -> dict[str, dict]:
             "host_id": str(window.host_id),
             "host_name": window.host_name,
             "message": window.message,
+        }
+    return problems
+
+
+# A failed scheduled run never turns "fixed" by itself, so it is reported as an event:
+# open for this long after its planned time, then closed without a "resolved" message
+# (see notification_service._NO_RESOLVED_NOTICE).
+SCHEDULED_FAILURE_WINDOW = timedelta(days=3)
+
+
+async def check_scheduled_maintenance_failed(db: AsyncSession) -> dict[str, dict]:
+    since = datetime.now(timezone.utc) - SCHEDULED_FAILURE_WINDOW
+    result = await db.execute(
+        select(ScheduledMaintenance).where(
+            ScheduledMaintenance.status == "failed", ScheduledMaintenance.run_at >= since
+        )
+    )
+    problems: dict[str, dict] = {}
+    for sched in result.scalars().all():
+        problems[str(sched.id)] = {
+            "schedule_id": str(sched.id),
+            "host_id": str(sched.host_id),
+            "host_name": sched.host_name,
+            "action": sched.action,
+            "run_at": sched.run_at.isoformat(),
+            "message": (sched.result or {}).get("error"),
         }
     return problems

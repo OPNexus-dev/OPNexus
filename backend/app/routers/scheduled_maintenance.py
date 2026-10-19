@@ -11,6 +11,8 @@ from app.errors import ErrorCode, api_error
 from app.database import get_db
 from app.models import OpnsenseHost
 from app.models.scheduled_maintenance import ScheduledMaintenance
+from app.services.host_maintenance_service import peers
+from app.services.host_status_service import get_statuses
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/hosts/{host_id}/maintenance/schedule", tags=["host-maintenance"])
@@ -20,6 +22,8 @@ class Schedule(BaseModel):
     action: Literal["reboot", "update", "major_update"]
     run_at: datetime
     acknowledge_unattended: Literal[True]
+    # Hand the traffic over to the CARP partner first and switch back afterwards (cluster nodes only).
+    carp_handover: bool = False
 
 
 def _read(sched: ScheduledMaintenance) -> dict:
@@ -27,6 +31,7 @@ def _read(sched: ScheduledMaintenance) -> dict:
         "id": sched.id, "host_id": sched.host_id, "action": sched.action, "run_at": sched.run_at,
         "status": sched.status, "actor": sched.actor, "created_at": sched.created_at,
         "result": sched.result, "host_operation_id": sched.host_operation_id,
+        "carp_handover": sched.carp_handover, "phase": sched.phase,
     }
 
 
@@ -61,9 +66,20 @@ async def create_scheduled(host_id: uuid.UUID, payload: Schedule, request: Reque
     run_at = payload.run_at if payload.run_at.tzinfo else payload.run_at.replace(tzinfo=timezone.utc)
     if run_at <= now:
         raise api_error(422, ErrorCode.ZEITPUNKT_MUSS_IN_DER_ZUKUNFT_LIEGEN)
+    if payload.carp_handover:
+        if not host.cluster_name or len(await peers(db, host)) < 2:
+            raise api_error(409, ErrorCode.CARP_UEBERGABE_BRAUCHT_EINEN_CLUSTER)
+    elif host.cluster_name:
+        # Without a handover, fire time refuses every cluster node that is not the CARP BACKUP, so a
+        # plan for the current MASTER can only ever end as "failed" at 3 a.m. Say so now.
+        # Only a *known* MASTER is rejected here: an unreachable node or an unclear role
+        # is still judged by the full check when the plan fires.
+        statuses = await get_statuses(await peers(db, host))
+        if statuses.get(host.id, {}).get("carp_status") == "MASTER":
+            raise api_error(409, ErrorCode.GEPLANTE_WARTUNG_NUR_AUF_DEM_CARP_BACKUP_MOEGLICH)
     sched = ScheduledMaintenance(
         host_id=host.id, host_name=host.name, action=payload.action, run_at=run_at,
-        actor=request.state.user.username, created_at=now,
+        actor=request.state.user.username, created_at=now, carp_handover=payload.carp_handover,
     )
     db.add(sched)
     await db.commit()

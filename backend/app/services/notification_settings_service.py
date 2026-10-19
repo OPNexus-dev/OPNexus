@@ -25,7 +25,7 @@ async def update_settings(db: AsyncSession, payload: NotificationSettingsUpdate)
         "smtp_from_address", "smtp_to_addresses",
         "host_offline_enabled", "cert_expiring_enabled", "rule_drift_enabled",
         "revert_failed_enabled", "maintenance_unknown_enabled", "carp_health_enabled", "nat_drift_enabled",
-        "network_drift_enabled", "carp_auto_revert_failed_enabled",
+        "network_drift_enabled", "carp_auto_revert_failed_enabled", "scheduled_maintenance_failed_enabled",
         "poll_interval_seconds",
     ]
     for field in simple_fields:

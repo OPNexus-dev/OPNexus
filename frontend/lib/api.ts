@@ -1122,7 +1122,7 @@ export const api = {
   stopService: (id:string, name:string) => request<{result:string}>(`/hosts/${id}/services/${encodeURIComponent(name)}/stop`,{method:"POST"}),
   restartService: (id:string, name:string) => request<{result:string}>(`/hosts/${id}/services/${encodeURIComponent(name)}/restart`,{method:"POST"}),
   listScheduledMaintenance: (id:string) => request<ScheduledMaintenanceItem[]>(`/hosts/${id}/maintenance/schedule`),
-  createScheduledMaintenance: (id:string, action:"reboot"|"update"|"major_update", run_at:string) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule`,{method:"POST",body:JSON.stringify({action,run_at,acknowledge_unattended:true})}),
+  createScheduledMaintenance: (id:string, action:"reboot"|"update"|"major_update", run_at:string, carp_handover=false) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule`,{method:"POST",body:JSON.stringify({action,run_at,acknowledge_unattended:true,carp_handover})}),
   cancelScheduledMaintenance: (id:string, scheduleId:string) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule/${scheduleId}`,{method:"DELETE"}),
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
@@ -1488,6 +1488,7 @@ export interface FirmwarePackageChange {
 export interface MaintenanceState {
   host_name: string;
   base_url: string;
+  cluster_name?: string | null;
   version: string;
   product_latest?: string | null;
   carp_status?: string | null;
@@ -1507,7 +1508,7 @@ export interface MaintenanceState {
 export interface HostOperation { id:string; host_id:string; action:"reboot"|"update"|"major_update"|"carp_enter"|"carp_leave"; status:string; created_at:string; expires_at:string; actor:string; message:string|null; }
 export interface OpnsenseService { id:string; name:string; description:string; locked:boolean|number; running:boolean|number; }
 export interface HostResourceSample { id:string; sampled_at:string; mem_used_pct:number|null; load_avg_1m:number|null; disk_used_pct:number|null; raw:Record<string,unknown>; }
-export interface ScheduledMaintenanceItem { id:string; host_id:string; action:"reboot"|"update"|"major_update"; run_at:string; status:"pending"|"running"|"succeeded"|"failed"|"cancelled"; actor:string; created_at:string; result:{error?:string;response?:unknown}; host_operation_id:string|null; }
+export interface ScheduledMaintenanceItem { id:string; host_id:string; action:"reboot"|"update"|"major_update"; run_at:string; status:"pending"|"running"|"succeeded"|"failed"|"cancelled"; actor:string; created_at:string; result:{error?:string;response?:unknown;handover?:boolean;version_before?:string|null;version_after?:string|null;reboot_required?:boolean}; host_operation_id:string|null; carp_handover:boolean; phase:"handover_wait"|"job_wait"|"leave"|"leave_wait"|null; }
 export interface MaintenanceRead {state:MaintenanceState|null;error:string|null;operations:HostOperation[];}
 export interface MaintenancePreview {preview_id:string;expires_at:string;action:"reboot"|"update"|"major_update";state:MaintenanceState;}
 export interface CarpSwitchState {
@@ -1552,6 +1553,7 @@ export interface NotificationSettings {
   nat_drift_enabled: boolean;
   network_drift_enabled: boolean;
   carp_auto_revert_failed_enabled: boolean;
+  scheduled_maintenance_failed_enabled: boolean;
   poll_interval_seconds: number;
   updated_at: string;
 }
@@ -1579,6 +1581,7 @@ export interface NotificationSettingsUpdate {
   nat_drift_enabled?: boolean;
   network_drift_enabled?: boolean;
   carp_auto_revert_failed_enabled?: boolean;
+  scheduled_maintenance_failed_enabled?: boolean;
   poll_interval_seconds?: number;
 }
 
@@ -1601,7 +1604,8 @@ export interface LogSettingsUpdate {
 
 export type ProblemType =
   | "host_offline" | "cert_expiry" | "rule_drift" | "revert_failed" | "maintenance_unknown"
-  | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed" | "network_drift";
+  | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed" | "network_drift"
+  | "scheduled_maintenance_failed";
 
 export interface CarpEvent {
   id: string;
