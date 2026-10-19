@@ -51,7 +51,18 @@ def _client(host: OpnsenseHost) -> httpx.AsyncClient:
     )
 
 
+def _refuse_unresolved_placeholders(method: str, path: str, kwargs: dict) -> None:
+    """Last line of defence for site variables: a payload that still contains a {{NAME}} placeholder was never
+    resolved for this host and must not reach a firewall."""
+    if method.upper() == "GET" or "json" not in kwargs:
+        return
+    from app.services.variables_service import PLACEHOLDER
+    if PLACEHOLDER.search(json.dumps(kwargs["json"], default=str)):
+        raise OpnsenseAPIError(f"{path}: Die Anfrage enthält eine nicht aufgelöste Variable ({{{{NAME}}}}) und wird nicht gesendet")
+
+
 async def _do_request(host: OpnsenseHost, method: str, path: str, **kwargs) -> httpx.Response:
+    _refuse_unresolved_placeholders(method, path, kwargs)
     async with _client(host) as client:
         try:
             resp = await client.request(method, path, **kwargs)

@@ -31,6 +31,13 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.22.0] "Peregrine" — 2026-10-20
+
+- **Standort-Variablen**: `{{NAME}}`-Platzhalter in Regeln, Aliasen, Portweiterleitungen, 1:1- und Outbound-NAT, je Host mit eigenem Wert
+  (Host-Seite › Standort-Variablen, listet die verwendeten Platzhalter automatisch). Je Host aufgelöst in Vorschau, Ausrollen, Zählern und
+  Audit; fehlt ein Wert, wird nichts gesendet (Vorschau „Variable fehlt“, Ausrollen wird vor jedem Schreiben abgelehnt, zusätzlich eine
+  Sperre im API-Client). Neue Tabelle `host_variables` (Migration `0016`).
+
 ## [1.21.0] "Osprey" — 2026-10-20
 
 - **Management-Tunnel** (System › Management-Tunnel): Firewalls hinter NAT/CGNAT verwalten. Ein optionaler WireGuard-Hub auf dem

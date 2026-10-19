@@ -21,7 +21,7 @@ from app.models.host import OpnsenseHost
 from app.models.port_forward import PortForwardRule
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.services.audit_service import tracked_rollback
-from app.services import opnsense_client
+from app.services import opnsense_client, variables_service
 from app.services.deploy_flow import push_to_host
 from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
@@ -30,7 +30,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _build_payload(rule: PortForwardRule) -> dict:
+def _build_payload(rule: PortForwardRule, host: OpnsenseHost | None = None) -> dict:
+    payload = _base_payload(rule)
+    return variables_service.resolve(payload, host) if host is not None else payload
+
+
+def _base_payload(rule: PortForwardRule) -> dict:
     return {
         "disabled": "0" if rule.enabled else "1",
         "interface": rule.interface,
@@ -47,7 +52,7 @@ def _build_payload(rule: PortForwardRule) -> dict:
 
 
 async def _deploy_to_host(db: AsyncSession, rule: PortForwardRule, host: OpnsenseHost) -> PortForwardDeployment:
-    payload = _build_payload(rule)
+    payload = _build_payload(rule, host)
     existing = await db.scalar(
         select(PortForwardDeployment).where(
             PortForwardDeployment.port_forward_id == rule.id, PortForwardDeployment.host_id == host.id
@@ -90,6 +95,7 @@ async def deploy_port_forward(db: AsyncSession, rule: PortForwardRule, hosts: li
     from app.services.host_maintenance_service import ensure_no_maintenance
     from app.services.policy_hierarchy_deploy_service import reassert_after_managed_change
     await ensure_no_maintenance(db, hosts)
+    variables_service.ensure_resolvable(_build_payload, rule, hosts)  # before anything is written
     deployments = [await _deploy_to_host(db, rule, host) for host in hosts]
     await db.flush()
     for host, deployment in zip(hosts, deployments):

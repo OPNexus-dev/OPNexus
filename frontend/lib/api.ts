@@ -819,6 +819,13 @@ export interface OverlayInstructions {
   host_url: string;
 }
 
+export interface HostVariable {
+  name: string;
+  value: string | null;
+  used_by: { kind: string; id: string; label: string }[];
+  missing: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -1471,6 +1478,10 @@ export const api = {
   updateOverlayPeer: (id: string, data: { public_key?: string; host_id?: string; clear_host?: boolean }) =>
     request<{ ok: boolean }>(`/overlay/peers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteOverlayPeer: (id: string) => request<void>(`/overlay/peers/${id}`, { method: "DELETE" }),
+
+  getHostVariables: (id: string) => request<{ variables: HostVariable[] }>(`/hosts/${id}/variables`),
+  setHostVariables: (id: string, variables: Record<string, string>) =>
+    request<{ variables: HostVariable[] }>(`/hosts/${id}/variables`, { method: "PUT", body: JSON.stringify({ variables }) }),
 
   listApiTokens: () => request<ApiToken[]>("/tokens"),
   createApiToken: (data: { name: string; scope: TokenScope; expires_in_days: number | null; current_password: string }) =>

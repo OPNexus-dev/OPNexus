@@ -44,3 +44,7 @@ class OpnsenseHost(Base):
     policy_hierarchy_group: Mapped["PolicyHierarchyGroup | None"] = relationship(
         "PolicyHierarchyGroup", back_populates="hosts"
     )
+    # Values for {{NAME}} placeholders (services/variables_service.py); always loaded with the host.
+    variables: Mapped[list["HostVariable"]] = relationship(
+        "HostVariable", lazy="selectin", cascade="all, delete-orphan", order_by="HostVariable.name"
+    )

@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { api, AliasOption, Host, HostBackup, LiveRule, PolicyAlias, RestoreOperation, Rule } from "@/lib/api";
 import { ArrowLeft, Download, ExternalLink, GitCompare, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { HostVariables } from "@/components/HostVariables";
 import { BackupDiffModal } from "@/components/BackupDiffModal";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -423,6 +424,8 @@ export default function HostDetailPage() {
           </Card>
 
           <HostServices host={host} />
+
+          <HostVariables host={host} />
 
           {restoreHistory && restoreHistory.length > 0 && (
             <>

@@ -9,6 +9,7 @@ import json
 
 from app.models.policy import AliasRevision
 from app.services.alias_deploy_service import _build_payload
+from app.services import variables_service
 from app.services.policy_service import effective_hosts
 
 ALIAS_FIELDS = ("name", "type", "content", "description", "enabled")
@@ -28,13 +29,17 @@ def revision(db, alias, note):
 
 
 def preview(alias):
-    payload = _build_payload(alias)
     deployments = {d.host_id: d for d in alias.deployments}
     hosts = effective_hosts(alias)
     blocked = any(d.status in ("pending", "revert_failed") for d in alias.deployments)
     rows = []
     for host in hosts:
         dep = deployments.get(host.id)
+        try:
+            payload = _build_payload(alias, host)
+        except variables_service.MissingVariables as exc:
+            rows.append(variables_service.preview_row_missing(host, exc.missing[host.name], dep))
+            continue
         before = dep.last_payload if dep else None
         action = "create" if not dep or not dep.opnsense_alias_uuid else "update"
         if before == payload and dep and dep.status in ("success", "reverted"):
@@ -61,6 +66,8 @@ def preview(alias):
         warnings.append("Offene Bestätigung oder fehlgeschlagener Rollback: Push gesperrt.")
     if any(r["action"] == "retained" for r in rows):
         warnings.append("Frühere Ziele behalten diesen Alias, bis du sie hier gezielt entfernst. Diese Löschung hat keinen automatischen Rollback.")
+    if any(r["action"] == "missing_variable" for r in rows):
+        warnings.append("Für mindestens einen Ziel-Host fehlt der Wert einer Variable ({{NAME}}). Erst auf der Host-Seite unter „Variablen“ eintragen.")
     if any(r["action"] == "disabled" for r in rows):
         warnings.append("Deaktivierte Hosts werden übersprungen.")
     if any(d.status == "error" for d in alias.deployments):
@@ -71,7 +78,7 @@ def preview(alias):
                                       d.host.base_url, d.host.enabled, d.host.verify_tls) for d in alias.deployments], key=lambda row: row[0])}
     token = hashlib.sha256(json.dumps(state, sort_keys=True, default=str).encode()).hexdigest()
     return {"token": token, "hosts": rows, "warnings": warnings,
-            "can_deploy": not blocked and any(r["action"] in ("create", "update") for r in rows),
+            "can_deploy": not blocked and not any(r["action"] == "missing_variable" for r in rows) and any(r["action"] in ("create", "update") for r in rows),
             "basis": "Zuletzt von OPNexus gespeicherter Deploy-Stand; kein Live-Abgleich."}
 
 
@@ -79,12 +86,11 @@ def workflow(alias, deployments):
     hosts = effective_hosts(alias)
     active = [h for h in hosts if h.enabled]
     by_host = {d.host_id: d for d in deployments}
-    payload = _build_payload(alias)
     target_ids = {h.id for h in hosts}
     counts = {
         "targets": len(hosts),
         "active_targets": len(active),
-        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != payload),
+        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != variables_service.payload_or_none(_build_payload, alias, h)),
         "pending": sum(d.status == "pending" for d in deployments),
         "errors": sum(d.status in ("error", "revert_failed") for d in deployments),
         "retained": sum(d.host_id not in target_ids for d in deployments),

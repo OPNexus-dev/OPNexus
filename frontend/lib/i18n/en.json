@@ -603,6 +603,8 @@
     "OVERLAY_SUBNET_LOCKED": "The overlay network cannot be changed while firewalls are registered. Delete the entries first.",
     "OVERLAY_NAME_TAKEN": "This name is already taken.",
     "OVERLAY_PEER_NOT_FOUND": "Overlay entry not found",
+    "VARIABLES_MISSING": "Values for variables are missing: {details}. Enter them on the host page under “Variables”.",
+    "VARIABLE_INVALID": "Invalid variable: {reason}",
     "OIDC_TEST_FAILED": "The identity provider test failed: {reason}",
     "OIDC_MANAGED_USER": "This account is managed by single sign-on: change role and password at the identity provider.",
     "OFFSITE_TEST_FAILED": "The offsite target test failed: {reason}",
@@ -721,6 +723,7 @@
       "unchanged": "Unchanged",
       "disabled": "Disabled · skipped",
       "retained": "Former target · stays in place",
+      "missing_variable": "Variable missing · skipped",
       "missing_cert": "No certificate/CA selected · skipped"
     },
     "loadFailed": "Loading failed",
@@ -1568,6 +1571,19 @@
     "firewallKey": "Public key of the firewall's WireGuard instance",
     "firewallKeyHint": "From OPNsense: VPN › WireGuard › Instances. Leave empty to remove it.",
     "hostHint": "Optional: which managed host is reached through this tunnel."
+  },
+  "variables": {
+    "title": "Site variables",
+    "intro": "Rules, aliases and NAT entries can contain placeholders like {{LAN_NET}}. Each firewall fills them with its own value, so one object serves many sites with different networks. A firewall without a value for a placeholder is never pushed: the preview says so and the deploy is refused. Values may contain letters, digits and . : / , @ + - _ and spaces.",
+    "loadFailed": "Could not load the variables",
+    "saved": "Variables saved",
+    "saveFailed": "Could not save the variables",
+    "empty": "No placeholders in use. Write {{NAME}} into a rule, alias or NAT entry (capital letters, digits and _) and define its value here.",
+    "missing": "{n} value(s) missing",
+    "required": "required",
+    "usedBy": "Used by: {list}",
+    "newName": "New variable name",
+    "add": "Add"
   },
   "sso": {
     "title": "Single sign-on (OIDC)",

@@ -10,7 +10,7 @@ from app.models.outbound_nat import OutboundNatRule
 from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.services.outbound_nat_mode import require_manual_mode
 from app.services.audit_service import tracked_rollback
-from app.services import opnsense_client
+from app.services import opnsense_client, variables_service
 from app.services.deploy_flow import push_to_host
 from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
@@ -19,7 +19,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _build_payload(rule: OutboundNatRule) -> dict:
+def _build_payload(rule: OutboundNatRule, host: OpnsenseHost | None = None) -> dict:
+    payload = _base_payload(rule)
+    return variables_service.resolve(payload, host) if host is not None else payload
+
+
+def _base_payload(rule: OutboundNatRule) -> dict:
     return {
         "description": rule.description,
         "interface": rule.interface,
@@ -39,7 +44,7 @@ def _build_payload(rule: OutboundNatRule) -> dict:
 
 async def _deploy_to_host(db: AsyncSession, rule: OutboundNatRule, host: OpnsenseHost) -> OutboundNatDeployment:
     await require_manual_mode(host)
-    payload = _build_payload(rule)
+    payload = _build_payload(rule, host)
     existing = await db.scalar(
         select(OutboundNatDeployment).where(
             OutboundNatDeployment.outbound_nat_id == rule.id, OutboundNatDeployment.host_id == host.id
@@ -82,6 +87,7 @@ async def deploy_outbound_nat(db: AsyncSession, rule: OutboundNatRule, hosts: li
     from app.services.host_maintenance_service import ensure_no_maintenance
     from app.services.policy_hierarchy_deploy_service import reassert_after_managed_change
     await ensure_no_maintenance(db, hosts)
+    variables_service.ensure_resolvable(_build_payload, rule, hosts)  # before anything is written
     deployments = []
     try:
         for host in hosts:

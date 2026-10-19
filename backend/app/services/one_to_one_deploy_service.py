@@ -9,7 +9,7 @@ from app.models.host import OpnsenseHost
 from app.models.one_to_one import OneToOneRule
 from app.models.one_to_one_deployment import OneToOneDeployment
 from app.services.audit_service import tracked_rollback
-from app.services import opnsense_client
+from app.services import opnsense_client, variables_service
 from app.services.deploy_flow import push_to_host
 from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
@@ -18,7 +18,12 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _build_payload(rule: OneToOneRule) -> dict:
+def _build_payload(rule: OneToOneRule, host: OpnsenseHost | None = None) -> dict:
+    payload = _base_payload(rule)
+    return variables_service.resolve(payload, host) if host is not None else payload
+
+
+def _base_payload(rule: OneToOneRule) -> dict:
     return {
         "description": rule.description,
         "interface": rule.interface,
@@ -35,7 +40,7 @@ def _build_payload(rule: OneToOneRule) -> dict:
 
 
 async def _deploy_to_host(db: AsyncSession, rule: OneToOneRule, host: OpnsenseHost) -> OneToOneDeployment:
-    payload = _build_payload(rule)
+    payload = _build_payload(rule, host)
     existing = await db.scalar(
         select(OneToOneDeployment).where(
             OneToOneDeployment.one_to_one_id == rule.id, OneToOneDeployment.host_id == host.id
@@ -78,6 +83,7 @@ async def deploy_one_to_one(db: AsyncSession, rule: OneToOneRule, hosts: list[Op
     from app.services.host_maintenance_service import ensure_no_maintenance
     from app.services.policy_hierarchy_deploy_service import reassert_after_managed_change
     await ensure_no_maintenance(db, hosts)
+    variables_service.ensure_resolvable(_build_payload, rule, hosts)  # before anything is written
     deployments = [await _deploy_to_host(db, rule, host) for host in hosts]
     await db.flush()
     for host, deployment in zip(hosts, deployments):

@@ -88,7 +88,10 @@ def deployment_history(session, flush_context, instances):
         if entity is not None and action == "deploy":
             from importlib import import_module
             builder = import_module(f"app.services.{kind}_deploy_service")._build_payload
-            details["requested_payload"] = builder(entity)
+            try:
+                details["requested_payload"] = builder(entity, host) if host is not None else builder(entity)
+            except Exception:  # a missing variable must not break the audit write; record the unresolved intent instead
+                details["requested_payload"] = builder(entity)
         session.add(make_event(kind=kind, action=action, status="removed" if deleted else dep.status,
             entity_id=str(entity_id), entity_name=(getattr(entity, "name", None) or getattr(entity, "description", None)),
             host_id=str(dep.host_id), host_name=host.name if host else None,

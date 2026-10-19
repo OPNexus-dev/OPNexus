@@ -603,6 +603,8 @@
     "OVERLAY_SUBNET_LOCKED": "Das Overlay-Netz lässt sich nicht ändern, solange Firewalls eingetragen sind. Erst die Einträge löschen.",
     "OVERLAY_NAME_TAKEN": "Dieser Name ist schon vergeben.",
     "OVERLAY_PEER_NOT_FOUND": "Overlay-Eintrag nicht gefunden",
+    "VARIABLES_MISSING": "Es fehlen Werte für Variablen: {details}. Trage sie auf der Host-Seite unter „Variablen“ ein.",
+    "VARIABLE_INVALID": "Ungültige Variable: {reason}",
     "OIDC_TEST_FAILED": "Der Test des Identitätsanbieters ist fehlgeschlagen: {reason}",
     "OIDC_MANAGED_USER": "Dieses Konto wird vom Single Sign-on verwaltet: Rolle und Passwort ändern sich beim Identitätsanbieter.",
     "OFFSITE_TEST_FAILED": "Der Test des Offsite-Ziels ist fehlgeschlagen: {reason}",
@@ -721,6 +723,7 @@
       "unchanged": "Unverändert",
       "disabled": "Deaktiviert · übersprungen",
       "retained": "Früheres Ziel · bleibt bestehen",
+      "missing_variable": "Variable fehlt · übersprungen",
       "missing_cert": "Kein Zertifikat/CA ausgewählt · wird übersprungen"
     },
     "loadFailed": "Laden fehlgeschlagen",
@@ -1568,6 +1571,19 @@
     "firewallKey": "Öffentlicher Schlüssel der WireGuard-Instanz der Firewall",
     "firewallKeyHint": "Aus OPNsense: VPN › WireGuard › Instanzen. Leer lassen, um ihn zu entfernen.",
     "hostHint": "Optional: welcher verwaltete Host über diesen Tunnel erreicht wird."
+  },
+  "variables": {
+    "title": "Standort-Variablen",
+    "intro": "Regeln, Aliase und NAT-Einträge können Platzhalter wie {{LAN_NET}} enthalten. Jede Firewall setzt dafür ihren eigenen Wert ein, ein Objekt bedient so viele Standorte mit unterschiedlichen Netzen. Eine Firewall ohne Wert für einen Platzhalter wird nie beschickt: die Vorschau zeigt es und das Ausrollen wird abgelehnt. Werte dürfen Buchstaben, Ziffern und . : / , @ + - _ sowie Leerzeichen enthalten.",
+    "loadFailed": "Die Variablen konnten nicht geladen werden",
+    "saved": "Variablen gespeichert",
+    "saveFailed": "Die Variablen konnten nicht gespeichert werden",
+    "empty": "Keine Platzhalter in Benutzung. Schreibe {{NAME}} (Großbuchstaben, Ziffern, _) in eine Regel, einen Alias oder NAT-Eintrag und lege den Wert hier fest.",
+    "missing": "{n} Wert(e) fehlen",
+    "required": "erforderlich",
+    "usedBy": "Verwendet von: {list}",
+    "newName": "Name der neuen Variable",
+    "add": "Hinzufügen"
   },
   "sso": {
     "title": "Single Sign-on (OIDC)",

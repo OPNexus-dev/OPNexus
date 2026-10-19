@@ -524,6 +524,27 @@ automatischen und konfigurierten.
 - Die NAT-Drift-Erkennung vergleicht die Knoten eines Clusters und meldet
   Abweichungen.
 
+### Standort-Variablen
+
+Mit **Variablen** pflegst du ein Objekt einmal und rollst es auf Firewalls mit unterschiedlichen Netzen aus.
+Schreibe `{{NAME}}` (Großbuchstaben, Ziffern und `_`, beginnend mit einem Buchstaben) in ein Feld einer
+**Regel**, eines **Alias**, einer **Portweiterleitung**, einer **1:1-NAT-** oder **Outbound-NAT-Regel**, etwa als
+Quelle `{{LAN_NET}}` oder als Beschreibung `Zugriff {{SITE}}`. Den Wert legst du je Firewall auf der Host-Seite
+unter **Standort-Variablen** fest (`192.168.7.0/24`, `Filiale Nord`, …). Die Seite listet automatisch alle
+Platzhalter, die die für diesen Host bestimmten Objekte verwenden, und zeigt, welche noch ohne Wert sind.
+
+- **Je Host aufgelöst:** Vorschau, Ausrollen, die Änderungszähler und das Audit sehen die echten Werte des
+  jeweiligen Hosts; ändert sich ein Wert, erscheint nur bei diesem Host eine Änderung. Das zentral gespeicherte
+  Objekt behält seine Platzhalter.
+- **Fehlt ein Wert, wird nichts gesendet:** Die Vorschau markiert den Host mit „Variable fehlt“, das Ausrollen
+  wird abgelehnt, bevor irgendein Host beschickt wurde, und als letzte Absicherung sendet OPNexus keine Anfrage
+  an eine Firewall, die noch einen Platzhalter enthält.
+- **Werte** dürfen Buchstaben, Ziffern und `. : / , @ + - _` sowie Leerzeichen enthalten (höchstens 255 Zeichen);
+  sie werden wörtlich eingesetzt, nie als Muster oder weiterer Platzhalter ausgewertet.
+- **Nicht** unterstützt: Platzhalter in VPN-Tunneln und in der Policy-Hierarchie (dort stehen die Werte direkt im
+  Objekt); Variablen für Gerätegruppen (Vorgabewerte) gibt es nicht, jeder Host hat seine eigenen. Operatoren dürfen
+  Variablen pflegen; ob sie auch ausrollen dürfen, regelt die [Aufgabentrennung](#benutzer-rollen-und-anmeldung).
+
 ---
 
 ## Netzwerk und Host-System

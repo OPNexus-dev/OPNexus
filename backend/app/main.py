@@ -18,7 +18,7 @@ from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddle
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
-from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router, oidc as oidc_router, governance as governance_router, overlay as overlay_router
+from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router, oidc as oidc_router, governance as governance_router, overlay as overlay_router, variables as variables_router
 from app.routers import one_to_one
 from app.services.one_to_one_deploy_service import sweep_expired_one_to_one_deployments
 from app.routers import outbound_nat
@@ -52,7 +52,7 @@ from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.services import scheduled_maintenance_service
 from app.services import compliance_service
 from app.services import audit_export_service
-from app.services import overlay_service
+from app.services import overlay_service, variables_service
 from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
 
@@ -396,6 +396,12 @@ async def _safe_validation_error(request: Request, exc: RequestValidationError):
     )
 
 
+@app.exception_handler(variables_service.MissingVariables)
+async def _missing_variables(request: Request, exc: variables_service.MissingVariables):
+    """A deploy that needs a value no target host has defined is refused before anything is written."""
+    return JSONResponse(status_code=422, content={"detail": {"code": ErrorCode.VARIABLES_MISSING.value, "params": {"details": str(exc)}}})
+
+
 @app.exception_handler(DBAPIError)
 async def _database_text_errors(request: Request, exc: DBAPIError):
     """A NUL byte in any text field cannot be stored by Postgres and used to
@@ -451,6 +457,7 @@ app.include_router(backups_router.router, prefix="/api")
 app.include_router(oidc_router.router, prefix="/api")
 app.include_router(governance_router.router, prefix="/api")
 app.include_router(overlay_router.router, prefix="/api")
+app.include_router(variables_router.router, prefix="/api")
 app.include_router(logs.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(aliases.router, prefix="/api")
