@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.11] "Harrier" — 2026-10-20
+
+- **Updates per Klick prüfen jetzt ebenfalls die Signatur:** Der Updater-Container enthält `cosign` (feste Version, Prüfsumme beim Bau
+  geprüft) und verifiziert die neuen Images vor dem Wechsel, wenn `cosign.pub` im Projektverzeichnis liegt. Das Image wird dadurch größer
+  (rund 266 statt 123 MB).
+
 ## [1.23.10] "Harrier" — 2026-10-20
 
 - **Signierte Release-Images:** Die Images (backend, frontend, proxy, updater) werden mit cosign signiert, beginnend mit 1.23.9. Der öffentliche

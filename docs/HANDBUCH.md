@@ -95,7 +95,8 @@ dem Tag.
 
 `opnexus update` prüft die Signaturen selbst, bevor es etwas wechselt, sobald `cosign`
 installiert ist und `cosign.pub` neben der `docker-compose.yml` liegt (`cosign.pub` liegt im Bundle
-bereits dabei, `cosign` selbst musst du installieren). Schlägt die Prüfung fehl, bricht das
+bereits dabei, `cosign` selbst musst du installieren). Der Updater-Container für Updates per Klick
+bringt `cosign` mit und prüft deshalb ebenfalls, solange `cosign.pub` im Projektverzeichnis liegt. Schlägt die Prüfung fehl, bricht das
 Update ab und es wurde nichts verändert. Fehlt `cosign`, sagt `opnexus update` das und
 macht ohne Prüfung weiter.
 
