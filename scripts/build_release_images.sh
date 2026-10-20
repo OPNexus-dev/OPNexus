@@ -9,6 +9,8 @@
 #   scripts/build_release_images.sh v1.10.0 --push             # bauen und pushen
 #   scripts/build_release_images.sh v1.10.0 --push --multiarch # amd64+arm64 (braucht QEMU/buildx)
 #
+# Signieren (cosign): OPNEXUS_SIGN=1 COSIGN_KEY=/pfad/cosign.key [COSIGN_PASSWORD=…] — der öffentliche
+# Schlüssel liegt als cosign.pub im Repo; die Registry muss ihren Token-Realm per https melden.
 # REPO: Umgebungsvariable OPNEXUS_IMAGE_REPO (Standard git.opnexus.dev/opnexus).
 # Hinweis: Hinter dem Cloudflare-Proxy (Free) scheitern Pushes mit Layern > 100 MB —
 # dann die Registry-Domain auf "DNS only" stellen oder aus dem LAN pushen.
@@ -44,6 +46,20 @@ for svc in backend frontend proxy updater; do
   else
     docker build "${targs[@]}" "$src/$svc"
     if [ "$push" = 1 ]; then for t in "${tags[@]}"; do docker push "$image:$t"; done; fi
+  fi
+  if [ "$push" = 1 ] && [ "${OPNEXUS_SIGN:-0}" = 1 ]; then
+    # Signiert wird der Digest (nicht der veränderliche Tag). Ein Schlüssel: COSIGN_KEY (+ COSIGN_PASSWORD).
+    [ -n "${COSIGN_KEY:-}" ] || { echo "OPNEXUS_SIGN=1, aber COSIGN_KEY ist nicht gesetzt" >&2; exit 1; }
+    if [ "$multi" = 1 ]; then
+      digest="$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manifest.Digest}}' | tr -d '"')"
+    else
+      digest="$(docker image inspect "$image:$version" --format '{{json .RepoDigests}}' | tr ',' '\n' | grep -F "$image@" | tr -d '[]"')"; digest="${digest##*@}"
+    fi
+    [ -n "$digest" ] || { echo "Digest von $image:$version nicht gefunden (Push fehlgeschlagen?)" >&2; exit 1; }
+    # Ohne öffentliches Transparenzlog (Rekor): Prüfen soll auch in abgeschotteten Netzen gehen.
+    cosign sign --yes --use-signing-config=false --tlog-upload=false --key "$COSIGN_KEY" "$image@$digest"
+    cosign verify --key cosign.pub --insecure-ignore-tlog=true "$image@$digest" >/dev/null
+    echo "    signiert: $image@$digest"
   fi
 done
 [ "$push" = 1 ] && echo "Fertig und gepusht: $repo (${tags[*]})" || echo "Fertig (lokal gebaut, nicht gepusht)."

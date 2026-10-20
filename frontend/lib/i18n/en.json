@@ -138,7 +138,7 @@
       "notEnabledImages": "This only works with release images (release bundle, or OPNEXUS_IMAGE_REPO in the .env). If you build OPNexus from source, update with “git pull” and “docker compose up -d --build”.",
       "notEnabledCli": "Until then, update on the server with “opnexus update”.",
       "unreachable": "The updater does not respond. Check on the server: docker compose ps updater",
-      "localMode": "This installation builds OPNexus locally from source (no release image). Update on the server with git pull and docker compose up -d --build.",
+      "localMode": "This installation does not use release images (OPNEXUS_IMAGE_REPO is not set in the .env). Update on the server with “git pull” and “docker compose up -d --build”.",
       "majorChange": "Version {latest} is a major version jump. Please read the release notes first, then update on the server with “opnexus update {latest}”.",
       "button": "Update to {latest}",
       "confirmTitle": "Update to {latest}?",

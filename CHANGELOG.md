@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.9] "Harrier" — 2026-10-20
+
+- Update-Karte: Der Hinweis für Installationen ohne Release-Images nennt jetzt die tatsächliche Ursache („OPNEXUS_IMAGE_REPO ist nicht gesetzt“)
+  statt „baut aus dem Quellcode“.
+- `cosign.pub`: öffentlicher Schlüssel für die Signaturen der Release-Images (das Release-Skript kann Images jetzt signieren).
+
 ## [1.23.8] "Harrier" — 2026-10-20
 
 - **Einstellungen › OPNexus aktualisieren:** Auf einer Installation, die aus dem Quellcode gebaut wird (kein `OPNEXUS_IMAGE_REPO`), erscheint nicht mehr
