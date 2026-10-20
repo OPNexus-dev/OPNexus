@@ -33,6 +33,7 @@ _CHECKS = [
     ("scheduled_maintenance_failed", "scheduled_maintenance_failed_enabled", notification_checks.check_scheduled_maintenance_failed),
     ("backup_stale", "backup_failed_enabled", notification_checks.check_backup_stale),
     ("backup_offsite_failed", "backup_failed_enabled", notification_checks.check_backup_offsite),
+    ("compliance_finding", "compliance_alerts_enabled", notification_checks.check_compliance),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no

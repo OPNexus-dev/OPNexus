@@ -1757,6 +1757,7 @@ export interface NotificationSettings {
   carp_auto_revert_failed_enabled: boolean;
   scheduled_maintenance_failed_enabled: boolean;
   backup_failed_enabled: boolean;
+  compliance_alerts_enabled: boolean;
   poll_interval_seconds: number;
   updated_at: string;
 }
@@ -1786,6 +1787,7 @@ export interface NotificationSettingsUpdate {
   carp_auto_revert_failed_enabled?: boolean;
   scheduled_maintenance_failed_enabled?: boolean;
   backup_failed_enabled?: boolean;
+  compliance_alerts_enabled?: boolean;
   poll_interval_seconds?: number;
 }
 
@@ -1811,7 +1813,8 @@ export type ProblemType =
   | "carp_split_brain" | "nat_drift" | "carp_auto_revert_failed" | "network_drift"
   | "scheduled_maintenance_failed"
   | "backup_stale"
-  | "backup_offsite_failed";
+  | "backup_offsite_failed"
+  | "compliance_finding";
 
 export interface CarpEvent {
   id: string;

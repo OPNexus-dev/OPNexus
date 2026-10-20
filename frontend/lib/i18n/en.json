@@ -65,6 +65,7 @@
         "carpAutoRevertFailed": "CARP auto-revert failed",
         "scheduledFailed": "Scheduled maintenance did not run",
         "backupFailed": "No recent backup / offsite copy failed",
+        "complianceAlerts": "Critical or high security finding (off by default)",
         "networkDrift": "Network differences in the cluster"
       },
       "pollInterval": "Check interval (seconds)",
@@ -230,6 +231,9 @@
     }
   },
   "dashboard": {
+    "securityPosture": "Security posture",
+    "postureNone": "No security check has run yet.",
+    "postureOpen": "Open",
     "subtitle": "Fleet status, pending actions, and security warnings at a glance.",
     "managedHosts": "Managed hosts",
     "online": "Online",
@@ -1606,6 +1610,16 @@
     "dutiesIntro": "When switched off, operators can prepare changes (edit, preview) but only an administrator may roll them out: deploy, remove or roll back a deployment, run or schedule maintenance and apply network changes. The refusal is recorded in the audit.",
     "operatorsDeploy": "Operators may roll out changes themselves",
     "dutiesSaved": "Saved"
+  },
+  "report": {
+    "title": "Security report",
+    "generated": "Created {when} · OPNexus {version}",
+    "back": "Back",
+    "print": "Print / save as PDF",
+    "score": "Score",
+    "open": "Open findings",
+    "checked": "Checked",
+    "open_report": "Report"
   },
   "security": {
     "title": "Security posture",

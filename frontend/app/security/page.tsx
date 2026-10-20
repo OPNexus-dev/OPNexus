@@ -10,7 +10,8 @@ import { useToast } from "@/components/ui/Toast";
 import { api, ComplianceFinding, ComplianceHost, RuleHit, Severity } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useReadOnly } from "@/lib/useReadOnly";
-import { CheckCircle2, CircleHelp, Info, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, FileText, Info, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const SEVERITY_TONE: Record<Severity, "danger" | "warning" | "info" | "neutral"> = {
@@ -84,12 +85,18 @@ export default function SecurityPage() {
           {t("security.title")}
           <InfoTip text={t("security.intro")} size={18} />
         </h1>
-        <fieldset disabled={readOnly} className="contents">
-          <Button onClick={() => runCheck(true)} disabled={busy} loading={busy}>
-            <RefreshCw size={16} />
-            {t("security.checkAll")}
-          </Button>
-        </fieldset>
+        <div className="flex gap-2">
+          <Link href="/security/report" className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
+            <FileText size={16} />
+            {t("report.open_report")}
+          </Link>
+          <fieldset disabled={readOnly} className="contents">
+            <Button onClick={() => runCheck(true)} disabled={busy} loading={busy}>
+              <RefreshCw size={16} />
+              {t("security.checkAll")}
+            </Button>
+          </fieldset>
+        </div>
       </div>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}

@@ -52,6 +52,8 @@ class NotificationSettings(Base):
     carp_auto_revert_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     scheduled_maintenance_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     backup_failed_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Off by default: switching it on for an existing fleet reports every long-standing finding at once.
+    compliance_alerts_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=300)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

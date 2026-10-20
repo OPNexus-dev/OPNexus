@@ -324,3 +324,42 @@ def test_unused_finding_is_unknown_while_collecting_and_a_low_finding_when_found
     found = ids(cs.evaluate(xml, firmware_status="none", newest_backup_age_s=1, unused_rules={"unused": ["old vpn rule"], "collecting": 0}))
     assert found["rules_unused"]["passed"] is False and found["rules_unused"]["severity"] == "low"
     assert found["rules_unused"]["params"] == {"count": 1, "examples": ["old vpn rule"]}
+
+
+# ── notifications ────────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_critical_and_high_findings_become_problems_that_resolve_when_fixed(client, respx_mock):
+    from app.database import SessionLocal
+    from app.services import notification_checks
+    _mock_host(respx_mock, _config(rules=_mvc_rule(interface="wan", descr="Allow ALL"),
+                                   ssh="<ssh><enabled>enabled</enabled><permitrootlogin>1</permitrootlogin><passwordauth>1</passwordauth></ssh>"))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    async with SessionLocal() as db:
+        assert await notification_checks.check_compliance(db) == {}  # nothing checked yet
+    await client.post(f"/api/hosts/{host['id']}/compliance/check")
+    async with SessionLocal() as db:
+        problems = await notification_checks.check_compliance(db)
+    assert set(problems) == {f"{host['id']}:wan_any_any", f"{host['id']}:ssh_hardened"}
+    wan = problems[f"{host['id']}:wan_any_any"]
+    assert wan["host_name"] == "fw1" and wan["schweregrad"] == "kritisch" and wan["beispiele"] == "Allow ALL" and wan["befund"].startswith("Keine Allow-all")
+    # The firewall is fixed: next check, the problems are gone (-> "resolved").
+    respx_mock.clear()
+    _mock_host(respx_mock, _config())
+    await client.post(f"/api/hosts/{host['id']}/compliance/check")
+    async with SessionLocal() as db:
+        assert await notification_checks.check_compliance(db) == {}
+
+
+@pytest.mark.asyncio
+async def test_alerts_are_off_by_default_and_unreachable_hosts_raise_none(client, respx_mock):
+    from app.database import SessionLocal
+    from app.services import notification_checks
+    assert (await client.get("/api/notifications/settings")).json()["compliance_alerts_enabled"] is False
+    assert (await client.put("/api/notifications/settings", json={"compliance_alerts_enabled": True})).json()["compliance_alerts_enabled"] is True
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(500))
+    await client.post(f"/api/hosts/{host['id']}/compliance/check")
+    async with SessionLocal() as db:
+        assert await notification_checks.check_compliance(db) == {}

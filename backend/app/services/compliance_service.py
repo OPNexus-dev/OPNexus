@@ -31,6 +31,15 @@ BACKUP_MAX_AGE_DAYS = 7
 PENALTY = {"critical": 30, "high": 15, "medium": 8, "low": 3, "info": 0}
 SEVERITY_ORDER = ("critical", "high", "medium", "low", "info")
 MAX_EXAMPLES = 5
+# German titles for notifications (the UI translates the check ids itself).
+TITLES_DE = {
+    "webgui_https": "Web-Oberfläche nur über HTTPS", "ssh_hardened": "SSH abgesichert", "snmp_community": "SNMP-Community nicht „public“",
+    "wan_any_any": "Keine Allow-all-Regel am WAN", "internal_any_any": "Keine Allow-all-Regel mit beliebiger Quelle (intern)",
+    "rules_shadowed": "Keine verdeckten Regeln", "rules_duplicate": "Keine doppelten Regeln", "rules_documented": "Regeln sind beschriftet",
+    "rules_unused": "Regeln in Benutzung", "ntp_configured": "Zeitserver gesetzt", "remote_logging": "Logs liegen auch woanders",
+    "ids_enabled": "Einbruchserkennung aktiv", "firmware_current": "Firmware aktuell", "backup_recent": "Aktuelles Backup",
+}
+SEVERITIES_DE = {"critical": "kritisch", "high": "hoch", "medium": "mittel", "low": "niedrig", "info": "Hinweis"}
 
 
 def grade(score: int) -> str:

@@ -65,6 +65,7 @@ function NotificationsSection() {
   const [carpAutoRevertFailed, setCarpAutoRevertFailed] = useState(true);
   const [scheduledFailed, setScheduledFailed] = useState(true);
   const [backupFailed, setBackupFailed] = useState(true);
+  const [complianceAlerts, setComplianceAlerts] = useState(false);
   const [pollInterval, setPollInterval] = useState(300);
 
   function applyFromServer(data: NotificationSettings) {
@@ -89,6 +90,7 @@ function NotificationsSection() {
     setCarpAutoRevertFailed(data.carp_auto_revert_failed_enabled);
     setScheduledFailed(data.scheduled_maintenance_failed_enabled);
     setBackupFailed(data.backup_failed_enabled);
+    setComplianceAlerts(data.compliance_alerts_enabled);
     setPollInterval(data.poll_interval_seconds);
     setWebhookSecret("");
     setClearWebhookSecret(false);
@@ -131,6 +133,7 @@ function NotificationsSection() {
         carp_auto_revert_failed_enabled: carpAutoRevertFailed,
         scheduled_maintenance_failed_enabled: scheduledFailed,
         backup_failed_enabled: backupFailed,
+        compliance_alerts_enabled: complianceAlerts,
         poll_interval_seconds: pollInterval,
       });
       applyFromServer(data);
@@ -264,6 +267,7 @@ function NotificationsSection() {
             [t("settings.notify.event.carpAutoRevertFailed"), carpAutoRevertFailed, setCarpAutoRevertFailed],
             [t("settings.notify.event.scheduledFailed"), scheduledFailed, setScheduledFailed],
             [t("settings.notify.event.backupFailed"), backupFailed, setBackupFailed],
+            [t("settings.notify.event.complianceAlerts"), complianceAlerts, setComplianceAlerts],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />

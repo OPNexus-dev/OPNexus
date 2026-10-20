@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusDot } from "@/components/ui/StatusDot";
-import { api, DashboardSummary, NotificationProblem } from "@/lib/api";
+import { api, ComplianceHost, DashboardSummary, NotificationProblem } from "@/lib/api";
 import {
   Activity,
   CheckCircle2,
@@ -115,6 +115,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [problems, setProblems] = useState<NotificationProblem[] | null>(null);
   const [firmwareWarnings, setFirmwareWarnings] = useState<FirmwareWarning[] | null>(null);
+  const [posture, setPosture] = useState<ComplianceHost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // Pending confirmations expire after a few minutes, so keep the summary
@@ -162,6 +163,8 @@ export default function DashboardPage() {
         if (active) setFirmwareWarnings(results.filter((r): r is FirmwareWarning => r !== null));
       })
       .catch((e) => setError(errorMessage(e, "dashboard.loadFailed")));
+
+    api.listCompliance().then((d) => active && setPosture(d)).catch(() => active && setPosture([]));
 
     api
       .notificationProblems(false)
@@ -235,6 +238,26 @@ export default function DashboardPage() {
                     {host.cluster_name && <Badge tone="neutral">{host.cluster_name}</Badge>}
                     {host.carp_status && <Badge tone={host.carp_status === "MASTER" ? "success" : "info"}>{host.carp_status}</Badge>}
                     <StatusDot status={host.status} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+
+        <SectionCard title={t("dashboard.securityPosture")} icon={ShieldAlert}>
+          {posture === null ? (
+            <Skeleton className="h-10" />
+          ) : posture.filter((h) => h.score !== null).length === 0 ? (
+            <p className="text-sm text-slate-500">{t("dashboard.postureNone")} <Link href="/security" className="text-sky-700 hover:underline">{t("dashboard.postureOpen")}</Link></p>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {[...posture].filter((h) => h.score !== null).sort((a, b) => (a.score ?? 0) - (b.score ?? 0)).slice(0, 6).map((h) => (
+                <li key={h.host_id} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <Link href="/security" className="min-w-0 truncate font-medium text-sky-700 hover:underline">{h.host_name}</Link>
+                  <div className="flex items-center gap-2">
+                    {h.counts && h.counts.critical > 0 && <Badge tone="danger">{h.counts.critical} {t("security.severity.critical")}</Badge>}
+                    <Badge tone={h.grade === "good" ? "success" : h.grade === "fair" ? "warning" : "danger"}>{h.score} / 100</Badge>
                   </div>
                 </li>
               ))}

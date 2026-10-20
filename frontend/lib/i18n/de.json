@@ -65,6 +65,7 @@
         "carpAutoRevertFailed": "CARP-Auto-Revert fehlgeschlagen",
         "scheduledFailed": "Geplante Wartung nicht ausgeführt",
         "backupFailed": "Kein aktuelles Backup / Offsite-Kopie fehlgeschlagen",
+        "complianceAlerts": "Kritischer oder hoher Sicherheitsbefund (standardmäßig aus)",
         "networkDrift": "Netzwerk-Abweichung im Cluster"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
@@ -230,6 +231,9 @@
     }
   },
   "dashboard": {
+    "securityPosture": "Sicherheitslage",
+    "postureNone": "Es wurde noch keine Sicherheitsprüfung durchgeführt.",
+    "postureOpen": "Öffnen",
     "subtitle": "Fleet-Status, offene Aktionen und Sicherheitswarnungen auf einen Blick.",
     "managedHosts": "Verwaltete Hosts",
     "online": "Online",
@@ -1606,6 +1610,16 @@
     "dutiesIntro": "Ist es ausgeschaltet, können Operatoren Änderungen vorbereiten (bearbeiten, Vorschau), aber nur ein Administrator rollt sie aus: ausrollen, ein Deployment entfernen oder zurückrollen, Wartung ausführen oder planen und Netzwerkänderungen anwenden. Die Ablehnung steht im Audit.",
     "operatorsDeploy": "Operatoren dürfen Änderungen selbst ausrollen",
     "dutiesSaved": "Gespeichert"
+  },
+  "report": {
+    "title": "Sicherheitsbericht",
+    "generated": "Erstellt {when} · OPNexus {version}",
+    "back": "Zurück",
+    "print": "Drucken / als PDF speichern",
+    "score": "Wert",
+    "open": "Offene Befunde",
+    "checked": "Geprüft",
+    "open_report": "Bericht"
   },
   "security": {
     "title": "Sicherheitslage",

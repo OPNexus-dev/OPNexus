@@ -956,6 +956,13 @@ bleibt eine Überschneidung über Aliase unentdeckt, aber es gibt keine falschen
 Befunde. Beide Regelformate (OPNsense 26.x und ältere Installationen) werden gelesen.
 Die Werte stehen auch als Prometheus-Metriken zur Verfügung (siehe unten).
 
+Das **Dashboard** zeigt die Firewalls mit dem niedrigsten Wert. Der Knopf **Bericht** erzeugt eine druckbare Übersicht
+aller geprüften Firewalls mit ihren offenen Befunden und Hinweisen zur Behebung; im Browser „Drucken / als PDF speichern“
+wählen. In den Einstellungen › Benachrichtigungen lässt sich **„Kritischer oder hoher Sicherheitsbefund“**
+einschalten (standardmäßig aus, damit ein bestehender Bestand nicht plötzlich alle alten Befunde auf einmal meldet): Pro
+Firewall und Prüfung kommt eine Meldung, sobald sie auftritt, und eine „behoben“-Meldung, wenn sie nach der nächsten
+Prüfung verschwunden ist.
+
 ### Über OPNexus
 
 Ein Klick auf das Logo öffnet **About**: alle Hosts mit Status, CARP-Rolle, Cluster,

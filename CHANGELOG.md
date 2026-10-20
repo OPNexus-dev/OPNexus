@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.0] "Harrier" — 2026-10-20
+
+- **Sicherheitslage im Alltag**: Dashboard-Karte mit den Firewalls mit dem niedrigsten Wert; Benachrichtigung bei kritischen und hohen
+  Befunden (je Firewall und Prüfung, mit „behoben“-Meldung; standardmäßig aus; Migration `0017`); druckbarer **Sicherheitsbericht**
+  (Knopf „Bericht“, Drucken/PDF über den Browser).
+
 ## [1.22.0] "Peregrine" — 2026-10-20
 
 - **Standort-Variablen**: `{{NAME}}`-Platzhalter in Regeln, Aliasen, Portweiterleitungen, 1:1- und Outbound-NAT, je Host mit eigenem Wert

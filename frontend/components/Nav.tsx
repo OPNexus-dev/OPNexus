@@ -216,7 +216,7 @@ export function Nav() {
   }
 
   return (
-    <header className="border-b border-slate-200 bg-white">
+    <header className="border-b border-slate-200 bg-white print:hidden">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6">
         <Link href="/about" title={t("nav.aboutTitle")} className="shrink-0">
           <Logo className="h-6 w-auto sm:h-7" />

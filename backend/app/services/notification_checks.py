@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.alias_deployment import AliasDeployment
 from app.models.backup_settings import BackupSettings
+from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
 from app.models.host_operation import HostOperation
 from app.models.one_to_one_deployment import OneToOneDeployment
@@ -319,3 +320,24 @@ async def check_backup_offsite(db: AsyncSession) -> dict[str, dict]:
     if cfg is None or not cfg.offsite_enabled or not cfg.last_offsite_error:
         return {}
     return {"offsite": {"message": cfg.last_offsite_error}}
+
+
+async def check_compliance(db: AsyncSession) -> dict[str, dict]:
+    """Critical and high findings of the last security check, one problem per (host, check); resolved when it passes."""
+    from app.services import compliance_service as cs
+    hosts = {h.id: h for h in await _enabled_hosts(db)}
+    problems: dict[str, dict] = {}
+    for row in (await db.scalars(select(ComplianceResult))).all():
+        host = hosts.get(row.host_id)
+        if host is None or row.error:
+            continue
+        for finding in row.findings:
+            if finding["passed"] is False and finding["severity"] in ("critical", "high"):
+                params = finding.get("params") or {}
+                problems[f"{host.id}:{finding['id']}"] = {
+                    "host_id": str(host.id), "host_name": host.name, "check": finding["id"],
+                    "befund": cs.TITLES_DE.get(finding["id"], finding["id"]),
+                    "schweregrad": cs.SEVERITIES_DE[finding["severity"]],
+                    "beispiele": ", ".join(params.get("examples", [])) or None,
+                }
+    return problems

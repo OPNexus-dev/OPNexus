@@ -36,6 +36,7 @@ _LABELS = {
     "scheduled_maintenance_failed": "Geplante Wartung nicht ausgeführt",
     "backup_stale": "Kein aktuelles Backup",
     "backup_offsite_failed": "Offsite-Backup fehlgeschlagen",
+    "compliance_finding": "Sicherheitsbefund",
 }
 
 
