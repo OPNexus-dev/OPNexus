@@ -69,6 +69,43 @@ async def test_check_carp_health_healthy_reports_nothing(client, respx_mock):
     assert problems == {}
 
 
+def _vips(**states: str) -> dict:
+    return {"rows": [{"vhid": v, "status": st} for v, st in states.items()],
+            "carp": {"allow": "1", "maintenancemode": "0", "demotion": "0"}}
+
+
+@pytest.mark.asyncio
+async def test_check_carp_health_detects_a_vip_that_is_down_on_one_node(client, respx_mock):
+    # 2026-10-20: VHID 130 was DISABLED on the primary and taken over by the secondary; per host it looked fine.
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(
+        return_value=httpx.Response(200, json=_vips(**{"110": "MASTER", "130": "DISABLED"})))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(
+        return_value=httpx.Response(200, json=_vips(**{"110": "BACKUP", "130": "BACKUP"})))
+    await _create_host(client, "fw-a", "https://fw-a.test", "ha")
+    await _create_host(client, "fw-b", "https://fw-b.test", "ha")
+
+    async with SessionLocal() as db:
+        problems = await notification_checks.check_carp_health(db)
+
+    assert {p["condition"] for p in problems.values()} == {"vip_down"}
+    assert next(iter(problems.values()))["vhids"] == ["130"]
+
+
+@pytest.mark.asyncio
+async def test_check_carp_health_detects_a_partial_failover(client, respx_mock):
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(
+        return_value=httpx.Response(200, json=_vips(**{"110": "MASTER", "130": "BACKUP"})))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(
+        return_value=httpx.Response(200, json=_vips(**{"110": "BACKUP", "130": "BACKUP"})))
+    await _create_host(client, "fw-a", "https://fw-a.test", "ha")
+    await _create_host(client, "fw-b", "https://fw-b.test", "ha")
+
+    async with SessionLocal() as db:
+        problems = await notification_checks.check_carp_health(db)
+
+    assert [p["condition"] for p in problems.values()] == ["role_mismatch"]
+
+
 @pytest.mark.asyncio
 async def test_check_carp_health_ignores_single_reachable_host(client, respx_mock):
     respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))

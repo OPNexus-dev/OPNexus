@@ -2482,6 +2482,7 @@
       "applied": "Änderung angewendet.",
       "verified": "Angewendet und geprüft",
       "notVerified": "Angewendet, Prüfung weicht ab",
+      "carpInactive": "Die Änderung ist gespeichert, aber das CARP-VIP ist auf der Firewall nicht aktiv (Status nicht MASTER/BACKUP). Sofort unter Hosts › Status prüfen und die VIPs neu anwenden.",
       "mismatch": "Die Firewall meldet abweichende Werte: {fields}",
       "backupId": "Backup vor der Änderung: {id}",
       "col": {

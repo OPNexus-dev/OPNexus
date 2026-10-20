@@ -192,6 +192,7 @@ async def test_vip_password_never_leaves_the_server(client, respx_mock):
     _backup(respx_mock)
     set_route = respx_mock.post(_url("/interfaces/vip_settings/setItem/vip1")).mock(
         return_value=httpx.Response(200, json={"result": "saved"}))
+    respx_mock.get(_url("/diagnostics/interface/getVipStatus")).mock(return_value=httpx.Response(200, json={"rows": [{"vhid": "10", "status": "BACKUP"}]}))
     respx_mock.post(_url("/interfaces/vip_settings/reconfigure")).mock(return_value=httpx.Response(200, json={"status": "ok"}))
     change = {"kind": "vip", "action": "set", "uuid": "vip1", "fields": {"password": "NEW-SECRET", "advskew": "100"}}
     resp = await _preview(client, host_id, **change)
@@ -463,6 +464,45 @@ async def test_unlisted_secret_fields_never_reach_the_audit_log(client, respx_mo
 
 
 @pytest.mark.asyncio
+async def test_vip_description_edit_does_not_reapply_the_vip(client, respx_mock):
+    # Re-applying a CARP VIP for a description edit left it in INIT on both prod nodes (2026-10-20).
+    host_id = await _setup(client, respx_mock, "fw-v2")
+    _item(respx_mock, "/interfaces/vip_settings/getItem/vip1", "vip", {
+        "interface": {"lan": {"selected": 1}}, "mode": {"carp": {"selected": 1}}, "network": "192.168.1.50/24",
+        "vhid": "12", "advskew": "0", "descr": "old"})
+    _backup(respx_mock)
+    respx_mock.post(_url("/interfaces/vip_settings/setItem/vip1")).mock(return_value=httpx.Response(200, json={"result": "saved"}))
+    reconf = respx_mock.post(_url("/interfaces/vip_settings/reconfigure")).mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    change = {"kind": "vip", "action": "set", "uuid": "vip1", "fields": {"descr": "new"}}
+    plan = (await _preview(client, host_id, **change)).json()
+    done = await _execute(client, host_id, plan["token"], **change)
+    assert done.status_code == 200, done.text
+    assert not reconf.called
+
+
+@pytest.mark.asyncio
+async def test_vip_edit_reports_a_vip_that_is_not_live(client, respx_mock, monkeypatch):
+    async def no_sleep(_):
+        return None
+    monkeypatch.setattr("app.services.network_change_service.asyncio.sleep", no_sleep)
+    host_id = await _setup(client, respx_mock, "fw-v3")
+    _item(respx_mock, "/interfaces/vip_settings/getItem/vip1", "vip", {
+        "interface": {"lan": {"selected": 1}}, "mode": {"carp": {"selected": 1}}, "network": "192.168.1.50/24",
+        "vhid": "13", "advskew": "0", "descr": "x"})
+    _backup(respx_mock)
+    respx_mock.post(_url("/interfaces/vip_settings/setItem/vip1")).mock(return_value=httpx.Response(200, json={"result": "saved"}))
+    reconf = respx_mock.post(_url("/interfaces/vip_settings/reconfigure")).mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    respx_mock.get(_url("/diagnostics/interface/getVipStatus")).mock(
+        return_value=httpx.Response(200, json={"rows": [{"vhid": "13", "status": "DISABLED"}]}))
+    change = {"kind": "vip", "action": "set", "uuid": "vip1", "fields": {"advskew": "20"}}
+    plan = (await _preview(client, host_id, **change)).json()
+    done = await _execute(client, host_id, plan["token"], **change)
+    assert done.status_code == 200, done.text
+    assert done.json()["verified"] is False and "carp_vip_inactive" in done.json()["mismatches"]
+    assert reconf.call_count == 2  # one retry
+
+
+@pytest.mark.asyncio
 async def test_vip_edit_always_repeats_the_address(client, respx_mock):
     # OPNsense blanks a VIP's address when an update leaves out "network" (seen live on 26.7.6).
     host_id = await _setup(client, respx_mock, "fw-v1")
@@ -471,6 +511,7 @@ async def test_vip_edit_always_repeats_the_address(client, respx_mock):
         "vhid": "11", "advskew": "0", "descr": "x"})
     _backup(respx_mock)
     put = respx_mock.post(_url("/interfaces/vip_settings/setItem/vip1")).mock(return_value=httpx.Response(200, json={"result": "saved"}))
+    respx_mock.get(_url("/diagnostics/interface/getVipStatus")).mock(return_value=httpx.Response(200, json={"rows": [{"vhid": "11", "status": "BACKUP"}]}))
     respx_mock.post(_url("/interfaces/vip_settings/reconfigure")).mock(return_value=httpx.Response(200, json={"status": "ok"}))
     change = {"kind": "vip", "action": "set", "uuid": "vip1", "fields": {"advskew": "20"}}
     plan = (await _preview(client, host_id, **change)).json()

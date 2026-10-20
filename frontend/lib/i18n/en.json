@@ -2482,6 +2482,7 @@
       "applied": "Change applied.",
       "verified": "Applied and checked",
       "notVerified": "Applied, check differs",
+      "carpInactive": "The change is saved, but the CARP VIP is not active on the firewall (state is not MASTER/BACKUP). Check Hosts › Status right away and re-apply the VIPs.",
       "mismatch": "The firewall reports different values: {fields}",
       "backupId": "Backup before the change: {id}",
       "col": {

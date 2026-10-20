@@ -32,6 +32,14 @@ def _extract_carp_status(data: dict | None) -> str | None:
     return None
 
 
+def _vip_states(data: dict | None) -> dict[str, str]:
+    """Per-VHID CARP state ("MASTER", "BACKUP", "DISABLED", "INIT", ...). The host-level carp_status above
+    collapses these, so one VHID that is down on a node is invisible there."""
+    rows = data.get("rows") if isinstance(data, dict) else None
+    return {str(row.get("vhid")): str(row.get("status", "")).upper()
+            for row in rows or [] if isinstance(row, dict) and row.get("vhid") not in (None, "")}
+
+
 async def _status_for(host: OpnsenseHost) -> dict:
     if not host.enabled:
         return {"status": "disabled", "carp_status": None, "status_detail": None}
@@ -43,6 +51,7 @@ async def _status_for(host: OpnsenseHost) -> dict:
     return {
         "status": "online",
         "carp_status": _extract_carp_status(data),
+        "carp_vips": _vip_states(data),
         "carp_maintenance_mode": _truthy(carp.get("maintenancemode"), default=False),
         "carp_allowed": _truthy(carp.get("allow"), default=True),
         "carp_demotion": carp.get("demotion"),

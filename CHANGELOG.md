@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.4] "Harrier" — 2026-10-20
+
+- **Fix (Produktiv-Vorfall 2026-10-20):** Das Ändern der Beschreibung eines CARP-VIP wendete das VIP neu an und ließ es auf beiden Firewalls
+  im Zustand INIT hängen – OPNexus zeigte trotzdem „alles in Ordnung“. Nur die Beschreibung zu ändern, wendet jetzt nichts mehr an. Nach jeder
+  anderen CARP-VIP-Änderung prüft OPNexus den Live-Zustand (MASTER/BACKUP), wendet bei Bedarf einmal erneut an und meldet sonst „Angewendet,
+  Prüfung weicht ab“.
+- **CARP-Überwachung je VHID:** Neue Warnungen `vip_down` (ein VIP ist auf einem Node nicht aktiv) und `role_mismatch` (ein Node ist nur für
+  einen Teil der VIPs MASTER). Bisher zählte der Host schon als MASTER, sobald ein einziges VIP MASTER war.
+
 ## [1.23.3] "Harrier" — 2026-10-20
 
 - **SSO:** Liefert der Anbieter `preferred_username`/`email` nicht im ID-Token (Authelia), fragt OPNexus sie beim Userinfo-Endpunkt ab; der neue

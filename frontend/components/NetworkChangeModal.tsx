@@ -468,6 +468,8 @@ export function NetworkChangeModal({ hostId, hostName, kind, action, uuid, prese
               <p className="text-sm text-amber-700">
                 {result.mismatches.includes("unreadable")
                   ? t("network.change.unreachable", { host: hostName })
+                  : result.mismatches.includes("carp_vip_inactive")
+                  ? t("network.change.carpInactive")
                   : t("network.change.mismatch", { fields: result.mismatches.join(", ") })}
               </p>
             )}

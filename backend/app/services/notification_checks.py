@@ -236,6 +236,28 @@ async def check_carp_health(db: AsyncSession) -> dict[str, dict]:
                 "condition": "no_master",
                 "host_names": sorted(h.name for h in online),
             }
+        problems.update(_carp_vip_problems(cluster_name, online, statuses, split_brain=len(masters) == 2))
+    return problems
+
+
+def _carp_vip_problems(cluster_name: str, online: list[OpnsenseHost], statuses: dict, split_brain: bool) -> dict[str, dict]:
+    """Per-VHID checks. The host-level role is "MASTER" as soon as one VIP is, so a VIP that is down on a
+    node (a node without the VIP never advertises it, the peer takes it over) looks healthy in the totals."""
+    problems: dict[str, dict] = {}
+    for host in online:
+        vips = statuses.get(host.id, {}).get("carp_vips") or {}
+        down = sorted(v for v, state in vips.items() if state not in ("MASTER", "BACKUP"))
+        if down:
+            problems[f"{cluster_name}:vip_down:{host.name}"] = {
+                "cluster_name": cluster_name, "condition": "vip_down", "host_names": [host.name], "vhids": down,
+            }
+        # One node MASTER on some VHIDs and BACKUP on others: a partial failover. Already covered by the
+        # split-brain alert when both nodes hold a MASTER.
+        if not split_brain and {"MASTER", "BACKUP"} <= set(vips.values()):
+            problems[f"{cluster_name}:role_mismatch:{host.name}"] = {
+                "cluster_name": cluster_name, "condition": "role_mismatch", "host_names": [host.name],
+                "vhids": sorted(v for v, state in vips.items() if state == "MASTER"),
+            }
     return problems
 
 

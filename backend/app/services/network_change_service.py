@@ -22,6 +22,7 @@ taken before the change is the way back.
 Secrets (the CARP password) are never returned, hashed into the token only, and
 never written to the audit log.
 """
+import asyncio
 import hashlib
 import ipaddress
 import json
@@ -362,6 +363,20 @@ async def _verify(host: OpnsenseHost, kind: str, action: str, uuid: str | None, 
         return False, ["unreadable"]
 
 
+async def _carp_vip_active(host: OpnsenseHost, vhid: str, attempts: int = 5) -> bool:
+    """True once the firewall reports the VHID as MASTER or BACKUP, i.e. the VIP really is on the interface and
+    taking part in CARP (not DISABLED/INIT). The config can look right while the live VIP is gone."""
+    for attempt in range(attempts):
+        if attempt:
+            await asyncio.sleep(2)
+        data = await opnsense_client.get_vip_status(host)
+        rows = data.get("rows") if isinstance(data, dict) else None
+        states = {str(r.get("vhid")): str(r.get("status", "")).upper() for r in rows or [] if isinstance(r, dict)}
+        if states.get(vhid) in ("MASTER", "BACKUP"):
+            return True
+    return False
+
+
 async def execute(db: AsyncSession, host: OpnsenseHost, kind: str, action: str, uuid: str | None, fields: dict,
                   token: str, acknowledged: bool) -> dict:
     await ensure_no_maintenance(db, [host])
@@ -407,14 +422,28 @@ async def execute(db: AsyncSession, host: OpnsenseHost, kind: str, action: str, 
         await audit_service.persist(**audit, status="rejected", message=str(exc)[:500], details=details)
         raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)[:300]) from exc
     new_uuid = uuid or (result.get("uuid") if isinstance(result, dict) else None)
+    # A description is not wired into anything: re-applying a CARP VIP for it only risks the live VIP (found
+    # live 2026-10-20: the reconfigure after a description edit left the VIP in INIT on both nodes).
+    cosmetic = kind == "vip" and action == "set" and {c["field"] for c in plan["changes"]} <= {"descr"}
+    carp_live = kind == "vip" and action != "del" and expected.get("mode") == "carp" and not cosmetic
     try:
-        await opnsense_client.reconfigure_network(host, kind)
+        if not cosmetic:
+            await opnsense_client.reconfigure_network(host, kind)
+        live_ok = True
+        if carp_live:
+            live_ok = await _carp_vip_active(host, str(expected.get("vhid")))
+            if not live_ok:  # one more apply usually brings it back up
+                await opnsense_client.reconfigure_network(host, kind)
+                live_ok = await _carp_vip_active(host, str(expected.get("vhid")))
     except OpnsenseAPIError as exc:
         # Written but not (provably) applied: say so instead of reporting success.
         await audit_service.persist(**audit, status="apply_uncertain", message=str(exc)[:500], details=details)
         raise api_error(502, ErrorCode.NETWORK_APPLY_UNCERTAIN, host=host.name, backup_id=backup_id) from exc
 
     verified, mismatches = await _verify(host, kind, action, new_uuid, expected)
+    if not live_ok:
+        verified = False
+        mismatches = [*mismatches, "carp_vip_inactive"]
     await audit_service.persist(**audit, status="applied" if verified else "unverified",
                                 message=None if verified else ", ".join(mismatches)[:500], details=details)
     return {"status": "applied", "uuid": new_uuid, "verified": verified, "mismatches": mismatches, "backup_id": backup_id}
