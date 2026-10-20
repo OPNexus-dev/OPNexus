@@ -56,7 +56,7 @@ def test_public_key_validation(value, ok):
 
 def test_subnets():
     assert str(svc.parse_subnet("10.99.0.0/24")) == "10.99.0.0/24"
-    for bad in ("8.8.8.0/24", "10.99.0.5/24", "10.0.0.0/8", "10.99.0.0/30", "fd00::/64", "nonsense", ""):
+    for bad in ("8.8.8.0/24", "10.99.0.5/24", "10.0.0.0/8", "10.99.0.0/30", "fd00::/64", "nonsense", "", "127.0.0.0/24", "169.254.1.0/24"):
         with pytest.raises(svc.OverlayError):
             svc.parse_subnet(bad)
 
@@ -259,6 +259,7 @@ def test_hub_applies_the_interface_peers_and_the_inbound_drop_rule(tmp_path):
     cmds = [c[:3] for c in runner.calls]
     assert ("ip", "link", "add") in cmds and ("ip", "address", "replace") in cmds and ("wg", "syncconf", "wg0") in cmds
     assert any(c[0] == "iptables" and c[1] == "-I" and "-i" in c and "NEW" in c and c[-1] == "DROP" for c in runner.calls)
+    assert ("iptables", "-I", "FORWARD", "-j", "DROP") in runner.calls  # no routing between peers or into the compose network
     assert not list(tmp_path.glob(".wg0.conf"))  # the private key file does not linger
     assert hub.subnet == ipaddress.ip_network("10.99.0.0/24")
     # An existing interface is reused, not re-created.

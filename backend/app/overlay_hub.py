@@ -99,6 +99,12 @@ class Hub:
             code, out = self.run("iptables", "-I", *rule)
             if code != 0:
                 return f"iptables: {out}"[:300]
+        # The hub only needs its own proxy: never route between peers or into the compose network.
+        fwd = ("FORWARD", "-j", "DROP")
+        if self.run("iptables", "-C", *fwd)[0] != 0:
+            code, out = self.run("iptables", "-I", *fwd)
+            if code != 0:
+                return f"iptables: {out}"[:300]
         return None
 
     def status(self, error: str | None) -> dict:

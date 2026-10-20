@@ -130,7 +130,7 @@ def _challenge(verifier: str) -> str:
     return base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
 
 
-async def start(db: AsyncSession, cfg: OidcSettings, redirect_uri: str) -> str:
+async def start(db: AsyncSession, cfg: OidcSettings, redirect_uri: str) -> tuple[str, str]:
     """Remember a fresh login attempt and return the provider URL to send the browser to."""
     doc = await discovery(cfg.issuer)
     state, nonce, verifier = secrets.token_urlsafe(32), secrets.token_urlsafe(24), secrets.token_urlsafe(48)
@@ -141,7 +141,7 @@ async def start(db: AsyncSession, cfg: OidcSettings, redirect_uri: str) -> str:
         "response_type": "code", "client_id": cfg.client_id, "redirect_uri": redirect_uri, "scope": cfg.scopes,
         "state": state, "nonce": nonce, "code_challenge": _challenge(verifier), "code_challenge_method": "S256",
     })
-    return f"{doc['authorization_endpoint']}{'&' if '?' in doc['authorization_endpoint'] else '?'}{query}"
+    return f"{doc['authorization_endpoint']}{'&' if '?' in doc['authorization_endpoint'] else '?'}{query}", state
 
 
 async def _consume_state(db: AsyncSession, state: str) -> OidcLoginState:
@@ -207,7 +207,8 @@ async def _verify_id_token(cfg: OidcSettings, doc: dict, id_token: str, nonce: s
 
 def _as_groups(value) -> list[str]:
     if isinstance(value, str):
-        return [g for g in re.split(r"[,\s]+", value) if g]
+        # Group names may contain spaces ("Network Admins"): a string claim is split on commas and line breaks only.
+        return [g.strip() for g in re.split(r"[,\n]+", value) if g.strip()]
     if isinstance(value, list):
         return [str(g) for g in value]
     return []

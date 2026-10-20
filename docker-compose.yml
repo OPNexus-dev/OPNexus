@@ -218,6 +218,8 @@ services:
     command: ["python", "-m", "app.overlay_hub"]
     cap_add:
       - NET_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: "0"
     environment:
       OVERLAY_DIR: /data/overlay
     volumes:

@@ -12,6 +12,7 @@ in ``filter/rule`` (legacy). Both are normalised to the same shape below.
 decided. The score starts at 100 and loses a penalty per failed check, so one
 critical finding (an any-any pass rule on the WAN) already turns the host red.
 """
+import asyncio
 import re
 from datetime import datetime, timezone
 from xml.etree.ElementTree import Element
@@ -276,15 +277,18 @@ async def check_host(db: AsyncSession, host: OpnsenseHost) -> ComplianceResult:
             await rule_hit_service.sample_host(db, host)
         except OpnsenseAPIError:
             pass  # usage data is a bonus; the check does not depend on it
-        findings = evaluate(xml, firmware_status=firmware_status, newest_backup_age_s=age,
-                            unused_rules=await rule_hit_service.unused_summary(db, host.id))
+        # Untrusted XML, O(n^2) rule analysis: keep it off the event loop, and treat ANY parse failure as 'invalid'.
+        findings = await asyncio.to_thread(
+            evaluate, xml, firmware_status=firmware_status, newest_backup_age_s=age,
+            unused_rules=await rule_hit_service.unused_summary(db, host.id),
+        )
         row.findings, row.score, row.error = findings, score(findings), None
     except OpnsenseAPIError as exc:
         row.findings, row.score, row.error = [], None, "unreachable"
         row.error_detail = str(exc)[:300]
-    except ValueError as exc:
+    except Exception as exc:  # ParseError is a SyntaxError, not a ValueError; one bad config must not stop the other hosts
         row.findings, row.score, row.error = [], None, "invalid_config"
-        row.error_detail = str(exc)[:300]
+        row.error_detail = f"{type(exc).__name__}: {exc}"[:300]
     await db.commit()
     return row
 

@@ -104,7 +104,8 @@ def parse_subnet(value: str) -> ipaddress.IPv4Network:
         net = ipaddress.ip_network(value.strip(), strict=True)
     except ValueError:
         raise OverlayError("subnet", "kein gültiges Netz") from None
-    if not isinstance(net, ipaddress.IPv4Network) or not net.is_private or not (16 <= net.prefixlen <= 29):
+    if (not isinstance(net, ipaddress.IPv4Network) or not net.is_private or not (16 <= net.prefixlen <= 29)
+            or net.is_loopback or net.is_link_local or net.is_multicast or net.is_unspecified):
         raise OverlayError("subnet", "ein privates IPv4-Netz zwischen /16 und /29 ist nötig")
     return net
 

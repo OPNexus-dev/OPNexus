@@ -58,7 +58,12 @@ class S3Client:
         if parts.scheme == "http" and not settings.allow_insecure_offsite:
             # Credentials and (encrypted, but still) backups must not travel in the clear.
             raise S3Error("Der Endpunkt muss https:// sein")
-        self.scheme, self.netloc = parts.scheme, parts.netloc
+        # httpx leaves a scheme's default port out of the Host header, so the signed host must not carry it either.
+        port = parts.port
+        default = {"https": 443, "http": 80}[parts.scheme]
+        host = parts.hostname if ":" not in parts.hostname else f"[{parts.hostname}]"
+        self.scheme = parts.scheme
+        self.netloc = host if port in (None, default) else f"{host}:{port}"
         self.region, self.bucket, self.path_style = region or "us-east-1", bucket, path_style
         self.access_key, self.secret_key = access_key, secret_key
 

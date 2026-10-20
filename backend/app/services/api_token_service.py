@@ -82,14 +82,27 @@ def operator_denies(method: str, path: str) -> bool:
 
 
 # Writes that put a change onto the fleet (as opposed to preparing one): deploy, remove/rollback a deployment,
-# maintenance (reboot/update/CARP switch), scheduling it, and applying network changes.
-_ROLLOUT = re.compile(
-    r"/(deploy|deployments/[^/]+/(remove|retry-rollback)|maintenance/(execute|carp-execute|schedule)|network/changes)$"
+# maintenance (reboot/update/CARP switch), scheduling it, applying network changes, pushing certificates and
+# ACME accounts, re-asserting the hierarchy order, controlling services, and DELETING a centrally managed object
+# or snapshot (deleting a rule removes it from every firewall it was deployed to).
+_ROLLOUT_POST = re.compile(
+    r"/(deploy|push|sign|poll|register|reassert-ordering"
+    r"|deployments/[^/]+/(remove|retry-rollback)"
+    r"|maintenance/(execute|carp-execute|schedule)"
+    r"|network/changes"
+    r"|services/[^/]+/(start|stop|restart))$"
+)
+_ROLLOUT_DELETE = re.compile(
+    r"^/api/(rules|aliases|port-forward|one-to-one|outbound-nat|policy-hierarchy/rules|ipsec/tunnels|openvpn/instances"
+    r"|wireguard/tunnels|certificates/managed|acme/accounts|acme/certificates)/[^/]+$"
+    r"|^/api/hosts/[^/]+/(snapshots|maintenance/schedule)/[^/]+$"
 )
 
 
 def is_rollout(method: str, path: str) -> bool:
-    return method == "POST" and bool(_ROLLOUT.search(path))
+    if method == "POST":
+        return bool(_ROLLOUT_POST.search(path))
+    return method == "DELETE" and bool(_ROLLOUT_DELETE.match(path))
 
 
 def bearer_from_header(header: str) -> str | None:

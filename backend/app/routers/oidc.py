@@ -1,5 +1,7 @@
 """OIDC single sign-on: public login endpoints and admin-only settings (see services/oidc_service.py)."""
 import logging
+import re
+import secrets
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Request
@@ -10,6 +12,7 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser
 from app.routers.auth import _set_session_cookie, client_ip, current_user
+from app.config import settings
 from app.schemas.oidc import OidcSettingsRead, OidcSettingsUpdate
 from app.security_middleware import _origin_allowed
 from app.services import auth_service, notification_secret_store, oidc_service
@@ -18,10 +21,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["oidc"])
 CALLBACK_PATH = "/api/auth/oidc/callback"
+STATE_COOKIE = "opnexus-oidc-state"
+# SSO sessions are short: the provider's group membership is only re-checked at login, so a removed person
+# must not keep a 30-day session.
+SSO_SESSION_SECONDS = 12 * 3600
 
 
 def _login_error(code: str) -> RedirectResponse:
-    return RedirectResponse(f"/login?sso_error={code}", status_code=302)
+    response = RedirectResponse(f"/login?sso_error={code}", status_code=302)
+    response.delete_cookie(STATE_COOKIE, path="/api/auth/oidc")
+    return response
+
+
+def _printable(value: str) -> str:
+    """Query text from an unauthenticated caller, made safe for a log line (no CR/LF or other control chars)."""
+    return re.sub(r"[^\x20-\x7e]", "?", value)[:60]
 
 
 @router.get("/auth/oidc/config")
@@ -42,11 +56,15 @@ async def start(request: Request, origin: str, db: AsyncSession = Depends(get_db
             or not _origin_allowed(f"{parts.scheme}://{parts.netloc}", request.headers.get("host", ""))):
         return _login_error("disabled")
     try:
-        url = await oidc_service.start(db, cfg, f"{parts.scheme}://{parts.netloc}{CALLBACK_PATH}")
+        url, state = await oidc_service.start(db, cfg, f"{parts.scheme}://{parts.netloc}{CALLBACK_PATH}")
     except oidc_service.OidcError as exc:
         logger.warning("OIDC start fehlgeschlagen: %s", exc)
         return _login_error(exc.code)
-    return RedirectResponse(url, status_code=302)
+    response = RedirectResponse(url, status_code=302)
+    # Binds the attempt to THIS browser: a callback URL handed to somebody else (login CSRF) or a captured
+    # code+state pair is useless without the cookie.
+    response.set_cookie(STATE_COOKIE, state, max_age=600, httponly=True, samesite="lax", secure=settings.cookie_secure, path="/api/auth/oidc")
+    return response
 
 
 @router.get("/auth/oidc/callback")
@@ -59,7 +77,9 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         return _login_error("disabled")
     try:
         if error or not code or not state:
-            raise oidc_service.OidcError("provider", f"Anbieter meldet {error or 'keinen Code'}")
+            raise oidc_service.OidcError("provider", "Anbieter meldet " + (_printable(error) if error else "keinen Code"))
+        if not secrets.compare_digest(request.cookies.get(STATE_COOKIE, ""), state):
+            raise oidc_service.OidcError("state", "Der Anmeldeversuch gehört nicht zu diesem Browser")
         user = await oidc_service.complete(db, cfg, code, state)
     except oidc_service.OidcError as exc:
         auth_service.throttle.record_failure(ip, "oidc")
@@ -67,9 +87,12 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         return _login_error(exc.code)
     auth_service.throttle.reset(ip, "oidc")
     await auth_service.finalize_login(db, user, ip)
-    token, _ = await auth_service.create_session(db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip)
+    token, _ = await auth_service.create_session(
+        db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip, lifetime_seconds=SSO_SESSION_SECONDS
+    )
     response = RedirectResponse("/dashboard", status_code=302)
-    _set_session_cookie(response, token)
+    _set_session_cookie(response, token, max_age=SSO_SESSION_SECONDS)
+    response.delete_cookie(STATE_COOKIE, path="/api/auth/oidc")
     logger.info("SSO-Anmeldung von '%s' (%s) aus %s", user.username, user.role, ip)
     return response
 

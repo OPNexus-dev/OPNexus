@@ -46,11 +46,11 @@ def test_values_are_inserted_literally_not_interpreted():
 
 
 def test_value_and_name_validation():
-    assert vs.NAME_RE.match("LAN_NET2") and not vs.NAME_RE.match("lan") and not vs.NAME_RE.match("2LAN") and not vs.NAME_RE.match("A" * 41)
+    assert vs.NAME_RE.fullmatch("LAN_NET2") and not vs.NAME_RE.fullmatch("lan") and not vs.NAME_RE.fullmatch("2LAN") and not vs.NAME_RE.fullmatch("A" * 41)
     for ok in ("192.168.7.0/24", "fw-nord.example.com", "10.0.0.1,10.0.0.2", "Filiale Nord", "a@b+c"):
-        assert vs.VALUE_RE.match(ok)
-    for bad in ("", "{{X}}", "a\nb", 'a"b', "a;b", "a" * 256, "<x>"):
-        assert not vs.VALUE_RE.match(bad)
+        assert vs.VALUE_RE.fullmatch(ok)
+    for bad in ("", "{{X}}", "a\nb", "ok\n", 'a"b', "a;b", "a" * 256, "<x>"):
+        assert not vs.VALUE_RE.fullmatch(bad)
 
 
 # ── API ──────────────────────────────────────────────────────────────────

@@ -279,3 +279,18 @@ async def test_openapi_schema_is_served_behind_auth_with_bearer_scheme(client, a
         assert (await api.get("/api/openapi.json")).status_code == 200
     # No interactive docs page (its CDN scripts would be blocked by the CSP anyway).
     assert (await client.get("/docs")).status_code != 200
+
+
+@pytest.mark.asyncio
+async def test_changing_your_own_password_revokes_your_api_tokens(client):
+    assert (await client.post("/api/users", json={"username": "pwtok", "password": "first-password-12", "role": "operator"})).status_code == 201
+    user = await _login("pwtok", "first-password-12")
+    try:
+        token = (await user.post("/api/tokens", json={"name": "ci", "scope": "read", "current_password": "first-password-12"})).json()["token"]
+        async with _bearer(token) as api:
+            assert (await api.get("/api/hosts")).status_code == 200
+            resp = await user.post("/api/auth/change-password", json={"current_password": "first-password-12", "new_password": "second-password-34"})
+            assert resp.status_code == 200, resp.text
+            assert (await api.get("/api/hosts")).status_code == 401
+    finally:
+        await user.aclose()

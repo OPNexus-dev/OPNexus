@@ -238,7 +238,7 @@ und Nur-Lesen bekommen. „Anbieter testen“ prüft Discovery und Signaturschl�
 
 - **Rolle aus Gruppen, bei jeder Anmeldung:** gilt die höchste passende Rolle; wer in keiner der Gruppen ist,
   kommt nicht hinein (es wird auch kein Konto angelegt). Wird jemand aus der Gruppe entfernt, endet der Zugang
-  bei der nächsten Anmeldung (laufende Sitzungen enden nach ihrer Laufzeit; beim Anbieter gesperrte Personen
+  bei der nächsten Anmeldung (laufende SSO-Sitzungen enden spätestens nach 12 Stunden; beim Anbieter gesperrte Personen
   daher zusätzlich in der Benutzerliste löschen).
 - **Konten:** SSO-Benutzer werden bei der ersten Anmeldung angelegt (Kennzeichen „SSO“). Rolle und Passwort
   ändern sich nur beim Anbieter; die Zwei-Faktor-Anmeldung übernimmt der Anbieter. Ein SSO-Konto wird nie mit
@@ -1030,6 +1030,10 @@ scrape_configs:
 | `opnexus_pending_actions{kind,status}` | Offene Aktionen wie auf dem Dashboard |
 | `opnexus_problems_open{type}` | Offene Probleme der Benachrichtigungen |
 | `opnexus_scheduled_maintenance_pending` | Noch nicht gelaufene geplante Wartungen |
+
+Ein fertiges **Grafana-Dashboard** liegt unter [`docs/grafana-opnexus.json`](grafana-opnexus.json)
+(Grafana › Dashboards › Importieren, Prometheus-Datenquelle wählen): erreichbare Firewalls, offene Aktionen
+und Probleme, Sicherheitswert und Befunde, Last, Speicher, Platte und CARP-Rolle.
 
 ### KI-Assistenten (MCP)
 

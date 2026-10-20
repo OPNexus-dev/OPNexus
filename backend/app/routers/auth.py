@@ -30,11 +30,11 @@ def client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _set_session_cookie(response: Response, token: str) -> None:
+def _set_session_cookie(response: Response, token: str, max_age: int | None = None) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        max_age=settings.session_lifetime,
+        max_age=max_age or settings.session_lifetime,
         httponly=True,
         samesite="lax",
         secure=settings.cookie_secure,
@@ -305,6 +305,7 @@ async def change_password(
     # an attacker may hold) and the replacement session commit as one unit.
     user.password_hash = await auth_service.hash_password_async(payload.new_password)
     await auth_service.revoke_sessions(db, user.id, commit=False)
+    await api_token_service.revoke_all(db, user.id, commit=False)  # a changed password answers a suspected leak: tokens too
     token, _ = await auth_service.create_session(
         db, user, user_agent=request.headers.get("User-Agent"), ip_address=client_ip(request)
     )

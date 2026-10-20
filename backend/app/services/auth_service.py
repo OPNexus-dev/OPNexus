@@ -236,6 +236,7 @@ async def create_session(
     user_agent: str | None = None,
     ip_address: str | None = None,
     verified_hash: str | None = None,
+    lifetime_seconds: int | None = None,
 ) -> tuple[str, datetime]:
     """Create a session, returning the raw token (to be set as a cookie) and its expiry.
 
@@ -253,7 +254,7 @@ async def create_session(
             await db.rollback()
             raise api_error(401, ErrorCode.UNGUELTIGER_BENUTZERNAME_ODER_PASSWORT)
     token = secrets.token_urlsafe(SESSION_TOKEN_BYTES)
-    expires_at = _now() + timedelta(seconds=settings.session_lifetime)
+    expires_at = _now() + timedelta(seconds=lifetime_seconds or settings.session_lifetime)
     session = Session(
         user_id=user_id,
         token_hash=_hash_token(token),

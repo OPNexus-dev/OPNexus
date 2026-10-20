@@ -31,6 +31,18 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.1] "Harrier" — 2026-10-20
+
+- **Sicherheit (Ergebnis eines unabhängigen Reviews der Versionen 1.18–1.23):**
+  - Aufgabentrennung: Mit „nur Admins rollen aus“ ist jetzt auch das Löschen verwalteter Objekte (entfernt sie von den Firewalls), Zertifikat-/ACME-Push, Dienste starten/stoppen und „Reihenfolge erneut durchsetzen“ den Admins vorbehalten, nicht nur `/deploy`.
+  - Backup-Änderungsansicht: weitere Geheimnis-Felder (`otp_seed`, `pass`, `pwd`, …) werden ausgeblendet, die Platzhalter sind pro Abruf gesalzen (kein Wörterbuchabgleich, kein Vergleich über Abrufe/Firewalls).
+  - SSO: der Anmeldeversuch ist per Cookie an den Browser gebunden (kein Login-CSRF, abgefangene Code/State-Paare sind nutzlos); SSO-Sitzungen dauern 12 Stunden statt 30 Tage; Gruppen-Strings werden nur an Komma/Zeilenumbruch getrennt (Gruppen mit Leerzeichen); Fehlertext des Anbieters wird für das Log bereinigt.
+  - Das Ändern des eigenen Passworts widerruft jetzt auch die eigenen API-Tokens.
+  - Management-Tunnel: der Hub routet nicht mehr zwischen Firewalls oder ins Compose-Netz (`FORWARD` verworfen, `ip_forward=0`); loopback-/link-local-Netze sind als Tunnel-Netz nicht erlaubt.
+  - Sicherheitslage: eine defekte `config.xml` stoppt die Prüfung der übrigen Firewalls nicht mehr; die Auswertung läuft außerhalb der Ereignisschleife.
+  - Behoben: S3-Offsite mit Port 443 im Endpunkt (Signatur passte nicht); Variablenwerte mit angehängtem Zeilenumbruch werden abgelehnt.
+- Fertiges **Grafana-Dashboard** (`docs/grafana-opnexus.json`) für die Prometheus-Metriken von OPNexus.
+
 ## [1.23.0] "Harrier" — 2026-10-20
 
 - **Sicherheitslage im Alltag**: Dashboard-Karte mit den Firewalls mit dem niedrigsten Wert; Benachrichtigung bei kritischen und hohen

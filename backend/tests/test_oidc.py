@@ -170,7 +170,7 @@ async def test_groups_can_come_from_userinfo_but_only_for_the_same_subject(clien
 async def test_group_claim_may_be_a_string(client, anon_client, respx_mock):
     await _configure(client)
     query = await _start(anon_client, respx_mock)
-    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], groups="foo, opnexus-viewers bar"))
+    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], groups="foo, opnexus-viewers"))
     assert resp.headers["location"] == "/dashboard" and (await _users("alice"))["alice"].role == "read_only"
 
 
@@ -342,3 +342,57 @@ async def test_failed_callbacks_are_throttled(client, anon_client, respx_mock):
     await _configure(client)
     results = [_error(await anon_client.get("/api/auth/oidc/callback", params={"code": "x", "state": f"s{i}"})) for i in range(12)]
     assert "throttled" in results
+
+
+@pytest.mark.asyncio
+async def test_a_string_group_claim_keeps_names_with_spaces_together(client, anon_client, respx_mock):
+    await _configure(client, admin_group="Network Admins", operator_group="Admins", read_only_group="")
+    query = await _start(anon_client, respx_mock)
+    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], groups="Network Admins"))
+    assert resp.headers["location"] == "/dashboard" and (await _users("alice"))["alice"].role == "admin"  # not "Admins" = operator, not split
+    query = await _start(anon_client, respx_mock)
+    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], groups="Network, Team"))
+    assert _error(resp) == "no_role"
+
+
+@pytest.mark.asyncio
+async def test_the_callback_only_works_in_the_browser_that_started_the_login(client, anon_client, respx_mock):
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+    await _configure(client)
+    query = await _start(anon_client, respx_mock)
+    # Somebody else (another browser, no state cookie) opens the callback URL: refused, and the state is not burned for the owner.
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as stranger:
+        respx_mock.post(f"{ISSUER}/token").mock(return_value=httpx.Response(200, json={"id_token": _id_token(_claims(query["nonce"]))}))
+        resp = await stranger.get("/api/auth/oidc/callback", params={"code": "abc", "state": query["state"]})
+        assert _error(resp) == "state"
+    assert await _users("alice") == {}
+
+
+@pytest.mark.asyncio
+async def test_sso_sessions_are_short_and_the_state_cookie_is_httponly(client, anon_client, respx_mock):
+    from datetime import datetime, timedelta, timezone
+    from app.models.user import Session
+    await _configure(client)
+    _mock_idp(respx_mock)
+    start = await anon_client.get("/api/auth/oidc/start", params={"origin": "http://test"})
+    cookie = start.headers["set-cookie"].lower()
+    assert "opnexus-oidc-state=" in cookie and "httponly" in cookie and "samesite=lax" in cookie and "path=/api/auth/oidc" in cookie
+    query = {k: v[0] for k, v in parse_qs(urlsplit(start.headers["location"]).query).items()}
+    resp, _ = await _callback(anon_client, respx_mock, query)
+    assert resp.headers["location"] == "/dashboard"
+    assert "max-age=43200" in resp.headers["set-cookie"].lower()
+    async with SessionLocal() as db:
+        user = (await _users("alice"))["alice"]
+        session = (await db.scalars(select(Session).where(Session.user_id == user.id))).one()
+    assert session.expires_at - datetime.now(timezone.utc) < timedelta(hours=12, minutes=1)
+
+
+@pytest.mark.asyncio
+async def test_error_text_from_the_provider_cannot_forge_log_lines(client, anon_client, caplog):
+    await _configure(client)
+    import logging
+    with caplog.at_level(logging.WARNING):
+        await anon_client.get("/api/auth/oidc/callback", params={"error": "x\r\nFAKE LOG LINE\x1b[31m", "state": "s"})
+    text = "\n".join(r.getMessage() for r in caplog.records)
+    assert "FAKE LOG LINE" in text and "\r" not in text and "\x1b" not in text and "\nFAKE" not in text

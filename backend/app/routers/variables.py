@@ -81,9 +81,9 @@ async def replace(host_id: uuid.UUID, payload: VariablesUpdate, db: AsyncSession
     """Replace this host's variables with exactly the given set."""
     host = await _host(db, host_id)
     for name, value in payload.variables.items():
-        if not variables_service.NAME_RE.match(name):
+        if not variables_service.NAME_RE.fullmatch(name):
             raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Name „{name}“: Großbuchstaben, Ziffern und _, beginnend mit einem Buchstaben")
-        if not variables_service.VALUE_RE.match(value):
+        if not variables_service.VALUE_RE.fullmatch(value):
             raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Wert von {name}: 1–255 Zeichen aus Buchstaben, Ziffern und . : / , @ + - _ Leerzeichen")
     existing = {v.name: v for v in host.variables}
     for name in set(existing) - set(payload.variables):

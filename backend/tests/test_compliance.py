@@ -363,3 +363,19 @@ async def test_alerts_are_off_by_default_and_unreachable_hosts_raise_none(client
     await client.post(f"/api/hosts/{host['id']}/compliance/check")
     async with SessionLocal() as db:
         assert await notification_checks.check_compliance(db) == {}
+
+
+@pytest.mark.asyncio
+async def test_one_truncated_config_does_not_stop_the_others(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    bad = await _create_host(client, "a-bad", "https://bad.test")
+    good = await _create_host(client, "b-good", "https://good.test")
+    for base, body in (("bad", b"<opnsense><system><webgui>"), ("good", _config())):
+        respx_mock.get(f"https://{base}.test/api/core/backup/download/this").mock(return_value=httpx.Response(200, content=body))
+        respx_mock.get(f"https://{base}.test/api/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": "none"}))
+        respx_mock.get(f"https://{base}.test/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
+        respx_mock.get(f"https://{base}.test/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
+    resp = await client.post("/api/compliance/check")
+    assert resp.status_code == 200, resp.text
+    by_name = {h["host_name"]: h for h in resp.json()}
+    assert by_name["a-bad"]["error"] == "invalid_config" and by_name["b-good"]["score"] is not None

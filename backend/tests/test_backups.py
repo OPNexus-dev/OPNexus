@@ -374,9 +374,9 @@ async def test_settings_changes_are_audited_without_secrets(client):
 
 # ── config diff ──────────────────────────────────────────────────────────
 
-def _xml(*, hostname="fw", password="p1", dns="1.1.1.1", cert="A" * 200, revision="r1", keylength="4096"):
+def _xml(*, otp="OTPSEED1", hostname="fw", password="p1", dns="1.1.1.1", cert="A" * 200, revision="r1", keylength="4096"):
     return (f"<opnsense><revision><time>{revision}</time></revision><system><hostname>{hostname}</hostname>"
-            f"<user><name>root</name><password>{password}</password><apikey>KEY-{password}</apikey></user>"
+            f"<user><name>root</name><password>{password}</password><apikey>KEY-{password}</apikey><otp_seed>{otp}</otp_seed><pwd>PW-{password}</pwd></user>"
             f"<dnsserver>{dns}</dnsserver></system><cert><crt>{cert}</crt><keylength>{keylength}</keylength></cert></opnsense>").encode()
 
 
@@ -392,7 +392,7 @@ async def test_diff_shows_changes_and_hides_every_secret(client):
     assert "9.9.9.9" in text and "<keylength>2048</keylength>" in text       # ordinary values stay readable
     for secret in ("SUPERSECRET2", "KEY-SUPERSECRET2", "p1", "A" * 50, "B" * 50):
         assert secret not in text, secret
-    assert "‹sha256:" in text                                                 # a changed secret is still visible as a change
+    assert "‹" in text                                                 # a changed secret is still visible as a change
     assert "r1" not in text and "r2" not in text                              # the volatile revision block is ignored
 
 
@@ -433,3 +433,25 @@ async def test_diff_is_capped(client):
     backup_store.save_snapshot(host["id"], f"<opnsense><system>{many.replace('1.1.1', '2.2.2')}</system></opnsense>".encode())
     body = (await client.get(f"/api/hosts/{host['id']}/backup-diff")).json()
     assert body["truncated"] is True and len(body["lines"]) == 3000
+
+
+@pytest.mark.asyncio
+async def test_diff_hides_otp_seeds_and_uses_a_salt_per_request(client):
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    backup_store.save_snapshot(host["id"], _xml())
+    backup_store.save_snapshot(host["id"], _xml(otp="OTPSEED2", password="p9", dns="9.9.9.9"))
+    first = (await client.get(f"/api/hosts/{host['id']}/backup-diff")).json()
+    second = (await client.get(f"/api/hosts/{host['id']}/backup-diff")).json()
+    text = "\n".join(first["lines"])
+    for secret in ("OTPSEED1", "OTPSEED2", "PW-p9", "PW-p1"):
+        assert secret not in text, secret
+    import hashlib
+    assert hashlib.sha256(b"OTPSEED1").hexdigest()[:12] not in text  # no unsalted hash to run a dictionary against
+    assert first["lines"] != second["lines"]  # a fresh salt per request: hashes cannot be matched across requests
+
+
+def test_signed_host_has_no_default_port_but_keeps_a_custom_one():
+    plain = s3_client.S3Client(endpoint="https://s3.test:443", region="r", bucket="b", access_key="a", secret_key="s")
+    assert plain.netloc == "s3.test" and plain._target("k")[0] == "s3.test"
+    custom = s3_client.S3Client(endpoint="https://s3.test:9000", region="r", bucket="b", access_key="a", secret_key="s")
+    assert custom.netloc == "s3.test:9000"
