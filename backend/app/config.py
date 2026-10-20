@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # keine Instanz- oder Nutzerdaten.
     update_check_url: str = ""
     update_check_interval_hours: int = 12
+    # Registry der Release-Images (OPNEXUS_IMAGE_REPO). Leer = OPNexus wird lokal aus dem
+    # Quellcode gebaut; dann gibt es keine Updates per Klick (nur der Hinweis in den Einstellungen).
+    opnexus_image_repo: str = ""
 
     # ── Updates aus dem Webinterface (app/services/updater_client.py) ─────
     # Optionaler Updater-Container (Compose-Profil "updater"). Das Backend hat

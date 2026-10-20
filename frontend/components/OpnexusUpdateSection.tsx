@@ -208,7 +208,9 @@ export function OpnexusUpdateSection() {
 
           {!status.available && (
             <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-              {status.reason === "not_enabled" || status.reason === "unauthorized" ? (
+              {(status.reason === "not_enabled" || status.reason === "unauthorized") && status.mode === "local" ? (
+                <p>{t("settings.update.localMode")}</p>
+              ) : status.reason === "not_enabled" || status.reason === "unauthorized" ? (
                 <>
                   <p className="font-medium">{t("settings.update.notEnabledTitle")}</p>
                   <p>{t("settings.update.notEnabledBody")}</p>

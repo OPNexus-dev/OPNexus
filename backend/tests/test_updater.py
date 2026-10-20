@@ -59,6 +59,17 @@ async def test_status_without_token_is_unavailable_not_an_error(client, respx_mo
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("repo,mode", [("", "local"), ("git.example.test/opnexus", "release")])
+async def test_install_mode_is_known_without_the_updater(client, respx_mock, monkeypatch, tmp_path, repo, mode):
+    # The panel must not tell a source-built install to enable an updater that could not update it anyway.
+    monkeypatch.setattr(settings, "updater_token_file", str(tmp_path / "missing"))
+    monkeypatch.setattr(settings, "opnexus_image_repo", repo)
+    _feed(respx_mock, _bump(minor=1))
+    body = (await client.get("/api/system/updater")).json()
+    assert body["available"] is False and body["reason"] == "not_enabled" and body["mode"] == mode
+
+
+@pytest.mark.asyncio
 async def test_status_unreachable_updater(client, respx_mock):
     _feed(respx_mock, _bump(minor=1))
     respx_mock.get(f"{UPDATER}/status").mock(side_effect=httpx.ConnectError("down"))

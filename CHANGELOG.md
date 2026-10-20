@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.8] "Harrier" — 2026-10-20
+
+- **Einstellungen › OPNexus aktualisieren:** Auf einer Installation, die aus dem Quellcode gebaut wird (kein `OPNEXUS_IMAGE_REPO`), erscheint nicht mehr
+  die Anleitung zum Aktivieren des Updaters – Updates per Klick gibt es dort ohnehin nicht –, sondern nur der Hinweis auf `git pull` und
+  `docker compose up -d --build`. Das Backend erkennt den Modus jetzt selbst (neue Umgebungsvariable im Compose-File).
+
 ## [1.23.7] "Harrier" — 2026-10-20
 
 - Hinweistext der Versionsprüfung verweist auf den Schalter „oben“ statt „unten“.

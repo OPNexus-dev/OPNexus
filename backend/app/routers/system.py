@@ -104,6 +104,9 @@ async def updater_status(db: AsyncSession = Depends(get_db), user: AdminUser = D
         updater = await updater_client.status()
     except updater_client.UpdaterUnavailable as exc:
         result["reason"] = str(exc)
+        # Without the updater the install mode is still known from the image registry setting; the UI uses it
+        # to not offer enabling the updater on an install that builds from source (it could not update anyway).
+        result["mode"] = "release" if settings.opnexus_image_repo.strip() else "local"
         return result
     except updater_client.UpdaterRejected:
         result["reason"] = "unreachable"
