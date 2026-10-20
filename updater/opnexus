@@ -217,6 +217,23 @@ cmd_restore() {
   say "Wiederhergestellt."
 }
 
+# Prüft die Signatur der gezogenen Images (cosign), bevor irgendetwas gewechselt wird. Nur wenn `cosign`
+# installiert ist und cosign.pub neben der docker-compose.yml liegt; sonst wird das gesagt und übersprungen.
+verify_signatures() {
+  local target="$1"; shift
+  local repo; repo=$(env_get OPNEXUS_IMAGE_REPO)
+  if ! command -v cosign >/dev/null 2>&1 || [ ! -f cosign.pub ]; then
+    say "Signaturprüfung übersprungen (cosign oder cosign.pub fehlt — siehe Handbuch, „Images prüfen“)."
+    return 0
+  fi
+  local svc
+  for svc in "$@"; do
+    cosign verify --key cosign.pub --insecure-ignore-tlog=true "$repo/opnexus-$svc:$target" >/dev/null 2>&1 \
+      || die "Signatur von $repo/opnexus-$svc:$target ist ungültig oder fehlt — nichts wurde verändert."
+  done
+  say "Signaturen geprüft."
+}
+
 cmd_update() {
   require_release_mode
   local target="${1:-$(env_get OPNEXUS_VERSION)}"
@@ -235,6 +252,7 @@ cmd_update() {
   local pull_services=("${SERVICES[@]}")
   if updater_enabled; then pull_services+=(updater); fi
   OPNEXUS_VERSION="$target" c pull "${pull_services[@]}" || die "Pull fehlgeschlagen — nichts wurde verändert."
+  verify_signatures "$target" "${pull_services[@]}"
 
   started=$(date -u +%Y%m%dT%H%M%SZ)
   cat > "$STATE_FILE" <<STATE

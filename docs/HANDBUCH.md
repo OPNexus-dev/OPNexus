@@ -74,6 +74,31 @@ Alternativ lassen sich auch aus einem Checkout die fertigen Images verwenden: in
 der `.env` `OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus` und `OPNEXUS_VERSION=<version>`
 setzen, dann `docker compose pull && docker compose up -d --no-build`.
 
+### Images prüfen (Signatur)
+
+Die Release-Images sind mit [cosign](https://github.com/sigstore/cosign) signiert (ab 1.23.9).
+Damit lässt sich prüfen, dass ein Image wirklich von OPNexus stammt und seit dem Bau nicht
+verändert wurde. Der öffentliche Schlüssel liegt als `cosign.pub` im Repository und im
+Release-Bundle:
+
+```bash
+cosign verify --key cosign.pub --insecure-ignore-tlog=true \
+  git.opnexus.dev/opnexus/opnexus-backend:<version>
+```
+
+Das Gleiche gilt für `opnexus-frontend`, `opnexus-proxy` und `opnexus-updater`. Eine
+erfolgreiche Prüfung gibt die Signatur als JSON aus; bei einem fremden oder fehlenden
+Schlüssel endet der Befehl mit einem Fehler. `--insecure-ignore-tlog=true` ist hier gewollt:
+OPNexus lädt Signaturen nicht in das öffentliche Transparenzlog, damit die Prüfung auch in
+abgeschotteten Netzen funktioniert. Die Signatur gilt dem Inhalt (Digest) des Images, nicht
+dem Tag.
+
+`opnexus update` prüft die Signaturen selbst, bevor es etwas wechselt, sobald `cosign`
+installiert ist und `cosign.pub` neben der `docker-compose.yml` liegt (`cosign.pub` liegt im Bundle
+bereits dabei, `cosign` selbst musst du installieren). Schlägt die Prüfung fehl, bricht das
+Update ab und es wurde nichts verändert. Fehlt `cosign`, sagt `opnexus update` das und
+macht ohne Prüfung weiter.
+
 ### Erster Start und Passwort
 
 Ohne `ADMIN_PASSWORD` in der `.env` erzeugt OPNexus beim ersten Start ein

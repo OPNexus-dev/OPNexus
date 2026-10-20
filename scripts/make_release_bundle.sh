@@ -33,6 +33,7 @@ sed -e "s|^# OPNEXUS_IMAGE_REPO=.*|OPNEXUS_IMAGE_REPO=$repo|" \
 
 cp scripts/opnexus "$out/opnexus"
 cp LICENSE "$out/"
+cp cosign.pub "$out/"
 cat > "$out/INSTALL.txt" <<TXT
 OPNexus $version
 

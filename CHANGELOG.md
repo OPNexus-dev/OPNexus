@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.10] "Harrier" — 2026-10-20
+
+- **Signierte Release-Images:** Die Images (backend, frontend, proxy, updater) werden mit cosign signiert, beginnend mit 1.23.9. Der öffentliche
+  Schlüssel liegt als `cosign.pub` im Repository und im Release-Bundle. `opnexus update` prüft die Signaturen vor dem Wechsel, wenn `cosign`
+  installiert ist. Anleitung: Handbuch, „Images prüfen“.
+
 ## [1.23.9] "Harrier" — 2026-10-20
 
 - Update-Karte: Der Hinweis für Installationen ohne Release-Images nennt jetzt die tatsächliche Ursache („OPNEXUS_IMAGE_REPO ist nicht gesetzt“)
