@@ -225,14 +225,31 @@ def role_for(cfg: OidcSettings, groups: list[str]) -> str | None:
     return None
 
 
-async def _groups(cfg: OidcSettings, doc: dict, claims: dict, access_token: str | None) -> list[str]:
-    if cfg.groups_claim in claims:
-        return _as_groups(claims[cfg.groups_claim])
+async def _userinfo(doc: dict, claims: dict, access_token: str | None) -> dict:
+    """The provider's userinfo answer for THIS identity ({} if there is none or it belongs to somebody else)."""
     if access_token and str(doc.get("userinfo_endpoint", "")).startswith("https://"):
         info = await _get_json(doc["userinfo_endpoint"], headers={"Authorization": f"Bearer {access_token}"})
         if info.get("sub") == claims.get("sub"):  # a userinfo answer for someone else is worthless
-            return _as_groups(info.get(cfg.groups_claim))
-    return []
+            return info
+    return {}
+
+
+async def _groups(cfg: OidcSettings, doc: dict, claims: dict, access_token: str | None) -> list[str]:
+    if cfg.groups_claim in claims:
+        return _as_groups(claims[cfg.groups_claim])
+    return _as_groups((await _userinfo(doc, claims, access_token)).get(cfg.groups_claim))
+
+
+async def _with_display_name(doc: dict, claims: dict, access_token: str | None) -> dict:
+    """Some providers (Authelia) keep preferred_username/email out of the ID token: ask userinfo, else the user would be named
+    after the opaque ``sub``. Best effort: a failing userinfo call must not block a login that already has its role."""
+    if claims.get("preferred_username") or claims.get("email"):
+        return claims
+    try:
+        info = await _userinfo(doc, claims, access_token)
+    except OidcError:
+        return claims
+    return {**claims, **{k: info[k] for k in ("preferred_username", "email") if info.get(k)}}
 
 
 def _username(claims: dict) -> str:
@@ -268,4 +285,4 @@ async def complete(db: AsyncSession, cfg: OidcSettings, code: str, state_value: 
     role = role_for(cfg, await _groups(cfg, doc, claims, tokens.get("access_token")))
     if role is None:
         raise OidcError("no_role", "Kein zugeordnete Gruppe")
-    return await provision(db, cfg, claims, role)
+    return await provision(db, cfg, await _with_display_name(doc, claims, tokens.get("access_token")), role)

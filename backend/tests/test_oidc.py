@@ -167,6 +167,19 @@ async def test_groups_can_come_from_userinfo_but_only_for_the_same_subject(clien
 
 
 @pytest.mark.asyncio
+async def test_the_username_comes_from_userinfo_if_the_id_token_has_none_and_a_failing_userinfo_does_not_block_the_login(client, anon_client, respx_mock):
+    await _configure(client)
+    # Authelia keeps preferred_username/email out of the ID token; without userinfo the account would be named after the opaque sub.
+    query = await _start(anon_client, respx_mock, userinfo={"sub": "user-1", "preferred_username": "alice", "email": "a@example.test"})
+    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], preferred_username=None))
+    assert resp.headers["location"] == "/dashboard" and list(await _users("alice")) == ["alice"]
+    respx_mock.clear()
+    query = await _start(anon_client, respx_mock, userinfo={"sub": "someone-else", "preferred_username": "mallory"})
+    resp, _ = await _callback(anon_client, respx_mock, query, claims=_claims(query["nonce"], preferred_username=None, sub="user-2"))
+    assert resp.headers["location"] == "/dashboard" and "mallory" not in await _users("x") and "user-2" in await _users("x")
+
+
+@pytest.mark.asyncio
 async def test_group_claim_may_be_a_string(client, anon_client, respx_mock):
     await _configure(client)
     query = await _start(anon_client, respx_mock)

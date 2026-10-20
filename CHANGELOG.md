@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.3] "Harrier" — 2026-10-20
+
+- **SSO:** Liefert der Anbieter `preferred_username`/`email` nicht im ID-Token (Authelia), fragt OPNexus sie beim Userinfo-Endpunkt ab; der neue
+  Benutzer heißt dann `alice` statt wie die kryptische Benutzerkennung des Anbieters. Geprüft gegen Keycloak 26 und Authelia 4.39; S3-Offsite gegen
+  Garage, MinIO, RustFS und Versity S3 Gateway.
+
 ## [1.23.2] "Harrier" — 2026-10-20
 
 - **SSO-Fix (gefunden beim Test gegen ein echtes Keycloak):** Die Standard-Scopes enthalten nicht mehr `groups` – Keycloak und Entra ID
