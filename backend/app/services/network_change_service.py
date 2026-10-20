@@ -399,6 +399,12 @@ async def execute(db: AsyncSession, host: OpnsenseHost, kind: str, action: str, 
         # VipSettingsController::getVipOverlay blanks address and prefix whenever "network" is missing from
         # the request, so every VIP update must repeat it (found live: a partial set was rejected / could wipe it).
         send.setdefault("network", plan["_before"]["network"])
+        # VipSettingsController::setItemAction queues "delete the old address" whenever the posted interface differs
+        # from the stored one, and a partial update that leaves "interface" out counts as different. The following
+        # reconfigure then removes the live VIP and, working from a stale address list, never puts it back (found
+        # live 2026-10-20: CARP VIP stuck on DISABLED after a description edit). So repeat the interface as well.
+        if plan["_before"].get("interface"):
+            send.setdefault("interface", plan["_before"]["interface"])
     # What the object must look like afterwards: for an edit that is everything it had, plus the change.
     expected = {**plan["_before"], **send} if action == "set" else dict(send)
     entity = fields.get("name") or fields.get("descr") or plan["_before"].get("name") or plan["_before"].get("descr") or kind
@@ -422,8 +428,7 @@ async def execute(db: AsyncSession, host: OpnsenseHost, kind: str, action: str, 
         await audit_service.persist(**audit, status="rejected", message=str(exc)[:500], details=details)
         raise api_error(502, ErrorCode.UPSTREAM_REJECTED, reason=str(exc)[:300]) from exc
     new_uuid = uuid or (result.get("uuid") if isinstance(result, dict) else None)
-    # A description is not wired into anything: re-applying a CARP VIP for it only risks the live VIP (found
-    # live 2026-10-20: the reconfigure after a description edit left the VIP in INIT on both nodes).
+    # A description is not wired into anything, so there is nothing to re-apply for it.
     cosmetic = kind == "vip" and action == "set" and {c["field"] for c in plan["changes"]} <= {"descr"}
     carp_live = kind == "vip" and action != "del" and expected.get("mode") == "carp" and not cosmetic
     try:

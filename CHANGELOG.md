@@ -31,6 +31,14 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.5] "Harrier" — 2026-10-20
+
+- **Fix (Ursache des Vorfalls vom 20.10. in 1.23.4):** OPNsense merkt ein CARP-VIP zum Löschen vor, wenn eine Änderung kein `interface` mitschickt,
+  und der anschließende „Anwenden“-Schritt entfernt es dann live, ohne es wieder anzulegen. OPNexus schickt bei jeder VIP-Änderung jetzt die
+  bisherige Schnittstelle mit (wie schon die Adresse). Auf dem Test-Cluster mit echten Firewalls nachgestellt und bestätigt.
+- **Einstellungen › OPNexus aktualisieren:** Die Anleitung zum Aktivieren nennt jetzt alles Nötige in einem Block (auch `UPDATE_CHECK_URL`) und weist
+  darauf hin, dass Updates per Klick Release-Images brauchen; wer aus dem Quellcode baut, aktualisiert mit `git pull` und `docker compose up -d --build`.
+
 ## [1.23.4] "Harrier" — 2026-10-20
 
 - **Fix (Produktiv-Vorfall 2026-10-20):** Das Ändern der Beschreibung eines CARP-VIP wendete das VIP neu an und ließ es auf beiden Firewalls

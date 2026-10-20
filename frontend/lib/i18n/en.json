@@ -128,6 +128,7 @@
       "notEnabledBody": "They need a small separate service (the updater) with access to Docker — deliberately optional. To enable it:",
       "notEnabledStep1": "Add to the .env on the server:",
       "notEnabledStep2": "Then run:",
+      "notEnabledImages": "This only works with release images (release bundle, or OPNEXUS_IMAGE_REPO in the .env). If you build OPNexus from source, update with “git pull” and “docker compose up -d --build”.",
       "notEnabledCli": "Until then, update on the server with “opnexus update”.",
       "unreachable": "The updater does not respond. Check on the server: docker compose ps updater",
       "localMode": "This installation builds OPNexus locally from source (no release image). Update on the server with git pull and docker compose up -d --build.",

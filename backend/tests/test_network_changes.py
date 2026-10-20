@@ -517,7 +517,9 @@ async def test_vip_edit_always_repeats_the_address(client, respx_mock):
     plan = (await _preview(client, host_id, **change)).json()
     done = await _execute(client, host_id, plan["token"], **change)
     assert done.status_code == 200, done.text
-    assert _body(put.calls.last)["vip"] == {"advskew": "20", "network": "192.168.1.50/24"}
+    # ...and the interface: OPNsense queues a delete of the live address when the posted interface differs
+    # from the stored one, and the reconfigure then drops the VIP (seen live 2026-10-20).
+    assert _body(put.calls.last)["vip"] == {"advskew": "20", "network": "192.168.1.50/24", "interface": "lan"}
 
 
 @pytest.mark.asyncio

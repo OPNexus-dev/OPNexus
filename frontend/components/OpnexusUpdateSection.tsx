@@ -141,9 +141,12 @@ export function OpnexusUpdateSection() {
                   <p className="font-medium">{t("settings.update.notEnabledTitle")}</p>
                   <p>{t("settings.update.notEnabledBody")}</p>
                   <p>{t("settings.update.notEnabledStep1")}</p>
-                  <pre className="overflow-x-auto rounded bg-white p-2 text-xs">COMPOSE_PROFILES=updater</pre>
+                  <pre className="overflow-x-auto rounded bg-white p-2 text-xs">
+                    {status.feed_enabled ? "" : "UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json\n"}COMPOSE_PROFILES=updater
+                  </pre>
                   <p>{t("settings.update.notEnabledStep2")}</p>
                   <pre className="overflow-x-auto rounded bg-white p-2 text-xs">docker compose up -d</pre>
+                  <p className="text-slate-500">{t("settings.update.notEnabledImages")}</p>
                   <p className="text-slate-500">{t("settings.update.notEnabledCli")}</p>
                 </>
               ) : (
