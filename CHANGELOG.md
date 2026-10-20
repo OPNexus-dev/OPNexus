@@ -31,6 +31,39 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.24.0] "Merlin" — 2026-10-21
+
+- **Alarme für Gateways, Ressourcen und Dienste:** Neue Ereignisse in Einstellungen › Benachrichtigungen.
+  **Gateway gestört** (standardmäßig **an**) meldet ein Gateway, das OPNsense als „down“ führt oder dessen Paketverlust (ab 20 %) bzw.
+  Latenz (ab 500 ms) über der Schwelle liegt; bewusst abgeschaltete und nicht überwachte Gateways bleiben still. **Ressourcen-Schwelle**
+  (standardmäßig aus) prüft Festplatte (ab 90 %), Arbeitsspeicher (ab 95 %), Swap (ab 50 %) und CPU-Last (ab 2 pro Thread), **Dienst ausgefallen**
+  (standardmäßig aus) eine einstellbare Liste (Unbound, Dnsmasq, DHCP, NTP, OpenVPN, WireGuard, IPsec …) und meldet nur Dienste, die zuvor
+  liefen. Alle drei stützen sich auf die Minutenmessung und lösen erst aus, wenn die letzten 3 (Ressourcen: 5) Messungen übereinstimmen, und
+  enden erst, wenn alle wieder in Ordnung sind: Einzelspitzen und flackernde Verbindungen schicken nichts. Der Gateway-Status (Verlust, Latenz,
+  Abweichung) steht außerdem auf der Host-Seite, als Kachel auf dem Dashboard und als Prometheus-Metriken (`opnexus_host_gateway_*`,
+  `opnexus_host_swap_used_percent`, `opnexus_host_service_running`). Die Messung speichert dafür zusätzlich Swap, CPU-Threads, Gateways
+  und Dienste in der vorhandenen Messreihe (keine neue Tabelle).
+- **Weitere Benachrichtigungskanäle:** ntfy, Gotify, Telegram, Microsoft Teams (Workflows-/Incoming-Webhook) und Matrix, beliebig viele
+  je Typ, mit „Testen“-Knopf pro Kanal. Zugangsdaten (Tokens, die Teams-Adresse) liegen wie das SMTP-Passwort in der Geheimnis-Ablage, nie
+  in der Datenbank oder in Antworten, und tauchen nicht in Fehlermeldungen oder Logs auf. Webhook und neue Kanäle prüfen die Zieladresse:
+  nur http(s), keine Zugangsdaten in der Adresse, keine lokalen/Link-Local-/Metadaten-Adressen; Weiterleitungen werden nicht verfolgt.
+  Betrifft die bestehende Webhook-Adresse: `localhost`, Loopback, 169.254.x.x und Zugangsdaten in der Adresse (`https://user:pass@…`)
+  werden jetzt abgelehnt. Eine solche gespeicherte Adresse wird nicht mehr beliefert (nur ein Log-Eintrag), und die
+  Benachrichtigungs-Einstellungen lassen sich erst wieder speichern, wenn sie korrigiert oder geleert ist (die Meldung nennt den Grund).
+  Neue Einstellungen kommen mit Migration 0020.
+
+- **Bestand übernehmen für Aliase und NAT:** Auf den Seiten Aliase und NAT (Port Forward, 1:1, Outbound) gibt es jetzt **Von Firewall übernehmen**
+  wie bei den Regeln. Der Dialog zeigt, was von Hand in OPNsense angelegt wurde, einzeln zum Übernehmen oder mit „Alle übernehmbaren“ in einem Schritt;
+  verschachtelte Aliase werden in der richtigen Reihenfolge übernommen. Die Übernahme schreibt nichts auf die Firewall: Die Vorschau zeigt direkt
+  danach „keine Änderung“, der nächste Rollout aktualisiert dasselbe Objekt (kein Duplikat). Nicht übernommen werden OPNsense-eigene Aliase,
+  Typen, die OPNexus nicht kennt (z. B. URL, GeoIP), Aliase mit Verweis auf nicht übernommene Aliase sowie NAT-Regeln, die das Modell verfälschen würden
+  (z. B. „Kein Redirect“, verknüpfte Filterregel, mehrere Schnittstellen, „Kein NAT“); die Oberfläche nennt den Grund je Objekt.
+  Outbound-NAT lässt sich nur übernehmen, wenn der Modus der Firewall Hybrid oder Manuell ist. Einstellungen, die OPNexus nicht verwaltet (Protokollierung,
+  Pool-Optionen, Tags, Kategorien), bleiben unverändert und werden angezeigt.
+
+- **Images für ARM:** Alle Release-Images (backend, frontend, proxy, updater) gibt es jetzt für `linux/amd64` und `linux/arm64`
+  (Raspberry Pi 4/5, ARM-Server, Apple-Silicon-Docker).
+
 ## [1.23.11] "Harrier" — 2026-10-20
 
 - **Updates per Klick prüfen jetzt ebenfalls die Signatur:** Der Updater-Container enthält `cosign` (feste Version, Prüfsumme beim Bau

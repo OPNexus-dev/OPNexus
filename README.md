@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.23.11` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.24.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -16,8 +16,9 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Safe changes** — every change goes *preview → deploy → confirm*; without your confirmation inside the time window OPNexus rolls it back.
 - **Hierarchical policies** — pre/post rulebases with inheritance across group trees.
 - **VPN** — IPsec site-to-site, OpenVPN and WireGuard, defined once and rolled out.
-- **Network** — interfaces, VLANs, virtual IPs, gateways, routes, LAGG/bridge/GRE, DNS and DHCP per firewall, plus tunables, cron, syslog, snapshots and diagnostics (ping, traceroute, port check, DNS), a comparison of cluster nodes, with a diff preview, a backup before every change and a guard against cutting your own connection; rules created by hand on a firewall can be adopted.
+- **Network** — interfaces, VLANs, virtual IPs, gateways, routes, LAGG/bridge/GRE, DNS and DHCP per firewall, plus tunables, cron, syslog, snapshots and diagnostics (ping, traceroute, port check, DNS), a comparison of cluster nodes, with a diff preview, a backup before every change and a guard against cutting your own connection; rules, aliases and NAT rules created by hand on a firewall can be adopted.
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
+- **Alerts** — gateway/WAN outage (down, packet loss, latency), disk/memory/swap/CPU thresholds and stopped services, debounced over several measurements so spikes and flapping links stay quiet; delivered by email, webhook, ntfy, Gotify, Telegram, Microsoft Teams or Matrix, all switchable per event.
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
 - **Update center** — firmware updates for the fleet, aware of HA order and maintenance mode.
 - **Setup assistant** — a guided first run after installation: your own password, two-factor, and connecting the first firewall.
@@ -60,11 +61,11 @@ After the first sign-in a short **setup assistant** opens on its own: set your o
 
 For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) (German).
 
-**Prebuilt images** (amd64) are published to this Gitea's registry. In `.env`:
+**Prebuilt images** (amd64 and arm64) are published to this Gitea's registry. In `.env`:
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.23.11
+OPNEXUS_VERSION=1.24.0
 ```
 
 ```bash

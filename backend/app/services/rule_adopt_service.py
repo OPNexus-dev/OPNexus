@@ -20,26 +20,17 @@ from app.models.host import OpnsenseHost
 from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
 from app.services import opnsense_client
+from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, on  # noqa: F401  (NotAdoptable is re-exported for routers/rules.py)
 from app.services.policy_service import revision
 from app.services.rule_deploy_service import _build_payload
 
 
-class RuleNotFoundOnHost(Exception):
+class RuleNotFoundOnHost(NotFoundOnHost):
     pass
 
 
-class NotAdoptable(Exception):
-    def __init__(self, reasons: list[str]):
-        super().__init__(", ".join(reasons))
-        self.reasons = reasons
-
-
-def _on(value) -> bool:
-    return value in ("1", 1, True)
-
-
-def _clean(value) -> str:
-    return "" if value is None else str(value).strip()
+_on = on
+_clean = clean
 
 
 def reasons_not_adoptable(row: dict, managed_uuids: set[str]) -> list[str]:

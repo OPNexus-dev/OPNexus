@@ -20,6 +20,7 @@ from app.services.interface_service import check_interface_consistency
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.one_to_one_deploy_service import confirm_one_to_one, deploy_one_to_one, undeploy_one_to_one, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
+from app.routers.adopt_routes import add_adopt_routes
 
 router = APIRouter(prefix="/one-to-one", tags=["one-to-one"])
 
@@ -77,6 +78,9 @@ def _to_read(rule: OneToOneRule, hosts: list[OpnsenseHost], deployments: list[On
             for d in deployments
         ],
     )
+
+
+add_adopt_routes(router, kind="one_to_one", model=OneToOneRule, load_options=_load_options, to_read=_to_read, read_model=OneToOneRead)
 
 
 @router.get("", response_model=list[OneToOneRead])

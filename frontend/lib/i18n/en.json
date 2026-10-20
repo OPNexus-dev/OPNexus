@@ -66,10 +66,27 @@
         "scheduledFailed": "Scheduled maintenance did not run",
         "backupFailed": "No recent backup / offsite copy failed",
         "complianceAlerts": "Critical or high security finding (off by default)",
-        "networkDrift": "Network differences in the cluster"
+        "networkDrift": "Network differences in the cluster",
+        "gatewayDown": "Gateway failing (offline, packet loss or latency above the limit)",
+        "resourceThreshold": "Resource threshold exceeded (disk, memory, swap, CPU load; off by default)",
+        "serviceDown": "Watched service stopped (off by default)"
       },
       "pollInterval": "Check interval (seconds)",
-      "pollHint": "At least 60s, so the firewalls are not loaded unnecessarily."
+      "pollHint": "At least 60s, so the firewalls are not loaded unnecessarily.",
+      "monitoring": "Thresholds and debouncing",
+      "monitoringHint": "Alerts for gateways, resources and services use the measurements OPNexus records every minute. An alert opens only when the latest measurements are all bad and closes only when they are all good again, so single spikes and flapping links do not send messages. 0 switches a single threshold off.",
+      "limit": {
+        "gatewayLoss": "Gateway: packet loss from (%)",
+        "gatewayDelay": "Gateway: latency from (ms)",
+        "diskLimit": "Disk from (% used)",
+        "memoryLimit": "Memory from (% used)",
+        "swapLimit": "Swap from (% used)",
+        "loadLimit": "CPU load from (load per thread)",
+        "confirmSamples": "Gateways and services: consecutive measurements",
+        "resourceSamples": "Resources: consecutive measurements",
+        "watchlist": "Watched services",
+        "watchlistHint": "OPNsense service names, comma-separated. OPNexus reports a service only if it ran before and has stopped now. Remove services you stopped on purpose."
+      }
     },
     "logs": {
       "saved": "Log ingest settings saved.",
@@ -180,6 +197,51 @@
       "title": "Setup assistant",
       "intro": "Walks you step by step through password, two-factor sign-in and connecting a firewall.",
       "open": "Open assistant"
+    },
+    "channels": {
+      "title": "More channels",
+      "hint": "ntfy, Gotify, Telegram, Microsoft Teams and Matrix receive the same messages as webhook and email. Credentials are stored apart from the database and are never shown.",
+      "add": "Add channel",
+      "edit": "Edit channel",
+      "type": "Type",
+      "name": "Name",
+      "enabled": "Active",
+      "disabled": "Off",
+      "enable": "Turn on",
+      "disable": "Turn off",
+      "test": "Test",
+      "editAction": "Edit",
+      "deleteAction": "Delete",
+      "empty": "No further channels set up yet",
+      "saved": "Channel saved.",
+      "deleted": "Channel “{name}” deleted.",
+      "confirmDelete": "Really delete channel “{name}”?",
+      "testSent": "Test message sent through “{name}”.",
+      "loadFailed": "Channels could not be loaded",
+      "removeSecret": "Remove access token",
+      "types": {
+        "ntfy": "ntfy",
+        "gotify": "Gotify",
+        "telegram": "Telegram",
+        "teams": "Microsoft Teams",
+        "matrix": "Matrix"
+      },
+      "field": {
+        "server_url": "Server address",
+        "topic": "Topic",
+        "priority": "Priority",
+        "chat_id": "Chat ID",
+        "api_base": "API address (optional)",
+        "homeserver_url": "Homeserver address",
+        "room_id": "Room ID"
+      },
+      "secret": {
+        "ntfy": "Access token (optional)",
+        "gotify": "App token",
+        "telegram": "Bot token",
+        "teams": "Workflow webhook address",
+        "matrix": "Access token"
+      }
     }
   },
   "nav": {
@@ -297,7 +359,15 @@
     "majorAvailable": "Major upgrade available",
     "stableAvailable": "Stable update available",
     "updateBadge": "Update",
-    "loadFailed": "Could not load dashboard"
+    "loadFailed": "Could not load dashboard",
+    "gateways": "Gateways",
+    "noGateways": "No gateway data",
+    "noGatewaysDescription": "Once the firewalls' measurements are in (every minute), status, loss and latency appear here.",
+    "alert": {
+      "gateway_down": "Gateway",
+      "resource_threshold": "Resource",
+      "service_down": "Service"
+    }
   },
   "hosts": {
     "add": "Add host",
@@ -434,6 +504,67 @@
       }
     },
     "logPackets": "Log matching packets"
+  },
+  "adopt": {
+    "button": "Adopt from firewall",
+    "title": {
+      "aliases": "Adopt aliases from the firewall",
+      "portForward": "Adopt port forwards from the firewall",
+      "oneToOne": "Adopt 1:1 NAT rules from the firewall",
+      "outboundNat": "Adopt outbound NAT rules from the firewall"
+    },
+    "intro": "These objects were created directly in OPNsense. Once adopted you manage them in OPNexus. Adopting itself changes nothing on the firewall.",
+    "host": "Firewall",
+    "none": "Nothing adoptable found. Everything is already managed.",
+    "action": "Adopt",
+    "all": "Adopt all adoptable ({count})",
+    "adopted": "Adopted “{name}”.",
+    "allDone": "{count} adopted, {skipped} skipped.",
+    "failed": "Adopting failed",
+    "loadFailed": "Could not load objects.",
+    "notPossible": "Cannot be adopted",
+    "bulkOnly": "Only via “Adopt all”",
+    "entries": "Entries: {count}",
+    "towards": "to {destination}",
+    "interfaceAddress": "interface address",
+    "systemNote": "{count} OPNsense system aliases (e.g. bogons, interface networks) are never adopted.",
+    "kept": "Stays unchanged on the firewall: {fields}",
+    "keptFields": {
+      "log": "Logging",
+      "poolopts": "Pool options",
+      "poolopts_sourcehashkey": "Source hash key",
+      "tag": "Tag",
+      "tagged": "Tagged",
+      "nosync": "No sync",
+      "categories": "Categories",
+      "staticnatport": "Static NAT port",
+      "endpoint-independent": "Endpoint-independent"
+    },
+    "reasons": {
+      "system": "OPNsense system object",
+      "already_managed": "Already managed",
+      "unsupported_type": "OPNexus does not support type “{detail}”",
+      "name_invalid": "The name contains characters OPNexus does not allow (letters, digits, _ only)",
+      "name_exists": "OPNexus already has an alias with this name",
+      "content_too_large": "Content too large (over 8000 characters)",
+      "proto_set": "Has an IPv4/IPv6 restriction OPNexus cannot represent",
+      "value_too_long": "A value is longer than OPNexus stores",
+      "references_unmanaged_alias": "Refers to aliases that are not adopted: {detail}",
+      "interface_not_single": "Several or no interface",
+      "ipprotocol_unsupported": "IP version cannot be represented (IPv4 or IPv6 only)",
+      "protocol_any": "Protocol “any” is not supported",
+      "protocol_missing": "Protocol missing",
+      "no_redirect": "“No redirect” rule (No RDR)",
+      "no_target": "No target set",
+      "filter_rule_linked": "Creates or is linked to an associated filter rule",
+      "negated_source": "Source is inverted (NOT)",
+      "negated_destination": "Destination is inverted (NOT)",
+      "natreflection_unsupported": "NAT reflection value is not supported",
+      "type_unsupported": "Rule type is not supported",
+      "incomplete": "Required fields missing",
+      "no_nat_rule": "“No NAT” rule (nonat) is not supported",
+      "no_description": "Description missing – please set one in OPNsense"
+    }
   },
   "login": {
     "prompt": "Please sign in",
@@ -596,6 +727,9 @@
     "TOTP_NOT_ENABLED": "Two-factor authentication is not enabled",
     "TOTP_SETUP_MISSING": "No setup has been started",
     "RULE_NOT_ADOPTABLE": "This rule cannot be adopted ({reasons})",
+    "OBJECT_NOT_ADOPTABLE": "This object cannot be adopted ({reasons})",
+    "ADOPT_OBJECT_NOT_FOUND": "The object was not found on the firewall. Reload the list.",
+    "OUTBOUND_MODE_BLOCKS_ADOPT": "{host}: in outbound NAT mode “{mode}” OPNsense does not list manual rules. Switch the mode to Hybrid/Manual in OPNsense itself, then they can be adopted. OPNexus does not change this mode.",
     "NETWORK_ACK_REQUIRED": "This change can cut the connection to the firewall and must be confirmed explicitly ({reasons})",
     "NETWORK_APPLY_UNCERTAIN": "The change was written, but applying it on “{host}” failed or is unclear. Check the firewall; backup: {backup_id}",
     "NETWORK_BACKUP_FAILED": "Backup of “{host}” before the change failed – nothing was changed",
@@ -624,7 +758,12 @@
     "OFFSITE_TEST_FAILED": "The offsite target test failed: {reason}",
     "API_TOKEN_NOT_FOUND": "API token not found",
     "API_TOKEN_SCOPE_FORBIDDEN": "This API token (scope “{scope}”) is not allowed to perform this action.",
-    "API_TOKEN_SCOPE_TOO_HIGH": "Your role does not allow a token with this scope (read-only: read, operator: up to deploy)."
+    "API_TOKEN_SCOPE_TOO_HIGH": "Your role does not allow a token with this scope (read-only: read, operator: up to deploy).",
+    "NOTIFICATION_CHANNEL_INVALID": "Invalid value: {reason}",
+    "NOTIFICATION_CHANNEL_NOT_FOUND": "The notification channel was not found.",
+    "NOTIFICATION_CHANNEL_NAME_TAKEN": "A channel with this name already exists.",
+    "NOTIFICATION_CHANNEL_TEST_FAILED": "Test message not delivered: {reason}",
+    "NOTIFICATION_WEBHOOK_URL_INVALID": "Invalid webhook address: {reason}"
   },
   "workflow": {
     "attention": "Check errors",
@@ -962,7 +1101,12 @@
     "handoverOption": "Switch to the partner first and switch back afterwards (CARP)",
     "handoverHint": "Flow: maintenance mode on this host, the partner becomes MASTER (verified), then the action runs, and once the host is back the maintenance mode is left again. If anything goes wrong the partner stays MASTER and a notification is sent. When switching back, the host may take the MASTER role back depending on the CARP settings (a short second switchover).",
     "handoverBadge": "with CARP switchover",
-    "phase": {"handover_wait": "waiting for the partner to take over", "job_wait": "job running", "leave": "switching back", "leave_wait": "verifying normal operation"}
+    "phase": {
+      "handover_wait": "waiting for the partner to take over",
+      "job_wait": "job running",
+      "leave": "switching back",
+      "leave_wait": "verifying normal operation"
+    }
   },
   "restore": {
     "handoffWarning": "OPNexus does NOT perform the restore itself. After the handover you must import the backup manually in the OPNsense web interface. While this operation is open, rule/alias/NAT pushes and host maintenance are blocked for this host.",
@@ -1944,7 +2088,7 @@
       "schedule": "Scheduled",
       "major_update": "Major upgrade",
       "changes": "Changes",
-    "download": "Download",
+      "download": "Download",
       "push": "Push",
       "register": "Register",
       "sign": "Sign",
@@ -2685,6 +2829,22 @@
       "backupBefore": "You back up the OPNexus database on the server with",
       "backupHelp": "Covers the database (rules, hosts, history). API secrets and keys live in their own Docker volumes and are not in the dump. See the manual for details.",
       "docs": "Documentation for the command-line tool"
+    }
+  },
+  "gateway": {
+    "title": "Gateways",
+    "none": "This firewall reports no gateways.",
+    "loadFailed": "Gateway status could not be loaded",
+    "notMeasured": "not monitored",
+    "loss": "Loss {value} %",
+    "delay": "{value} ms",
+    "stddev": "± {value} ms",
+    "state": {
+      "online": "Online",
+      "degraded": "Degraded",
+      "offline": "Offline",
+      "forced_down": "Switched off",
+      "unknown": "Unknown"
     }
   }
 }

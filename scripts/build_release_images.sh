@@ -9,6 +9,11 @@
 #   scripts/build_release_images.sh v1.10.0 --push             # bauen und pushen
 #   scripts/build_release_images.sh v1.10.0 --push --multiarch # amd64+arm64 (braucht QEMU/buildx)
 #
+# Einmalig pro Build-Host für --multiarch (scripts/release_all.sh nutzt es immer):
+#   docker run --privileged --rm tonistiigi/binfmt --install arm64           # QEMU-Emulation (bis zum Neustart)
+#   docker buildx create --name opnexus-multiarch --driver docker-container --bootstrap
+# Der Builder lässt sich mit OPNEXUS_BUILDER ändern; fehlt er, bricht das Skript mit dieser Anleitung ab.
+#
 # Signieren (cosign): OPNEXUS_SIGN=1 COSIGN_KEY=/pfad/cosign.key [COSIGN_PASSWORD=…] — der öffentliche
 # Schlüssel liegt als cosign.pub im Repo; die Registry muss ihren Token-Realm per https melden.
 # REPO: Umgebungsvariable OPNEXUS_IMAGE_REPO (Standard git.opnexus.dev/opnexus).
@@ -24,6 +29,17 @@ for a in "$@"; do case "$a" in --push) push=1;; --multiarch) multi=1;; *) echo "
 [ "$multi" = 0 ] || [ "$push" = 1 ] || { echo "--multiarch geht nur zusammen mit --push" >&2; exit 1; }
 git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null || { echo "Tag $tag existiert lokal nicht" >&2; exit 1; }
 repo="${OPNEXUS_IMAGE_REPO:-git.opnexus.dev/opnexus}"
+builder="${OPNEXUS_BUILDER:-opnexus-multiarch}"
+if [ "$multi" = 1 ]; then
+  docker buildx inspect "$builder" >/dev/null 2>&1 \
+    || { echo "buildx-Builder '$builder' fehlt: docker buildx create --name $builder --driver docker-container --bootstrap" >&2; exit 1; }
+  # Der Cross-Build füllt den Build-Cache um mehrere GB; ein volles Dateisystem legt auch die laufenden Dienste lahm.
+  free_mb="$(df --output=avail -BM . | tail -1 | tr -dc 0-9)"
+  [ "$free_mb" -ge 3500 ] || { echo "Nur ${free_mb} MB frei (für --multiarch werden ca. 3500 MB gebraucht): Platz schaffen (docker image prune, docker buildx prune)" >&2; exit 1; }
+  # Emulation ist nach einem Neustart weg; ohne sie scheitert der arm64-Teil erst nach Minuten.
+  docker buildx inspect "$builder" | grep -q 'linux/arm64' \
+    || { echo "arm64 nicht verfügbar: docker run --privileged --rm tonistiigi/binfmt --install arm64" >&2; exit 1; }
+fi
 version="${tag#v}"
 
 # Aus dem Tag bauen, nicht aus dem Working Tree (keine uncommitteten Änderungen im Image).
@@ -42,7 +58,8 @@ for svc in backend frontend proxy updater; do
   targs=(); for t in "${tags[@]}"; do targs+=(-t "$image:$t"); done
   echo "==> $image  (${tags[*]})"
   if [ "$multi" = 1 ]; then
-    docker buildx build --platform linux/amd64,linux/arm64 "${targs[@]}" --push "$src/$svc"
+    docker buildx build --builder "$builder" --platform linux/amd64,linux/arm64 "${targs[@]}" --push "$src/$svc"
+    docker buildx prune --builder "$builder" -af >/dev/null 2>&1 || true   # Platz für den nächsten Dienst
   else
     docker build "${targs[@]}" "$src/$svc"
     if [ "$push" = 1 ]; then for t in "${tags[@]}"; do docker push "$image:$t"; done; fi

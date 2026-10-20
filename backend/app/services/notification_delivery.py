@@ -16,7 +16,7 @@ import httpx
 
 from app.config import settings
 from app.models.notification import NotificationProblem, NotificationSettings
-from app.services import notification_secret_store
+from app.services import notification_secret_store, url_guard
 
 
 class NotificationDeliveryError(Exception):
@@ -37,6 +37,10 @@ _LABELS = {
     "backup_stale": "Kein aktuelles Backup",
     "backup_offsite_failed": "Offsite-Backup fehlgeschlagen",
     "compliance_finding": "Sicherheitsbefund",
+    "gateway_down": "Gateway gestört",
+    "resource_threshold": "Ressourcen-Schwelle überschritten",
+    "service_down": "Dienst ausgefallen",
+    "test": "Testbenachrichtigung",
 }
 
 
@@ -84,9 +88,16 @@ async def send_webhook(settings_row: NotificationSettings, problem: Notification
         headers["X-OPNexus-Signature"] = f"sha256={signature}"
 
     try:
-        async with httpx.AsyncClient(timeout=settings.opnsense_timeout) as client:
-            resp = await client.post(settings_row.webhook_url, content=raw, headers=headers)
-            resp.raise_for_status()
+        url_guard.validate_url(settings_row.webhook_url)
+        await url_guard.ensure_resolved_safe(settings_row.webhook_url)
+    except ValueError as exc:
+        raise NotificationDeliveryError(f"Webhook-Adresse nicht erlaubt: {exc}") from None
+    try:
+        # follow_redirects stays off: a redirect must not move the request to an address the check above never saw.
+        async with httpx.AsyncClient(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
+            with url_guard.muted():
+                resp = await client.post(settings_row.webhook_url, content=raw, headers=headers)
+                resp.raise_for_status()
     except httpx.HTTPError as exc:
         # str(exc) names the full URL, which often is the credential itself
         # (token in path/query) — keep it out of messages and logs.

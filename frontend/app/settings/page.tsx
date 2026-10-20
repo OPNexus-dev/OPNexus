@@ -1,5 +1,6 @@
 "use client";
 import { TwoFactorSection } from "@/components/TwoFactorSection";
+import { NotificationChannelsSection } from "@/components/NotificationChannelsSection";
 import { OpnexusUpdateSection } from "@/components/OpnexusUpdateSection";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { useEffect, useState } from "react";
@@ -7,7 +8,7 @@ import { api, AppSettings, LogSettings, NotificationSettings, SmtpSecurity, Them
 import { useTheme } from "@/components/ThemeProvider";
 import { useLanguage } from "@/components/LanguageProvider";
 import { Button } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Field";
+import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { useNotAdmin, useReadOnly } from "@/lib/useReadOnly";
 import { OidcSection } from "@/components/OidcSection";
 import { BackupSettingsSection } from "@/components/BackupSettingsSection";
@@ -66,6 +67,18 @@ function NotificationsSection() {
   const [scheduledFailed, setScheduledFailed] = useState(true);
   const [backupFailed, setBackupFailed] = useState(true);
   const [complianceAlerts, setComplianceAlerts] = useState(false);
+  const [gatewayDown, setGatewayDown] = useState(true);
+  const [resourceThreshold, setResourceThreshold] = useState(false);
+  const [serviceDown, setServiceDown] = useState(false);
+  const [gatewayLoss, setGatewayLoss] = useState(20);
+  const [gatewayDelay, setGatewayDelay] = useState(500);
+  const [diskLimit, setDiskLimit] = useState(90);
+  const [memoryLimit, setMemoryLimit] = useState(95);
+  const [swapLimit, setSwapLimit] = useState(50);
+  const [loadLimit, setLoadLimit] = useState(2);
+  const [confirmSamples, setConfirmSamples] = useState(3);
+  const [resourceSamples, setResourceSamples] = useState(5);
+  const [watchlist, setWatchlist] = useState("");
   const [pollInterval, setPollInterval] = useState(300);
 
   function applyFromServer(data: NotificationSettings) {
@@ -91,6 +104,18 @@ function NotificationsSection() {
     setScheduledFailed(data.scheduled_maintenance_failed_enabled);
     setBackupFailed(data.backup_failed_enabled);
     setComplianceAlerts(data.compliance_alerts_enabled);
+    setGatewayDown(data.gateway_down_enabled);
+    setResourceThreshold(data.resource_threshold_enabled);
+    setServiceDown(data.service_down_enabled);
+    setGatewayLoss(data.gateway_loss_threshold_pct);
+    setGatewayDelay(data.gateway_delay_threshold_ms);
+    setDiskLimit(data.disk_threshold_pct);
+    setMemoryLimit(data.memory_threshold_pct);
+    setSwapLimit(data.swap_threshold_pct);
+    setLoadLimit(data.load_per_cpu_threshold);
+    setConfirmSamples(data.alert_confirm_samples);
+    setResourceSamples(data.resource_confirm_samples);
+    setWatchlist(data.service_watchlist.join(", "));
     setPollInterval(data.poll_interval_seconds);
     setWebhookSecret("");
     setClearWebhookSecret(false);
@@ -134,6 +159,18 @@ function NotificationsSection() {
         scheduled_maintenance_failed_enabled: scheduledFailed,
         backup_failed_enabled: backupFailed,
         compliance_alerts_enabled: complianceAlerts,
+        gateway_down_enabled: gatewayDown,
+        resource_threshold_enabled: resourceThreshold,
+        service_down_enabled: serviceDown,
+        gateway_loss_threshold_pct: gatewayLoss,
+        gateway_delay_threshold_ms: gatewayDelay,
+        disk_threshold_pct: diskLimit,
+        memory_threshold_pct: memoryLimit,
+        swap_threshold_pct: swapLimit,
+        load_per_cpu_threshold: loadLimit,
+        alert_confirm_samples: confirmSamples,
+        resource_confirm_samples: resourceSamples,
+        service_watchlist: watchlist.split(/[\s,]+/).filter(Boolean),
         poll_interval_seconds: pollInterval,
       });
       applyFromServer(data);
@@ -268,6 +305,9 @@ function NotificationsSection() {
             [t("settings.notify.event.scheduledFailed"), scheduledFailed, setScheduledFailed],
             [t("settings.notify.event.backupFailed"), backupFailed, setBackupFailed],
             [t("settings.notify.event.complianceAlerts"), complianceAlerts, setComplianceAlerts],
+            [t("settings.notify.event.gatewayDown"), gatewayDown, setGatewayDown],
+            [t("settings.notify.event.resourceThreshold"), resourceThreshold, setResourceThreshold],
+            [t("settings.notify.event.serviceDown"), serviceDown, setServiceDown],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />
@@ -281,9 +321,34 @@ function NotificationsSection() {
           </label>
         </div>
 
+        <div className="space-y-3 rounded-lg border border-slate-100 p-4">
+          <p className="flex items-center gap-2 text-sm font-medium">{t("settings.notify.monitoring")}<InfoTip text={t("settings.notify.monitoringHint")} /></p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {([
+              ["gatewayLoss", gatewayLoss, setGatewayLoss, 0, 100],
+              ["gatewayDelay", gatewayDelay, setGatewayDelay, 0, 60000],
+              ["diskLimit", diskLimit, setDiskLimit, 0, 100],
+              ["memoryLimit", memoryLimit, setMemoryLimit, 0, 100],
+              ["swapLimit", swapLimit, setSwapLimit, 0, 100],
+              ["loadLimit", loadLimit, setLoadLimit, 0, 1000],
+              ["confirmSamples", confirmSamples, setConfirmSamples, 1, 60],
+              ["resourceSamples", resourceSamples, setResourceSamples, 1, 60],
+            ] as [string, number, (v: number) => void, number, number][]).map(([key, value, setter, min, max]) => (
+              <label key={key} className="block text-sm">
+                <span className="mb-1 block font-medium text-slate-700">{t(`settings.notify.limit.${key}`)}</span>
+                <Input type="number" min={min} max={max} step={key === "loadLimit" ? 0.5 : 1} value={value} onChange={(e) => setter(Number(e.target.value))} />
+              </label>
+            ))}
+          </div>
+          <FieldGroup label={t("settings.notify.limit.watchlist")} hint={t("settings.notify.limit.watchlistHint")}>
+            <Input value={watchlist} onChange={(e) => setWatchlist(e.target.value)} placeholder="unbound, dnsmasq, ntpd" />
+          </FieldGroup>
+        </div>
+
         <div className="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" disabled={saving || !ns}>{t("common.save")}</Button></div>
         </fieldset>
       </form>
+      <NotificationChannelsSection />
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
       {notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
     </section>

@@ -46,6 +46,7 @@ from app.version import APP_VERSION
 from app.routers import dashboard as dashboard_router
 from app.routers import cluster as cluster_router
 from app.routers import services as services_router
+from app.routers import gateways as gateways_router
 from app.routers import resource_samples as resource_samples_router
 from app.services import resource_monitor_service
 from app.routers import scheduled_maintenance as scheduled_maintenance_router
@@ -510,6 +511,7 @@ app.include_router(restore_router.router, prefix="/api")
 app.include_router(dashboard_router.router, prefix="/api")
 app.include_router(cluster_router.router, prefix="/api")
 app.include_router(services_router.router, prefix="/api")
+app.include_router(gateways_router.router, prefix="/api")
 app.include_router(network_router.router, prefix="/api")
 app.include_router(snapshots_router.router, prefix="/api")
 app.include_router(network_drift_router.router, prefix="/api")

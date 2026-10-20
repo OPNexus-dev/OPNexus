@@ -5,7 +5,9 @@ poll_all_hosts. v1 deliberately has no admin-editable poll interval (see
 config.py) — just a fixed constant, to keep this feature's first cut
 small.
 """
+import asyncio
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select
@@ -13,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.host import OpnsenseHost
 from app.models.resource_sample import HostResourceSample
+from app.services import gateway_health_service
 from app.services import opnsense_client as client
 from app.services.opnsense_client import OpnsenseAPIError
 
@@ -55,11 +58,59 @@ def _disk_used_pct(disk: dict) -> float | None:
     return None
 
 
+def _swap_used_pct(swap) -> float | None:
+    """systemSwap: {"swap": [{"device", "total", "used"}]} in KiB; None when there is no swap at all."""
+    try:
+        rows = swap.get("swap") or []
+        total = sum(int(r["total"]) for r in rows)
+        used = sum(int(r["used"]) for r in rows)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return None
+    return round(used / total * 100, 1) if total > 0 else None
+
+
+_CPU_THREADS = re.compile(r"(\d+)\s+threads?", re.IGNORECASE)
+_CPU_CORES = re.compile(r"(\d+)\s+cores?", re.IGNORECASE)
+
+
+def _cpu_threads(cpu_type) -> int | None:
+    """getCPUType: ["<model> (6 cores, 6 threads)"]."""
+    text = " ".join(str(x) for x in cpu_type) if isinstance(cpu_type, list) else str(cpu_type or "")
+    match = _CPU_THREADS.search(text) or _CPU_CORES.search(text)
+    return int(match.group(1)) if match else None
+
+
+def _services_compact(listing) -> dict[str, int]:
+    """{"unbound": 1, "openvpn/<uuid>": 0}: 1 = running. Only services an admin can stop (not 'locked')."""
+    result: dict[str, int] = {}
+    for row in (listing.get("rows") if isinstance(listing, dict) else None) or []:
+        if not isinstance(row, dict) or not row.get("name") or str(row.get("locked")) in ("1", "True", "true"):
+            continue
+        name, id_ = str(row["name"]), str(row.get("id") or row["name"])
+        result[name if id_ == name else f"{name}/{id_}"] = 1 if str(row.get("running")) in ("1", "True", "true") else 0
+    return result
+
+
+async def _optional(operation):
+    """The extra readings must never cost the base sample (older firmware, an endpoint that is missing)."""
+    try:
+        return await operation
+    except Exception as exc:
+        logger.debug("Optionale Messung fehlgeschlagen: %s", type(exc).__name__)
+        return None
+
+
 async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
     resources = await client.get_system_resources(host)
     system_time = await client.get_system_time(host)
     disk = await client.get_system_disk(host)
     interfaces = await client.get_interface_statistics(host)
+    swap, cpu_type, gateways, services = await asyncio.gather(
+        _optional(client.get_system_swap(host)),
+        _optional(client.get_cpu_type(host)),
+        _optional(gateway_health_service.get_gateway_health(host)),
+        _optional(client.search_services(host)),
+    )
     db.add(
         HostResourceSample(
             host_id=host.id,
@@ -67,7 +118,14 @@ async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
             mem_used_pct=_mem_used_pct(resources),
             load_avg_1m=_load_avg_1m(system_time),
             disk_used_pct=_disk_used_pct(disk),
-            raw={"memory": resources.get("memory"), "disk": disk.get("devices"), "interfaces": interfaces.get("statistics")},
+            raw={
+                "memory": resources.get("memory"), "disk": disk.get("devices"), "interfaces": interfaces.get("statistics"),
+                # None = not readable this round (the alert checks treat that as "unknown", not as "fine").
+                "swap_used_pct": _swap_used_pct(swap) if swap is not None else None,
+                "cpu_threads": _cpu_threads(cpu_type) if cpu_type is not None else None,
+                "gateways": gateway_health_service.compact(gateways) if gateways is not None else None,
+                "services": _services_compact(services) if services is not None else None,
+            },
         )
     )
 

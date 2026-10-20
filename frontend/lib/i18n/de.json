@@ -66,10 +66,27 @@
         "scheduledFailed": "Geplante Wartung nicht ausgeführt",
         "backupFailed": "Kein aktuelles Backup / Offsite-Kopie fehlgeschlagen",
         "complianceAlerts": "Kritischer oder hoher Sicherheitsbefund (standardmäßig aus)",
-        "networkDrift": "Netzwerk-Abweichung im Cluster"
+        "networkDrift": "Netzwerk-Abweichung im Cluster",
+        "gatewayDown": "Gateway gestört (offline, Paketverlust oder Latenz über der Schwelle)",
+        "resourceThreshold": "Ressourcen-Schwelle überschritten (Festplatte, Speicher, Swap, CPU-Last; standardmäßig aus)",
+        "serviceDown": "Überwachter Dienst ausgefallen (standardmäßig aus)"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
-      "pollHint": "Mindestens 60s, um die Firewalls nicht unnötig zu belasten."
+      "pollHint": "Mindestens 60s, um die Firewalls nicht unnötig zu belasten.",
+      "monitoring": "Schwellen und Entprellung",
+      "monitoringHint": "Alarme für Gateways, Ressourcen und Dienste stützen sich auf die Messungen, die OPNexus jede Minute aufzeichnet. Ein Alarm entsteht erst, wenn die letzten Messungen alle schlecht sind, und endet erst, wenn die letzten Messungen alle wieder gut sind – Einzelspitzen und flackernde Verbindungen lösen keine Meldungen aus. 0 schaltet eine einzelne Schwelle ab.",
+      "limit": {
+        "gatewayLoss": "Gateway: Paketverlust ab (%)",
+        "gatewayDelay": "Gateway: Latenz ab (ms)",
+        "diskLimit": "Festplatte ab (% belegt)",
+        "memoryLimit": "Arbeitsspeicher ab (% belegt)",
+        "swapLimit": "Swap ab (% belegt)",
+        "loadLimit": "CPU-Last ab (Last je Thread)",
+        "confirmSamples": "Gateways und Dienste: Messungen in Folge",
+        "resourceSamples": "Ressourcen: Messungen in Folge",
+        "watchlist": "Überwachte Dienste",
+        "watchlistHint": "OPNsense-Dienstnamen, kommagetrennt. OPNexus meldet einen Dienst nur, wenn er zuvor lief und jetzt nicht mehr. Absichtlich gestoppte Dienste hier entfernen."
+      }
     },
     "logs": {
       "saved": "Log-Ingest-Einstellungen gespeichert.",
@@ -180,6 +197,51 @@
       "title": "Einrichtungsassistent",
       "intro": "Führt Schritt für Schritt durch Passwort, Zwei-Faktor-Anmeldung und das Verbinden einer Firewall.",
       "open": "Assistent öffnen"
+    },
+    "channels": {
+      "title": "Weitere Kanäle",
+      "hint": "ntfy, Gotify, Telegram, Microsoft Teams und Matrix erhalten dieselben Meldungen wie Webhook und E-Mail. Zugangsdaten werden getrennt von der Datenbank gespeichert und nie angezeigt.",
+      "add": "Kanal hinzufügen",
+      "edit": "Kanal bearbeiten",
+      "type": "Typ",
+      "name": "Name",
+      "enabled": "Aktiv",
+      "disabled": "Aus",
+      "enable": "Einschalten",
+      "disable": "Ausschalten",
+      "test": "Testen",
+      "editAction": "Bearbeiten",
+      "deleteAction": "Löschen",
+      "empty": "Noch keine weiteren Kanäle eingerichtet",
+      "saved": "Kanal gespeichert.",
+      "deleted": "Kanal „{name}“ gelöscht.",
+      "confirmDelete": "Kanal „{name}“ wirklich löschen?",
+      "testSent": "Testnachricht über „{name}“ gesendet.",
+      "loadFailed": "Kanäle konnten nicht geladen werden",
+      "removeSecret": "Zugriffstoken entfernen",
+      "types": {
+        "ntfy": "ntfy",
+        "gotify": "Gotify",
+        "telegram": "Telegram",
+        "teams": "Microsoft Teams",
+        "matrix": "Matrix"
+      },
+      "field": {
+        "server_url": "Serveradresse",
+        "topic": "Thema",
+        "priority": "Priorität",
+        "chat_id": "Chat-ID",
+        "api_base": "API-Adresse (optional)",
+        "homeserver_url": "Homeserver-Adresse",
+        "room_id": "Raum-ID"
+      },
+      "secret": {
+        "ntfy": "Zugriffstoken (optional)",
+        "gotify": "App-Token",
+        "telegram": "Bot-Token",
+        "teams": "Webhook-Adresse des Workflows",
+        "matrix": "Zugriffstoken"
+      }
     }
   },
   "nav": {
@@ -297,7 +359,15 @@
     "majorAvailable": "Major-Upgrade verfügbar",
     "stableAvailable": "Stabiles Update verfügbar",
     "updateBadge": "Update",
-    "loadFailed": "Dashboard konnte nicht geladen werden"
+    "loadFailed": "Dashboard konnte nicht geladen werden",
+    "gateways": "Gateways",
+    "noGateways": "Keine Gateway-Daten",
+    "noGatewaysDescription": "Sobald die Messungen der Firewalls vorliegen (jede Minute), erscheinen hier Status, Verlust und Latenz.",
+    "alert": {
+      "gateway_down": "Gateway",
+      "resource_threshold": "Ressource",
+      "service_down": "Dienst"
+    }
   },
   "hosts": {
     "add": "Host hinzufügen",
@@ -434,6 +504,67 @@
       }
     },
     "logPackets": "Protokollieren"
+  },
+  "adopt": {
+    "button": "Von Firewall übernehmen",
+    "title": {
+      "aliases": "Aliase von der Firewall übernehmen",
+      "portForward": "Port-Forwards von der Firewall übernehmen",
+      "oneToOne": "1:1-NAT-Regeln von der Firewall übernehmen",
+      "outboundNat": "Outbound-NAT-Regeln von der Firewall übernehmen"
+    },
+    "intro": "Hier stehen Objekte, die direkt in OPNsense angelegt wurden. Nach der Übernahme verwaltest du sie in OPNexus. Die Übernahme selbst ändert nichts auf der Firewall.",
+    "host": "Firewall",
+    "none": "Nichts Übernehmbares gefunden. Alles ist bereits verwaltet.",
+    "action": "Übernehmen",
+    "all": "Alle übernehmbaren übernehmen ({count})",
+    "adopted": "„{name}“ übernommen.",
+    "allDone": "{count} übernommen, {skipped} übersprungen.",
+    "failed": "Übernahme fehlgeschlagen",
+    "loadFailed": "Objekte konnten nicht geladen werden.",
+    "notPossible": "Nicht übernehmbar",
+    "bulkOnly": "Nur mit „Alle übernehmbaren“",
+    "entries": "Einträge: {count}",
+    "towards": "Ziel {destination}",
+    "interfaceAddress": "Adresse der Schnittstelle",
+    "systemNote": "{count} OPNsense-eigene Aliase (z. B. bogons, Schnittstellen-Netze) werden nie übernommen.",
+    "kept": "Bleibt auf der Firewall unverändert: {fields}",
+    "keptFields": {
+      "log": "Protokollieren",
+      "poolopts": "Pool-Optionen",
+      "poolopts_sourcehashkey": "Source-Hash-Schlüssel",
+      "tag": "Tag",
+      "tagged": "Tagged",
+      "nosync": "Nicht synchronisieren",
+      "categories": "Kategorien",
+      "staticnatport": "Statischer NAT-Port",
+      "endpoint-independent": "Endpoint-Independent"
+    },
+    "reasons": {
+      "system": "OPNsense-eigenes Objekt",
+      "already_managed": "Wird bereits verwaltet",
+      "unsupported_type": "Typ „{detail}“ unterstützt OPNexus nicht",
+      "name_invalid": "Der Name enthält Zeichen, die OPNexus nicht zulässt (nur Buchstaben, Ziffern, _)",
+      "name_exists": "In OPNexus gibt es schon einen Alias mit diesem Namen",
+      "content_too_large": "Inhalt zu groß (über 8000 Zeichen)",
+      "proto_set": "Hat eine IPv4/IPv6-Einschränkung, die OPNexus nicht abbildet",
+      "value_too_long": "Ein Wert ist länger, als OPNexus speichert",
+      "references_unmanaged_alias": "Verweist auf nicht übernommene Aliase: {detail}",
+      "interface_not_single": "Mehrere oder keine Schnittstelle",
+      "ipprotocol_unsupported": "IP-Version nicht abbildbar (nur IPv4 oder IPv6)",
+      "protocol_any": "Protokoll „beliebig“ wird nicht unterstützt",
+      "protocol_missing": "Protokoll fehlt",
+      "no_redirect": "„Kein Redirect“-Regel (No RDR)",
+      "no_target": "Kein Ziel gesetzt",
+      "filter_rule_linked": "Legt eine zugehörige Filterregel an oder ist mit einer verknüpft",
+      "negated_source": "Quelle ist invertiert (NOT)",
+      "negated_destination": "Ziel ist invertiert (NOT)",
+      "natreflection_unsupported": "NAT-Reflection-Wert wird nicht unterstützt",
+      "type_unsupported": "Regeltyp wird nicht unterstützt",
+      "incomplete": "Pflichtangaben fehlen",
+      "no_nat_rule": "„Kein NAT“-Regel (nonat) wird nicht unterstützt",
+      "no_description": "Beschreibung fehlt – bitte in OPNsense setzen"
+    }
   },
   "login": {
     "prompt": "Bitte anmelden",
@@ -596,6 +727,9 @@
     "TOTP_NOT_ENABLED": "Zwei-Faktor-Anmeldung ist nicht aktiv",
     "TOTP_SETUP_MISSING": "Es wurde keine Einrichtung gestartet",
     "RULE_NOT_ADOPTABLE": "Diese Regel kann nicht übernommen werden ({reasons})",
+    "OBJECT_NOT_ADOPTABLE": "Dieses Objekt kann nicht übernommen werden ({reasons})",
+    "ADOPT_OBJECT_NOT_FOUND": "Das Objekt wurde auf der Firewall nicht gefunden. Liste neu laden.",
+    "OUTBOUND_MODE_BLOCKS_ADOPT": "{host}: Im Outbound-NAT-Modus „{mode}“ zeigt OPNsense keine manuellen Regeln an. Modus in OPNsense selbst auf Hybrid/Manuell umstellen, dann lassen sie sich übernehmen. OPNexus ändert diesen Modus nicht.",
     "NETWORK_ACK_REQUIRED": "Diese Änderung kann die Verbindung zur Firewall trennen und muss ausdrücklich bestätigt werden ({reasons})",
     "NETWORK_APPLY_UNCERTAIN": "Die Änderung wurde geschrieben, das Anwenden auf „{host}“ ist aber fehlgeschlagen oder unklar. Stand auf der Firewall prüfen; Backup: {backup_id}",
     "NETWORK_BACKUP_FAILED": "Backup von „{host}“ vor der Änderung fehlgeschlagen – es wurde nichts geändert",
@@ -624,7 +758,12 @@
     "OFFSITE_TEST_FAILED": "Der Test des Offsite-Ziels ist fehlgeschlagen: {reason}",
     "API_TOKEN_NOT_FOUND": "API-Token nicht gefunden",
     "API_TOKEN_SCOPE_FORBIDDEN": "Dieses API-Token (Bereich „{scope}“) darf diese Aktion nicht ausführen.",
-    "API_TOKEN_SCOPE_TOO_HIGH": "Mit deiner Rolle ist dieser Token-Bereich nicht möglich (Nur-Lesen: „Lesen“, Operator: bis „Ausrollen“)."
+    "API_TOKEN_SCOPE_TOO_HIGH": "Mit deiner Rolle ist dieser Token-Bereich nicht möglich (Nur-Lesen: „Lesen“, Operator: bis „Ausrollen“).",
+    "NOTIFICATION_CHANNEL_INVALID": "Ungültige Angabe: {reason}",
+    "NOTIFICATION_CHANNEL_NOT_FOUND": "Der Benachrichtigungskanal wurde nicht gefunden.",
+    "NOTIFICATION_CHANNEL_NAME_TAKEN": "Ein Kanal mit diesem Namen existiert bereits.",
+    "NOTIFICATION_CHANNEL_TEST_FAILED": "Testnachricht nicht zugestellt: {reason}",
+    "NOTIFICATION_WEBHOOK_URL_INVALID": "Ungültige Webhook-Adresse: {reason}"
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -962,7 +1101,12 @@
     "handoverOption": "Vorher automatisch auf den Partner umschalten und danach zurückschalten (CARP)",
     "handoverHint": "Ablauf: Wartungsmodus auf diesem Host, Partner wird MASTER (wird geprüft), dann läuft die Aktion, nach Rückkehr des Hosts wird der Wartungsmodus wieder verlassen. Bei Problemen bleibt der Partner MASTER und es kommt eine Benachrichtigung. Beim Zurückschalten kann der Host je nach CARP-Einstellung die MASTER-Rolle zurückholen (kurzer zweiter Wechsel).",
     "handoverBadge": "mit CARP-Umschaltung",
-    "phase": {"handover_wait": "wartet auf Übernahme durch den Partner", "job_wait": "Auftrag läuft", "leave": "schaltet zurück", "leave_wait": "prüft den Normalbetrieb"}
+    "phase": {
+      "handover_wait": "wartet auf Übernahme durch den Partner",
+      "job_wait": "Auftrag läuft",
+      "leave": "schaltet zurück",
+      "leave_wait": "prüft den Normalbetrieb"
+    }
   },
   "restore": {
     "handoffWarning": "OPNexus führt die Wiederherstellung NICHT selbst aus. Nach der Übergabe musst du die Sicherung manuell im OPNsense-Webinterface importieren. Solange dieser Vorgang offen ist, sind Regel-/Alias-/NAT-Pushes und Host-Wartung für diesen Host gesperrt.",
@@ -1944,7 +2088,7 @@
       "schedule": "Eingeplant",
       "major_update": "Major-Upgrade",
       "changes": "Änderungen",
-    "download": "Download",
+      "download": "Download",
       "push": "Übertragen",
       "register": "Registrieren",
       "sign": "Signieren",
@@ -2685,6 +2829,22 @@
       "backupBefore": "Eine Sicherung der OPNexus-Datenbank erstellst du auf dem Server mit",
       "backupHelp": "Sichert die Datenbank (Regeln, Hosts, Verlauf). API-Secrets und Schlüssel liegen in eigenen Docker-Volumes und sind nicht im Dump. Details im Handbuch.",
       "docs": "Dokumentation zum Kommandozeilen-Werkzeug"
+    }
+  },
+  "gateway": {
+    "title": "Gateways",
+    "none": "Diese Firewall meldet keine Gateways.",
+    "loadFailed": "Gateway-Status konnte nicht geladen werden",
+    "notMeasured": "nicht überwacht",
+    "loss": "Verlust {value} %",
+    "delay": "{value} ms",
+    "stddev": "± {value} ms",
+    "state": {
+      "online": "Online",
+      "degraded": "Beeinträchtigt",
+      "offline": "Offline",
+      "forced_down": "Abgeschaltet",
+      "unknown": "Unbekannt"
     }
   }
 }

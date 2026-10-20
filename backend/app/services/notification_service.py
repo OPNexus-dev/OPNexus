@@ -8,8 +8,8 @@ from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.notification import NotificationProblem, NotificationSettings
-from app.services import notification_checks, notification_dedup, notification_delivery
+from app.models.notification import NotificationChannel, NotificationProblem, NotificationSettings
+from app.services import monitor_checks, notification_channels, notification_checks, notification_dedup, notification_delivery
 from app.services import notification_settings_service
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,9 @@ _CHECKS = [
     ("backup_stale", "backup_failed_enabled", notification_checks.check_backup_stale),
     ("backup_offsite_failed", "backup_failed_enabled", notification_checks.check_backup_offsite),
     ("compliance_finding", "compliance_alerts_enabled", notification_checks.check_compliance),
+    ("gateway_down", "gateway_down_enabled", monitor_checks.check_gateway_down),
+    ("resource_threshold", "resource_threshold_enabled", monitor_checks.check_resource_threshold),
+    ("service_down", "service_down_enabled", monitor_checks.check_service_down),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no
@@ -41,7 +44,9 @@ _CHECKS = [
 _NO_RESOLVED_NOTICE = {"scheduled_maintenance_failed"}
 
 
-async def _deliver(settings_row: NotificationSettings, problem: NotificationProblem, transition: str) -> None:
+async def _deliver(
+    settings_row: NotificationSettings, problem: NotificationProblem, transition: str, channels: list[NotificationChannel] = (),
+) -> None:
     """Best-effort, not an audit trail: attempted once per transition and
     never retried, even on failure — avoids retry-storming a broken webhook
     URL or SMTP relay every poll cycle."""
@@ -60,6 +65,13 @@ async def _deliver(settings_row: NotificationSettings, problem: NotificationProb
         except notification_delivery.NotificationDeliveryError:
             logger.exception("Email delivery failed for %s/%s", problem.problem_type, problem.dedup_key)
 
+    for channel in channels:
+        try:
+            await notification_channels.send(channel, problem, transition)
+        except notification_delivery.NotificationDeliveryError:
+            # The error text names the channel and the HTTP status, never the URL or token.
+            logger.exception("Channel %s (%s) delivery failed for %s/%s", channel.name, channel.channel_type, problem.problem_type, problem.dedup_key)
+
     if transition == "resolved":
         problem.resolved_notified_at = _now()
     else:
@@ -69,6 +81,7 @@ async def _deliver(settings_row: NotificationSettings, problem: NotificationProb
 async def run_notification_checks(db: AsyncSession) -> dict:
     settings_row = await notification_settings_service.get_settings(db)
     result = {"opened": 0, "resolved": 0}
+    channels = await notification_channels.enabled_channels(db)
 
     for problem_type, enabled_flag, check_fn in _CHECKS:
         if not getattr(settings_row, enabled_flag):
@@ -85,9 +98,9 @@ async def run_notification_checks(db: AsyncSession) -> dict:
 
         opened, resolved = await notification_dedup.diff_and_update(db, problem_type, current)
         for problem in opened:
-            await _deliver(settings_row, problem, "opened")
+            await _deliver(settings_row, problem, "opened", channels)
         for problem in resolved:
-            await _deliver(settings_row, problem, "resolved")
+            await _deliver(settings_row, problem, "resolved", channels)
         result["opened"] += len(opened)
         result["resolved"] += len(resolved)
 

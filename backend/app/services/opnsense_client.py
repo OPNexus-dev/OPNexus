@@ -145,6 +145,34 @@ async def get_interface_statistics(host: OpnsenseHost) -> dict:
     return await _request(host, "GET", "/diagnostics/interface/getInterfaceStatistics")
 
 
+# Swap and CPU count, for the resource-threshold alert (1.24). Verified against core source
+# (Diagnostics/Api/SystemController::systemSwapAction -> configd "system show swapinfo") and live
+# (read-only GET, test-fw-3, OPNsense 26.7):
+#   systemSwap  -> {"swap": [{"device": "/dev/da0p3", "total": "8388608", "used": "0"}]}   (KiB, strings;
+#                  an empty list when the firewall has no swap)
+#   cpu_usage/getCPUType -> ["QEMU Virtual CPU version 2.5+ (6 cores, 6 threads)"]
+async def get_system_swap(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/diagnostics/system/systemSwap")
+
+
+async def get_cpu_type(host: OpnsenseHost) -> Any:
+    return await _request(host, "GET", "/diagnostics/cpu_usage/getCPUType")
+
+
+# Gateway health (read-only). Routes\Api\GatewayController::statusAction runs configd "interface gateways status"
+# -> scripts/routes/gateway_status.php, which merges the configured gateways with dpinger's live numbers
+# (src/etc/inc/plugins.inc.d/dpinger.inc, dpinger_status()). Live-verified on test-fw-3 (26.7):
+#   {"items": [{"name": "WAN_GW", "address": "203.0.113.1", "status": "none", "loss": "~", "delay": "~",
+#               "stddev": "~", "monitor": "~", "status_translated": "Online"}, ...], "status": "ok"}
+# "status" is the machine-readable verdict: none (fine), down, force_down (switched off by the admin), delay,
+# loss, delay+loss (thresholds of the gateway itself), anything else = pending. loss/delay/stddev are "12.3 %" /
+# "4.5 ms" strings, or "~" while nothing is measured (e.g. monitoring disabled on that gateway). "status" is
+# "failed" with no items when the firewall has no gateways. searchGateway carries the same numbers but with a
+# translated status text ("Online"), so it is not used here.
+async def get_gateway_status(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/routes/gateway/status")
+
+
 async def toggle_carp_maintenance(host: OpnsenseHost) -> dict:
     """Toggle persistent CARP maintenance mode.
 

@@ -2,6 +2,7 @@
 
 import { HostMaintenance } from "@/components/HostMaintenance";
 import { HostResourceUsage } from "@/components/HostResourceUsage";
+import { HostGateways } from "@/components/GatewayStatus";
 import { HostServices } from "@/components/HostServices";
 import { RestoreWizard } from "@/components/RestoreWizard";
 import { Button } from "@/components/ui/Button";
@@ -153,6 +154,8 @@ export default function HostDetailPage() {
           </div>
 
           <HostResourceUsage host={host} />
+
+          <HostGateways host={host} />
 
           <HostMaintenance host={host} />
 

@@ -488,6 +488,37 @@ Beschreibung und Systemregeln. Die Oberfläche nennt den Grund je Regel.
 > strikt „erster Treffer gewinnt“ aus. Die Reihenfolge ist dadurch
 > sicherheitsrelevant, siehe [hierarchische Policies](#gerätegruppen-und-hierarchische-policies).
 
+### Aliase und NAT von der Firewall übernehmen
+
+Wie die Regeln lassen sich auch **Aliase** und **NAT-Regeln** (Port Forward, 1:1, Outbound) übernehmen, die von Hand
+in OPNsense entstanden sind: auf der jeweiligen Seite **Von Firewall übernehmen**, Firewall wählen, dann entweder ein
+Objekt mit **Übernehmen** oder alle auf einmal mit **Alle übernehmbaren übernehmen**. So kommt eine bestehende Firewall
+ohne Abtippen unter zentrale Verwaltung.
+
+Die Übernahme **schreibt nichts auf die Firewall**. OPNexus liest das Objekt frisch von der Firewall, legt es zentral an
+(Ziel: genau diese Firewall) und merkt sich die UUID aus OPNsense. Deshalb zeigt die Vorschau direkt danach „keine Änderung“,
+und der nächste Rollout nach einer Änderung aktualisiert dasselbe Objekt, statt ein zweites anzulegen. Die Übernahme steht im
+Audit-Log; Operatoren dürfen übernehmen (sie legt nur zentrale Einträge an), Nur-Lese-Benutzer nicht.
+
+Nicht übernommen wird, was das Modell verfälschen würde. Die Oberfläche nennt den Grund je Objekt:
+
+| Objekt | Nicht übernehmbar, weil … |
+|---|---|
+| Aliase | OPNsense-eigen (`bogons`, `sshlockout`, `__lan_network` …); Typ unbekannt für OPNexus (URL, URL-Tabelle, GeoIP, dynamische IPv6-Hosts, OpenVPN-Gruppe, „Extern“); der Name existiert in OPNexus schon; Name mit Sonderzeichen; BGP-ASN mit IPv4/IPv6-Einschränkung; Verweis auf einen Alias, der nicht übernommen ist |
+| Port Forward | mehrere oder keine Schnittstelle; IP-Version weder IPv4 noch IPv6; Protokoll „beliebig“; „Kein Redirect“; kein Ziel; verknüpfte Filterregel; invertierte Quelle oder Ziel; NAT-Reflection-Wert unbekannt; Beschreibung fehlt |
+| 1:1-NAT | mehrere oder keine Schnittstelle; unbekannter Typ oder NAT-Reflection-Wert; Pflichtangaben oder Beschreibung fehlen |
+| Outbound-NAT | mehrere oder keine Schnittstelle; „Kein NAT“-Regel (`nonat`); IP-Version weder IPv4 noch IPv6; Beschreibung fehlt |
+
+Automatisch erzeugte NAT-Regeln (Anti-Lockout, „Auto created rule“) erscheinen nie in der Liste. **Verschachtelte Aliase:**
+Ein Alias, der einen anderen, noch nicht übernommenen Alias enthält, wartet auf diesen; „Alle übernehmbaren übernehmen“
+übernimmt beide in der richtigen Reihenfolge, einzeln zuerst den enthaltenen Alias. Verweist er auf einen Alias, der nie
+übernommen werden kann (z. B. vom Typ URL), bleibt er mit diesem Grund zurück. **Outbound-NAT** lässt sich nur übernehmen,
+wenn der Outbound-Modus der Firewall Hybrid oder Manuell ist; im Modus Automatisch zeigt OPNsense manuelle Regeln gar nicht an,
+OPNexus verweist dann darauf und ändert den Modus nicht.
+
+Einstellungen, die OPNexus nicht verwaltet (Protokollierung und Pool-Optionen beim Port Forward, Tags, Kategorien, statischer
+NAT-Port), werden nie überschrieben und im Dialog als „Bleibt auf der Firewall unverändert“ angezeigt.
+
 ---
 
 ## Gerätegruppen und hierarchische Policies
@@ -944,17 +975,57 @@ Einstellungen › **Benachrichtigungen**. Kanäle:
   Absender und Empfängern. Zertifikat und Hostname werden geprüft; ein Mailserver
   mit privater CA braucht `SMTP_CA_FILE`. Anmeldung ohne Verschlüsselung bleibt
   gesperrt. Mit **testen** prüfst du jeden Kanal.
+- **Weitere Kanäle** (Abschnitt „Weitere Kanäle“, beliebig viele je Typ, jeweils mit **Testen**):
+
+  | Typ | Angaben | Zugangsdaten |
+  |---|---|---|
+  | **ntfy** | Serveradresse (Standard `https://ntfy.sh`), Thema, Priorität 1–5 | Zugriffstoken, optional |
+  | **Gotify** | Serveradresse, Priorität 0–10 | App-Token |
+  | **Telegram** | Chat-ID (Zahl oder `@kanal`), optional eine eigene API-Adresse | Bot-Token (von @BotFather) |
+  | **Microsoft Teams** | – | Webhook-Adresse eines Workflows („Beim Empfang einer Webhook-Anfrage in einem Kanal posten“) oder eines Incoming-Webhooks |
+  | **Matrix** | Homeserver-Adresse, Raum-ID (`!abc:example.org`, nicht der Alias) | Zugriffstoken eines Benutzers, der im Raum ist |
+
+  Die Zugangsdaten liegen wie das SMTP-Passwort in der Geheimnis-Ablage des Servers, nie in der
+  Datenbank, werden nie wieder angezeigt (nur „gesetzt“) und stehen nicht in Fehlermeldungen oder Logs.
+  Weil bei Telegram und Teams die Adresse selbst das Geheimnis ist, wird sie wie ein Token behandelt.
+  Ziele müssen `http(s)` sein, ohne Zugangsdaten in der Adresse; lokale Adressen (`localhost`, Loopback,
+  Link-Local, Metadaten-Dienst) werden abgelehnt, Ziele im eigenen Netz sind erlaubt. Weiterleitungen werden
+  nicht verfolgt. Ein ausgefallener Kanal hält die anderen nicht auf; zugestellt wird einmal je Ereignis.
 
 Ereignisse (jeweils einzeln schaltbar): Host nicht erreichbar, Zertifikat läuft ab,
 Regel-Drift im Cluster, NAT-Drift im Cluster, Netzwerk-Abweichung im Cluster,
 fehlgeschlagener Rollback, Wartungsergebnis unklar, CARP-Zustand kritisch
 (Split-Brain/kein Master), CARP-Auto-Revert fehlgeschlagen, geplante Wartung nicht
-ausgeführt. Geprüft wird im eingestellten Intervall (Standard 300 s). Ein Problem
+ausgeführt, Gateway gestört, Ressourcen-Schwelle überschritten, Dienst ausgefallen
+(die letzten drei sind unten beschrieben). Geprüft wird im eingestellten Intervall (Standard 300 s). Ein Problem
 meldet sich einmal und löst sich selbst auf, sobald es behoben ist; die
 Dashboard-Karte „Warnungen“ zeigt die offenen. Ausnahme „geplante Wartung nicht
 ausgeführt“: Sie bleibt drei Tage nach dem geplanten Zeitpunkt offen und schließt dann
 ohne „behoben“-Meldung, weil sich ein verpasster Termin nicht von selbst behebt. Der
 Text der Benachrichtigungen ist nicht übersetzt.
+
+#### Gateway-, Ressourcen- und Dienst-Alarme
+
+Diese drei Ereignisse lesen die **Minutenmessung** (dieselbe wie die Auslastungs-Diagramme), fragen die
+Firewalls also nicht zusätzlich ab. Damit Einzelspitzen und flackernde Verbindungen nichts melden,
+öffnet ein Alarm erst, wenn die letzten *N* Messungen alle schlecht sind, und schließt erst, wenn die letzten
+*N* alle wieder gut sind; dazwischen bleibt der Zustand, wie er ist. *N* ist einstellbar (Standard 3 für
+Gateways und Dienste, 5 für Ressourcen; die Messung läuft jede Minute). Meldet eine Firewall gerade nicht,
+beurteilt OPNexus sie nicht (das meldet „Host nicht erreichbar“) und lässt offene Alarme stehen.
+
+- **Gateway gestört** – **standardmäßig an**, weil ein WAN-Ausfall das ist, was jeder wissen will. Ein Alarm je Gateway, wenn OPNsense es als
+  *down* führt, oder wenn der Paketverlust (Standard ab 20 %) oder die Latenz (Standard ab 500 ms) darüber liegt (0 schaltet die jeweilige Schwelle ab).
+  OPNsense selbst entscheidet über „down“ nach den Grenzen im Gateway (Einstellung „Gateway-Überwachung“). Von Hand abgeschaltete
+  Gateways („Gateway deaktivieren/erzwungen aus“) und Gateways ohne Überwachung (kein Monitor-IP, Werte „~“) melden nichts.
+  Der Status steht auch auf der Host-Seite (Abschnitt „Gateways“, live gelesen), als Kachel auf dem Dashboard und in Prometheus.
+- **Ressourcen-Schwelle** – standardmäßig **aus**: Auf einer bestehenden Flotte würde das Einschalten sonst gleich alles melden, was schon länger voll
+  ist. Schwellen: Festplatte ab 90 % (je ZFS-Pool bzw. UFS-Gerät ein Alarm), Arbeitsspeicher ab 95 %, Swap ab 50 %, CPU-Last ab 2,0 je Thread
+  (1-Minuten-Last geteilt durch die Zahl der CPU-Threads). Jede Schwelle lässt sich mit 0 abschalten.
+- **Dienst ausgefallen** – standardmäßig **aus**. OPNsense liefert nur „läuft / läuft nicht“ und „gesperrt“, aber nicht, ob jemand einen Dienst
+  absichtlich gestoppt hat. Deshalb gilt eine **Liste überwachter Dienste** (Standard: unbound, dnsmasq, dhcpd, dhcpd6, kea-dhcp4, kea-dhcp6, ntpd,
+  openvpn, wireguard, strongswan), und gemeldet wird nur ein Dienst, der in den letzten rund zwei Stunden lief und jetzt nicht mehr. Ein Dienst, der
+  nie lief (etwa DHCPv6 ohne Präfix), bleibt still; einen absichtlich gestoppten Dienst nimmst du aus der Liste. Eine Firewall listet nur Dienste, die
+  in ihrer Konfiguration aktiviert sind, ein nicht eingerichteter Dienst taucht also gar nicht auf.
 
 ### Sicherheitslage
 
@@ -1056,6 +1127,10 @@ scrape_configs:
 | `opnexus_host_enabled`, `…_last_sample_timestamp_seconds` | Überwachung an; Zeit der letzten Messung |
 | `opnexus_host_memory_used_percent`, `opnexus_host_load1`, `opnexus_host_disk_used_percent` | Letzte Messung |
 | `opnexus_host_carp_master` | 1 = MASTER, 0 = BACKUP (fehlt, wenn unbekannt) |
+| `opnexus_host_swap_used_percent` | Swap-Belegung der letzten Messung (fehlt ohne Swap) |
+| `opnexus_host_gateway_up{gateway}` | 1, solange OPNsense das Gateway nicht als down führt |
+| `opnexus_host_gateway_loss_percent`, `…_delay_seconds`, `…_stddev_seconds` `{gateway}` | Paketverlust, Laufzeit und Abweichung zum Monitor (fehlen ohne Messung) |
+| `opnexus_host_service_running{service,instance}` | 1 = läuft, nur für Dienste aus der Überwachungsliste |
 | `opnexus_host_compliance_score`, `opnexus_host_compliance_findings{severity}` | Sicherheitslage |
 | `opnexus_pending_actions{kind,status}` | Offene Aktionen wie auf dem Dashboard |
 | `opnexus_problems_open{type}` | Offene Probleme der Benachrichtigungen |

@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { WorkflowBadge, workflowStates } from "@/components/WorkflowBadge";
 import { useLanguage } from "@/components/LanguageProvider";
 import { OutboundNatReview } from "@/components/OutboundNatReview";
+import { AdoptObjectsModal } from "@/components/AdoptObjectsModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -40,6 +41,7 @@ import {
   ShieldCheck,
   Trash2,
   XCircle,
+  Download,
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useReadOnly } from "@/lib/useReadOnly";
@@ -118,6 +120,7 @@ export default function OutboundNatPanel() {
 function OutboundNatContent() {
   const { t, errorMessage } = useLanguage();
   const readOnly = useReadOnly();
+  const [showAdopt, setShowAdopt] = useState(false);
   const toast = useToast();
   const router = useRouter();
   const params = useSearchParams();
@@ -399,14 +402,22 @@ function OutboundNatContent() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("rules.groupTitle", { name: selectedGroup.name }) : "Outbound NAT"}<InfoTip text={t("rules.subtitle")} size={18} /></h1>
         {activeTab === "managed" && (
-          <Button disabled={readOnly} onClick={() => openEditor(null)}>
-            <Plus size={16} />
-            {t("rules.new")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
+              <Download size={16} />
+              {t("adopt.button")}
+            </Button>
+            <Button disabled={readOnly} onClick={() => openEditor(null)}>
+              <Plus size={16} />
+              {t("rules.new")}
+            </Button>
+          </div>
         )}
       </div>
 
       <OutboundModes hosts={hosts} />
+      {showAdopt && <AdoptObjectsModal kind="outbound-nat" hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
+
       <Tabs
         className="mb-6"
         items={[

@@ -1,10 +1,12 @@
+import re
 import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config import settings
+from app.models.notification import DEFAULT_SERVICE_WATCHLIST
 
 SmtpSecurity = Literal["none", "starttls", "ssl"]
 ProblemType = Literal[
@@ -14,7 +16,9 @@ ProblemType = Literal[
     "backup_stale",
     "backup_offsite_failed",
     "compliance_finding",
+    "gateway_down", "resource_threshold", "service_down",
 ]
+ChannelType = Literal["ntfy", "gotify", "telegram", "teams", "matrix"]
 
 
 class NotificationSettingsRead(BaseModel):
@@ -45,9 +49,26 @@ class NotificationSettingsRead(BaseModel):
     scheduled_maintenance_failed_enabled: bool = True
     backup_failed_enabled: bool = True
     compliance_alerts_enabled: bool = False
+    gateway_down_enabled: bool = True
+    resource_threshold_enabled: bool = False
+    service_down_enabled: bool = False
+    gateway_loss_threshold_pct: int = 20
+    gateway_delay_threshold_ms: int = 500
+    disk_threshold_pct: int = 90
+    memory_threshold_pct: int = 95
+    swap_threshold_pct: int = 50
+    load_per_cpu_threshold: float = 2.0
+    alert_confirm_samples: int = 3
+    resource_confirm_samples: int = 5
+    service_watchlist: list[str] = Field(default_factory=lambda: list(DEFAULT_SERVICE_WATCHLIST))
 
     poll_interval_seconds: int
     updated_at: datetime
+
+    @field_validator("service_watchlist", mode="before")
+    @classmethod
+    def _default_watchlist(cls, value):
+        return list(DEFAULT_SERVICE_WATCHLIST) if value is None else value
 
 
 class NotificationSettingsUpdate(BaseModel):
@@ -84,6 +105,33 @@ class NotificationSettingsUpdate(BaseModel):
     scheduled_maintenance_failed_enabled: bool | None = None
     backup_failed_enabled: bool | None = None
     compliance_alerts_enabled: bool | None = None
+    gateway_down_enabled: bool | None = None
+    resource_threshold_enabled: bool | None = None
+    service_down_enabled: bool | None = None
+    # 0 switches that single threshold off.
+    gateway_loss_threshold_pct: int | None = Field(default=None, ge=0, le=100)
+    gateway_delay_threshold_ms: int | None = Field(default=None, ge=0, le=60000)
+    disk_threshold_pct: int | None = Field(default=None, ge=0, le=100)
+    memory_threshold_pct: int | None = Field(default=None, ge=0, le=100)
+    swap_threshold_pct: int | None = Field(default=None, ge=0, le=100)
+    load_per_cpu_threshold: float | None = Field(default=None, ge=0, le=1000)
+    alert_confirm_samples: int | None = Field(default=None, ge=1, le=60)
+    resource_confirm_samples: int | None = Field(default=None, ge=1, le=60)
+    service_watchlist: list[str] | None = Field(default=None, max_length=100)
+
+    @field_validator("service_watchlist")
+    @classmethod
+    def _clean_watchlist(cls, value):
+        if value is None:
+            return None
+        names = []
+        for raw in value:
+            name = str(raw).strip()
+            if not re.fullmatch(r"[A-Za-z0-9._+-]{1,64}", name):
+                raise ValueError("Dienstnamen bestehen aus Buchstaben, Ziffern und . _ + -")
+            if name not in names:
+                names.append(name)
+        return names
 
     poll_interval_seconds: int | None = Field(
         default=None, ge=settings.notification_poll_min_interval_seconds
@@ -106,3 +154,55 @@ class NotificationProblemRead(BaseModel):
 
 class TestNotificationRequest(BaseModel):
     channel: Literal["webhook", "email"]
+
+
+class NotificationChannelRead(BaseModel):
+    """Never carries the credential; ``config`` is withheld from non-admins (an ntfy topic is a password)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    channel_type: ChannelType
+    enabled: bool
+    config: dict
+    secret_set: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+def _channel_name(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if not value.strip():
+        raise ValueError("Name darf nicht leer sein")
+    return value.strip()
+
+
+class NotificationChannelCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    channel_type: ChannelType
+    enabled: bool = True
+    config: dict = Field(default_factory=dict)
+    # Token, or for Teams the webhook address. Write-only.
+    secret: str | None = Field(default=None, max_length=2100)
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, value):
+        return _channel_name(value)
+
+
+class NotificationChannelUpdate(BaseModel):
+    """Partial: omitted fields stay. ``secret`` replaces the credential, ``clear_secret`` removes it."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    enabled: bool | None = None
+    config: dict | None = None
+    secret: str | None = Field(default=None, max_length=2100)
+    clear_secret: bool = False
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, value):
+        return _channel_name(value)

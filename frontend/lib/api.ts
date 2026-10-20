@@ -601,6 +601,28 @@ export interface UnmanagedRule {
   reasons: string[];
 }
 
+export type AdoptKind = "aliases" | "port-forward" | "one-to-one" | "outbound-nat";
+
+/** An alias / NAT rule found live on a host that OPNexus does not manage yet. */
+export interface UnmanagedObject {
+  uuid: string;
+  title: string;
+  enabled: boolean;
+  adoptable: boolean;
+  /** Not adoptable alone yet, but in the same "adopt all" run (an alias whose referenced aliases come first). */
+  bulk_adoptable: boolean;
+  reasons: string[];
+  reason_details: Record<string, string>;
+  /** Settings OPNexus does not manage that stay untouched on the firewall. */
+  kept: string[];
+  info: Record<string, string>;
+}
+
+export interface AdoptAllResult {
+  adopted: { uuid: string; title: string; id: string }[];
+  skipped: { uuid: string; title: string; reasons: string[]; reason_details: Record<string, string> }[];
+}
+
 export type PolicyAliasType = "host" | "network" | "port" | "networkgroup" | "mac" | "asn";
 
 export interface PolicyAlias {
@@ -1264,6 +1286,12 @@ export const api = {
   getAuditExport: () => request<AuditExportSettings>("/settings/audit-export"),
   updateAuditExport: (data: Partial<AuditExportUpdate>) => request<AuditExportSettings>("/settings/audit-export", { method: "PUT", body: JSON.stringify(data) }),
   testAuditExport: () => request<{ success: boolean }>("/settings/audit-export/test", { method: "POST" }),
+  notificationChannels: () => request<NotificationChannel[]>("/notifications/channels"),
+  createNotificationChannel: (data: NotificationChannelCreate) => request<NotificationChannel>("/notifications/channels", { method: "POST", body: JSON.stringify(data) }),
+  updateNotificationChannel: (id: string, data: NotificationChannelUpdate) => request<NotificationChannel>(`/notifications/channels/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteNotificationChannel: (id: string) => request<void>(`/notifications/channels/${id}`, { method: "DELETE" }),
+  testNotificationChannel: (id: string) => request<{ success: boolean }>(`/notifications/channels/${id}/test`, { method: "POST" }),
+  hostGateways: (id: string) => request<GatewayHealth[]>(`/hosts/${id}/gateways`),
   testNotification: (channel: "webhook" | "email") => request<{ success: boolean }>("/notifications/test", { method: "POST", body: JSON.stringify({ channel }) }),
   notificationProblems: (includeResolved = false) => request<NotificationProblem[]>(`/notifications/problems?include_resolved=${includeResolved}`),
   carpEvents: (clusterName?: string) => request<CarpEvent[]>(`/cluster/carp-events${clusterName ? `?cluster_name=${encodeURIComponent(clusterName)}` : ""}`),
@@ -1396,6 +1424,9 @@ export const api = {
   listRules: () => request<Rule[]>("/rules"),
   createRule: (data: RuleCreate) => request<Rule>("/rules", { method: "POST", body: JSON.stringify(data) }),
   listUnmanagedRules: (hostId: string) => request<UnmanagedRule[]>(`/rules/unmanaged?host_id=${hostId}`),
+  listUnmanagedObjects: (kind: AdoptKind, hostId: string) => request<UnmanagedObject[]>(`/${kind}/unmanaged?host_id=${hostId}`),
+  adoptObject: (kind: AdoptKind, hostId: string, uuid: string) => request<{ id: string }>(`/${kind}/adopt`, { method: "POST", body: JSON.stringify({ host_id: hostId, uuid }) }),
+  adoptAllObjects: (kind: AdoptKind, hostId: string) => request<AdoptAllResult>(`/${kind}/adopt-all`, { method: "POST", body: JSON.stringify({ host_id: hostId }) }),
   adoptRule: (hostId: string, ruleUuid: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid }) }),
   updateRule: (id: string, data: RuleCreate, expectedUpdatedAt: string) => request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
@@ -1678,7 +1709,9 @@ export interface OutboundMode { host_id: string; host_name: string; mode: string
 export interface AuditEvent { id: string; created_at: string; correlation_id: string; actor: string; kind: string; action: string; status: string; entity_id: string | null; entity_name: string | null; host_id: string | null; host_name: string | null; message: string | null; details: Record<string,unknown>; }
 export interface AuditPage { total: number; offset: number; limit: number; items: AuditEvent[]; }
 
-export interface DashboardHost { id: string; name: string; status: HostStatus; carp_status: string | null; cluster_name: string | null; }
+export type GatewayState = "online" | "degraded" | "offline" | "forced_down" | "unknown";
+export interface GatewayHealth { name: string; address: string | null; status: string; state: GatewayState; loss: number | null; delay: number | null; stddev: number | null; monitor: string | null; }
+export interface DashboardHost { id: string; name: string; status: HostStatus; carp_status: string | null; cluster_name: string | null; gateways: GatewayHealth[] | null; }
 export interface PendingAction { kind: string; status: string; entity_name: string; host_name: string; message: string | null; created_at: string; link: string; }
 export interface ActivityItem { id: string; created_at: string; actor: string; kind: string; action: string; status: string; entity_name: string | null; host_name: string | null; message: string | null; }
 export interface DashboardSummary { hosts: DashboardHost[]; pending_actions: PendingAction[]; recent_activity: ActivityItem[]; }
@@ -1761,9 +1794,35 @@ export interface NotificationSettings {
   scheduled_maintenance_failed_enabled: boolean;
   backup_failed_enabled: boolean;
   compliance_alerts_enabled: boolean;
+  gateway_down_enabled: boolean;
+  resource_threshold_enabled: boolean;
+  service_down_enabled: boolean;
+  gateway_loss_threshold_pct: number;
+  gateway_delay_threshold_ms: number;
+  disk_threshold_pct: number;
+  memory_threshold_pct: number;
+  swap_threshold_pct: number;
+  load_per_cpu_threshold: number;
+  alert_confirm_samples: number;
+  resource_confirm_samples: number;
+  service_watchlist: string[];
   poll_interval_seconds: number;
   updated_at: string;
 }
+
+export type ChannelType = "ntfy" | "gotify" | "telegram" | "teams" | "matrix";
+export interface NotificationChannel {
+  id: string;
+  name: string;
+  channel_type: ChannelType;
+  enabled: boolean;
+  config: Record<string, string | number>;
+  secret_set: boolean;
+  created_at: string;
+  updated_at: string;
+}
+export interface NotificationChannelCreate { name: string; channel_type: ChannelType; enabled: boolean; config: Record<string, string | number>; secret?: string; }
+export interface NotificationChannelUpdate { name?: string; enabled?: boolean; config?: Record<string, string | number>; secret?: string; clear_secret?: boolean; }
 
 export interface NotificationSettingsUpdate {
   webhook_enabled?: boolean;
@@ -1791,6 +1850,18 @@ export interface NotificationSettingsUpdate {
   scheduled_maintenance_failed_enabled?: boolean;
   backup_failed_enabled?: boolean;
   compliance_alerts_enabled?: boolean;
+  gateway_down_enabled?: boolean;
+  resource_threshold_enabled?: boolean;
+  service_down_enabled?: boolean;
+  gateway_loss_threshold_pct?: number;
+  gateway_delay_threshold_ms?: number;
+  disk_threshold_pct?: number;
+  memory_threshold_pct?: number;
+  swap_threshold_pct?: number;
+  load_per_cpu_threshold?: number;
+  alert_confirm_samples?: number;
+  resource_confirm_samples?: number;
+  service_watchlist?: string[];
   poll_interval_seconds?: number;
 }
 
@@ -1817,7 +1888,8 @@ export type ProblemType =
   | "scheduled_maintenance_failed"
   | "backup_stale"
   | "backup_offsite_failed"
-  | "compliance_finding";
+  | "compliance_finding"
+  | "gateway_down" | "resource_threshold" | "service_down";
 
 export interface CarpEvent {
   id: string;

@@ -21,6 +21,7 @@ from app.services.interface_service import check_interface_consistency
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.outbound_nat_deploy_service import confirm_outbound_nat, deploy_outbound_nat, undeploy_outbound_nat, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
+from app.routers.adopt_routes import add_adopt_routes
 
 router = APIRouter(prefix="/outbound-nat", tags=["outbound-nat"])
 
@@ -80,6 +81,9 @@ def _to_read(rule: OutboundNatRule, hosts: list[OpnsenseHost], deployments: list
             for d in deployments
         ],
     )
+
+
+add_adopt_routes(router, kind="outbound_nat", model=OutboundNatRule, load_options=_load_options, to_read=_to_read, read_model=OutboundNatRead)
 
 
 @router.get("", response_model=list[OutboundNatRead])

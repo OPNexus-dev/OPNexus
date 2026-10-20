@@ -206,3 +206,53 @@ async def test_fresh_database_needs_no_backup(scratch, monkeypatch):
     await migrate.run()  # würde ohne Backup-Ziel scheitern, wenn eins verlangt würde
     from pathlib import Path
     assert not Path(settings.migration_backup_dir).exists()
+
+
+async def _alembic(engine, action: str, revision: str) -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: migrate._run_alembic(sync_conn, action, revision))
+
+
+async def test_0020_upgrade_keeps_existing_settings_and_downgrade_is_clean(scratch):
+    """1.23 -> 1.24 with a real settings row: the new alert columns get their defaults, the stored webhook
+    and flags stay, the channel table appears; a downgrade removes exactly that again and re-upgrading works."""
+    await _alembic(scratch, "upgrade", "0019")
+    async with scratch.begin() as conn:
+        # Every NOT NULL column of the 0019 table gets a value, so the row is what a real 1.23 install has.
+        required = (await conn.execute(text(
+            "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'notification_settings' "
+            "AND is_nullable = 'NO' AND column_default IS NULL"
+        ))).all()
+        by_type = {"boolean": "true", "integer": "300", "json": "'[]'", "timestamp with time zone": "now()"}
+        values = {name: by_type.get(kind, "'x'") for name, kind in required}
+        values.update({"id": "1", "webhook_enabled": "true", "webhook_url": "'https://hooks.example/x'"})
+        await conn.execute(text(
+            f"INSERT INTO notification_settings ({', '.join(values)}) VALUES ({', '.join(values.values())})"
+        ))
+    await _alembic(scratch, "upgrade", "head")
+    async with scratch.connect() as conn:
+        row = (await conn.execute(text(
+            "SELECT webhook_enabled, webhook_url, gateway_down_enabled, resource_threshold_enabled, service_down_enabled, "
+            "disk_threshold_pct, load_per_cpu_threshold, alert_confirm_samples, resource_confirm_samples, service_watchlist "
+            "FROM notification_settings"
+        ))).one()
+        assert tuple(row) == (True, "https://hooks.example/x", True, False, False, 90, 2.0, 3, 5, None)
+        await conn.execute(text(
+            "INSERT INTO notification_channels (id, name, channel_type, config, created_at, updated_at) "
+            "VALUES (gen_random_uuid(), 'n', 'ntfy', '{\"topic\": \"t\"}', now(), now())"
+        ))
+        await conn.commit()
+    assert await _schema_diff(scratch) == []
+
+    await _alembic(scratch, "downgrade", "0019")
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT to_regclass('notification_channels')"))).scalar() is None
+        columns = set((await conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'notification_settings'"
+        ))).scalars().all())
+        assert "gateway_down_enabled" not in columns and "service_watchlist" not in columns
+        assert (await conn.execute(text("SELECT webhook_url FROM notification_settings"))).scalar() == "https://hooks.example/x"
+
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head()
+    assert await _schema_diff(scratch) == []

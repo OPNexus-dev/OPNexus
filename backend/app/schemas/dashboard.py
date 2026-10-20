@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.schemas.gateway import GatewayHealth
+
 
 class DashboardHost(BaseModel):
     id: uuid.UUID
@@ -10,6 +12,8 @@ class DashboardHost(BaseModel):
     status: str
     carp_status: str | None
     cluster_name: str | None
+    # From the last resource sample (no live call); None when there is no sample from the last 3 minutes.
+    gateways: list[GatewayHealth] | None = None
 
 
 class PendingAction(BaseModel):

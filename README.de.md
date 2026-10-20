@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.23.11` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.24.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -16,8 +16,9 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Sichere Änderungen** — jede Änderung läuft *Prüfen → Ausrollen → Bestätigen*; bleibt die Bestätigung im Zeitfenster aus, rollt OPNexus zurück.
 - **Hierarchische Policies** — Pre-/Post-Rulebases mit Vererbung über Gruppenbäume.
 - **VPN** — IPsec-Site-to-Site, OpenVPN und WireGuard, einmal definiert und ausgerollt.
-- **Netzwerk** — Schnittstellen, VLANs, virtuelle IPs, Gateways, Routen, LAGG/Bridge/GRE, DNS und DHCP je Firewall, dazu Tunables, Cron, Syslog, Snapshots und Diagnose (Ping, Traceroute, Port-Prüfung, DNS), ein Abgleich der Cluster-Knoten, mit Diff-Vorschau, Backup vor jeder Änderung und Schutz davor, die eigene Verbindung zu kappen; von Hand angelegte Regeln lassen sich übernehmen.
+- **Netzwerk** — Schnittstellen, VLANs, virtuelle IPs, Gateways, Routen, LAGG/Bridge/GRE, DNS und DHCP je Firewall, dazu Tunables, Cron, Syslog, Snapshots und Diagnose (Ping, Traceroute, Port-Prüfung, DNS), ein Abgleich der Cluster-Knoten, mit Diff-Vorschau, Backup vor jeder Änderung und Schutz davor, die eigene Verbindung zu kappen; von Hand angelegte Regeln, Aliase und NAT-Regeln lassen sich übernehmen.
 - **Zertifikate** — Trust-Store für alle Firewalls und Ausstellung per ACME / Let's Encrypt.
+- **Alarme** — Gateway-/WAN-Ausfall (down, Paketverlust, Latenz), Schwellen für Platte, Speicher, Swap und CPU sowie ausgefallene Dienste; über mehrere Messungen entprellt, damit Einzelspitzen und flackernde Verbindungen schweigen. Zustellung per E-Mail, Webhook, ntfy, Gotify, Telegram, Microsoft Teams oder Matrix, jedes Ereignis einzeln schaltbar.
 - **Logs & Audit** — zentrale Log-Suche mit Korrelation, Dashboards und lückenloser Deploy-Verlauf.
 - **Update-Center** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus.
 - **Einrichtungsassistent** — geführter Erststart nach der Installation: eigenes Passwort, Zwei-Faktor und die erste Firewall verbinden.
@@ -58,11 +59,11 @@ Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassis
 
 Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls).
 
-**Fertige Images** (amd64) liegen in der Registry dieses Gitea. In der `.env`:
+**Fertige Images** (amd64 und arm64) liegen in der Registry dieses Gitea. In der `.env`:
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.23.11
+OPNEXUS_VERSION=1.24.0
 ```
 
 ```bash

@@ -20,6 +20,7 @@ from app.services.interface_service import check_interface_consistency
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.port_forward_deploy_service import confirm_port_forward, deploy_port_forward, undeploy_port_forward, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
+from app.routers.adopt_routes import add_adopt_routes
 
 router = APIRouter(prefix="/port-forward", tags=["port-forward"])
 
@@ -78,6 +79,9 @@ def _to_read(rule: PortForwardRule, hosts: list[OpnsenseHost], deployments: list
             for d in deployments
         ],
     )
+
+
+add_adopt_routes(router, kind="port_forward", model=PortForwardRule, load_options=_load_options, to_read=_to_read, read_model=PortForwardRead)
 
 
 @router.get("", response_model=list[PortForwardRead])

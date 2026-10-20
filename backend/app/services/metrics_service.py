@@ -5,7 +5,7 @@ fan out live calls to every firewall (an offline host would stall it past the
 scraper's timeout and a 15 s scrape interval would hammer the fleet). The
 inputs are what OPNexus' own pollers already store:
 
-* host reachability and resources — the 60 s resource sampler (a host that
+* host reachability, resources, gateway health and service state — the 60 s resource sampler (a host that
   produced no sample for ``STALE_AFTER`` is reported down),
 * CARP role — the latest observed transition (carp_events),
 * open problems — the notification engine's problem table,
@@ -19,11 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.carp_event import CarpEvent
 from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
-from app.models.notification import NotificationProblem
+from app.models.notification import DEFAULT_SERVICE_WATCHLIST, NotificationProblem
 from app.models.resource_sample import HostResourceSample
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.routers.dashboard import collect_pending_actions
-from app.services import compliance_service
+from app.services import compliance_service, gateway_health_service, notification_settings_service
 from app.version import APP_VERSION
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -99,6 +99,14 @@ async def render(db: AsyncSession) -> str:
     out.family("opnexus_host_memory_used_percent", "Memory in use, percent (last sample).")
     out.family("opnexus_host_load1", "1-minute load average (last sample).")
     out.family("opnexus_host_disk_used_percent", "Fullest disk, percent (last sample).")
+    out.family("opnexus_host_swap_used_percent", "Swap in use, percent (last sample; absent without swap).")
+    out.family("opnexus_host_gateway_up", "1 if the gateway is not down (online, degraded or not monitored), 0 if OPNsense reports it down.")
+    out.family("opnexus_host_gateway_loss_percent", "Packet loss to the gateway monitor address, percent (last sample).")
+    out.family("opnexus_host_gateway_delay_seconds", "Round-trip time to the gateway monitor address (last sample).")
+    out.family("opnexus_host_gateway_stddev_seconds", "Round-trip time deviation to the gateway monitor address (last sample).")
+    out.family("opnexus_host_service_running", "1 if a watched service (Settings > Notifications) runs, 0 if it is stopped (last sample).")
+    configured = (await notification_settings_service.get_settings(db)).service_watchlist
+    watchlist = set(DEFAULT_SERVICE_WATCHLIST if configured is None else configured)
     out.family("opnexus_host_carp_master", "1 if the host's last observed CARP role is MASTER, 0 if BACKUP; absent if unknown.")
     for host in hosts:
         labels = {"host": host.name, "cluster": host.cluster_name or ""}
@@ -115,6 +123,22 @@ async def render(db: AsyncSession) -> str:
             ):
                 if value is not None:
                     out.sample(name, value, **labels)
+        if sample is not None:
+            raw = sample.raw or {}
+            if raw.get("swap_used_pct") is not None:
+                out.sample("opnexus_host_swap_used_percent", raw["swap_used_pct"], **labels)
+            for gw in gateway_health_service.from_compact(raw.get("gateways")):
+                gw_labels = {**labels, "gateway": gw.name}
+                out.sample("opnexus_host_gateway_up", 0 if gw.state == "offline" else 1, **gw_labels)
+                for name, value, factor in (
+                    ("opnexus_host_gateway_loss_percent", gw.loss, 1), ("opnexus_host_gateway_delay_seconds", gw.delay, 0.001),
+                    ("opnexus_host_gateway_stddev_seconds", gw.stddev, 0.001),
+                ):
+                    if value is not None:
+                        out.sample(name, round(value * factor, 6), **gw_labels)
+            for key, running in sorted((raw.get("services") or {}).items()):
+                if key.split("/")[0] in watchlist:
+                    out.sample("opnexus_host_service_running", running, **labels, service=key.split("/")[0], instance=key.split("/", 1)[1] if "/" in key else None)
         if carp_state.get(host.id) in ("MASTER", "BACKUP"):
             out.sample("opnexus_host_carp_master", 1 if carp_state[host.id] == "MASTER" else 0, **labels)
 

@@ -11,6 +11,7 @@ import {
   Activity,
   CheckCircle2,
   ClipboardList,
+  Globe,
   Layers,
   Network,
   RefreshCw,
@@ -21,6 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
+import { GatewayStateBadge, gatewayNumbers } from "@/components/GatewayStatus";
 import { labelFor, type Language } from "@/lib/i18n";
 
 const PENDING_KIND_LABELS: Record<string, string> = {
@@ -110,7 +112,7 @@ function certProblemLabel(context: Record<string, unknown>, t: (key: string, par
 }
 
 export default function DashboardPage() {
-  const { language, t, errorMessage } = useLanguage();
+  const { language, t, ts, errorMessage } = useLanguage();
   const router = useRouter();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [problems, setProblems] = useState<NotificationProblem[] | null>(null);
@@ -180,7 +182,11 @@ export default function DashboardPage() {
     };
   }, [errorMessage, router]);
 
-  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift"].includes(p.problem_type));
+  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down"].includes(p.problem_type));
+  const gatewayOrder: Record<string, number> = { offline: 0, degraded: 1, unknown: 2, forced_down: 3, online: 4 };
+  const gatewayRows = (summary?.hosts ?? [])
+    .flatMap((host) => (host.gateways ?? []).map((gateway) => ({ host, gateway })))
+    .sort((a, b) => gatewayOrder[a.gateway.state] - gatewayOrder[b.gateway.state]);
   const securityWarningsLoading = problems === null || firmwareWarnings === null;
   const securityWarningCount = healthProblems.length + (firmwareWarnings?.length ?? 0);
 
@@ -245,6 +251,28 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
+        <SectionCard title={t("dashboard.gateways")} icon={Globe}>
+          {summary === null ? (
+            <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-10" />)}</div>
+          ) : gatewayRows.length === 0 ? (
+            <EmptyState icon={Globe} title={t("dashboard.noGateways")} description={t("dashboard.noGatewaysDescription")} />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {gatewayRows.slice(0, 8).map(({ host, gateway }) => (
+                <li key={`${host.id}-${gateway.name}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+                  <Link href={`/hosts/${host.id}`} className="min-w-0 truncate font-medium text-sky-700 hover:underline">
+                    {host.name} · {gateway.name}
+                  </Link>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-slate-500">{gatewayNumbers(gateway, t)}</span>
+                    <GatewayStateBadge state={gateway.state} />
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </SectionCard>
+
         <SectionCard title={t("dashboard.securityPosture")} icon={ShieldAlert}>
           {posture === null ? (
             <Skeleton className="h-10" />
@@ -303,6 +331,14 @@ export default function DashboardPage() {
                     <Link href="/hosts" className="flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">{t("dashboard.hostIsOffline", { name: String(problem.context.host_name) })}</span>
                       <Badge tone="danger" className="shrink-0">{t("dashboard.hostOffline")}</Badge>
+                    </Link>
+                  )}
+                  {(problem.problem_type === "gateway_down" || problem.problem_type === "resource_threshold" || problem.problem_type === "service_down") && (
+                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="flex items-center justify-between gap-3 hover:underline">
+                      <span className="min-w-0 truncate font-medium text-slate-900">
+                        {String(problem.context.host_name)}: {ts(String(problem.context.gateway ?? problem.context.ressource ?? problem.context.dienst))}
+                      </span>
+                      <Badge tone="danger" className="shrink-0">{t(`dashboard.alert.${problem.problem_type}`)}</Badge>
                     </Link>
                   )}
                   {problem.problem_type === "cert_expiry" && (

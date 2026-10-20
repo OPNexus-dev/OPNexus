@@ -18,11 +18,13 @@ import {
   Tags,
   Trash2,
   XCircle,
+  Download,
 } from "lucide-react";
 import { WorkflowBadge, workflowStates } from "@/components/WorkflowBadge";
 import { useLanguage } from "@/components/LanguageProvider";
 import { AliasReview } from "@/components/AliasReview";
 import { LiveAliasesDrift } from "@/components/LiveAliasesDrift";
+import { AdoptObjectsModal } from "@/components/AdoptObjectsModal";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -70,6 +72,7 @@ function AliasesContent() {
   const typeLabel = (type: string) => (aliasTypes.includes(type as PolicyAliasType) ? t(`aliases.type.${type}`) : type);
   const typeHint = (type: PolicyAliasType) => t(`aliases.hint.${type}`);
   const readOnly = useReadOnly();
+  const [showAdopt, setShowAdopt] = useState(false);
   const toast = useToast();
   const router = useRouter();
   const params = useSearchParams();
@@ -242,12 +245,20 @@ function AliasesContent() {
           </Button>
         )}
         {activeTab === "managed" && (
-          <Button disabled={readOnly} onClick={() => openEditor(null)}>
-            <Plus size={16} />
-            {t("aliases.new")}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
+              <Download size={16} />
+              {t("adopt.button")}
+            </Button>
+            <Button disabled={readOnly} onClick={() => openEditor(null)}>
+              <Plus size={16} />
+              {t("aliases.new")}
+            </Button>
+          </div>
         )}
       </div>
+
+      {showAdopt && <AdoptObjectsModal kind="aliases" hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
 
       <Tabs
         className="mb-6"

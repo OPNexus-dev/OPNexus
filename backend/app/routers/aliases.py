@@ -17,6 +17,7 @@ from app.schemas.alias import DeploymentResult, AliasCreate, AliasRead, AliasEdi
 from app.services.alias_deploy_service import confirm_alias, deploy_alias, undeploy_alias, revert_alias_deployment
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
+from app.routers.adopt_routes import add_adopt_routes
 
 router = APIRouter(prefix="/aliases", tags=["aliases"])
 
@@ -68,6 +69,9 @@ def _to_read(alias: FirewallAlias, hosts: list[OpnsenseHost], deployments: list[
             for d in deployments
         ],
     )
+
+
+add_adopt_routes(router, kind="alias", model=FirewallAlias, load_options=_load_options, to_read=_to_read, read_model=AliasRead)
 
 
 @router.get("", response_model=list[AliasRead])

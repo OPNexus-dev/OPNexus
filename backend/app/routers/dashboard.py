@@ -18,6 +18,8 @@ locks are deliberately NOT included here (no fleet-wide list endpoint
 exists for those, only per-host, and it's a rarely-triggered flow) —
 a documented v1 gap, not an oversight.
 """
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,7 +48,10 @@ from app.models.rule_deployment import RuleDeployment
 from app.models.wireguard_tunnel import WireguardTunnel
 from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
 from app.schemas.dashboard import ActivityItem, DashboardHost, DashboardSummary, PendingAction
+from app.models.resource_sample import HostResourceSample
+from app.services import gateway_health_service
 from app.services.host_status_service import get_statuses
+from app.services.monitor_checks import STALE_AFTER
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -202,14 +207,34 @@ async def collect_pending_actions(db: AsyncSession) -> list[PendingAction]:
     return pending_actions
 
 
+async def _gateways_by_host(db: AsyncSession, hosts) -> dict:
+    """Gateway state from each host's newest resource sample; hosts without a fresh sample are left out."""
+    result: dict = {}
+    now = datetime.now(timezone.utc)
+    for host in hosts:
+        row = (
+            await db.execute(
+                select(HostResourceSample.sampled_at, HostResourceSample.raw["gateways"].as_json())
+                .where(HostResourceSample.host_id == host.id)
+                .order_by(HostResourceSample.sampled_at.desc())
+                .limit(1)
+            )
+        ).first()
+        if row is not None and row[1] is not None and now - row[0] <= STALE_AFTER:
+            result[host.id] = gateway_health_service.from_compact(row[1])
+    return result
+
+
 @router.get("", response_model=DashboardSummary)
 async def summary(db: AsyncSession = Depends(get_db)):
     hosts = (await db.scalars(select(OpnsenseHost).order_by(OpnsenseHost.name))).all()
     statuses = await get_statuses(hosts)
+    gateways = await _gateways_by_host(db, hosts)
     host_summaries = [
         DashboardHost(
             id=host.id, name=host.name, status=statuses.get(host.id, {}).get("status", "offline"),
             carp_status=statuses.get(host.id, {}).get("carp_status"), cluster_name=host.cluster_name,
+            gateways=gateways.get(host.id),
         )
         for host in hosts
     ]
