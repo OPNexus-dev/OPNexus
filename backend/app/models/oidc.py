@@ -22,7 +22,7 @@ class OidcSettings(Base):
     issuer: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     client_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     client_secret_set: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    scopes: Mapped[str] = mapped_column(String(255), nullable=False, default="openid profile email groups")
+    scopes: Mapped[str] = mapped_column(String(255), nullable=False, default="openid profile email")
     groups_claim: Mapped[str] = mapped_column(String(64), nullable=False, default="groups")
     admin_group: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     operator_group: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)

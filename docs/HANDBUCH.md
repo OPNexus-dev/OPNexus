@@ -248,8 +248,11 @@ und Nur-Lesen bekommen. „Anbieter testen“ prüft Discovery und Signaturschl�
 - **Geprüft** werden Signatur (nur asymmetrische Verfahren, nie `none` oder HMAC), Aussteller, Zielgruppe, Ablauf
   und Nonce des ID-Tokens; jeder Anmeldeversuch (State) gilt genau einmal und 10 Minuten. Gruppen kommen aus dem
   ID-Token, ersatzweise aus dem Userinfo-Endpunkt. Aussteller und Endpunkte müssen `https://` sein. Das ist
-  gegen einen nachgebauten Anbieter getestet (inklusive gefälschter Token), noch nicht gegen jeden echten
-  Anbieter: melde, was bei deinem nicht klappt.
+  gegen einen nachgebauten Anbieter getestet (inklusive gefälschter Token) und gegen ein echtes Keycloak (Anmeldung,
+  Rollen aus Gruppen, Rollenentzug, abgefangener Callback); andere Anbieter: melde, was bei deinem nicht klappt.
+  Die Standard-Scopes sind `openid profile email`; die Gruppen müssen als Claim im ID-Token oder Userinfo ankommen
+  (Keycloak: Mapper „Group Membership“ am Client; Entra ID: optionaler Gruppen-Claim). Anbieter, die Gruppen nur auf
+  Anfrage senden (z. B. Okta), brauchen zusätzlich den Scope `groups`.
 
 **Aufgabentrennung.** Einstellungen › Aufgabentrennung: Schaltest du „Operatoren dürfen Änderungen selbst
 ausrollen“ aus, bereiten Operatoren Änderungen nur vor (anlegen, bearbeiten, Vorschau), und **nur ein Admin
@@ -821,8 +824,9 @@ docker compose exec -T -e BACKUP_PASSPHRASE='…' backend python -m app.backup_d
 
 Die Benachrichtigung „Kein aktuelles Backup“ meldet sich, wenn ein Host drei Intervalle (mindestens
 6 Stunden) ohne Sicherung war, „Offsite-Backup fehlgeschlagen“ bei Problemen mit dem Ziel. Die
-Offsite-Anbindung ist gegen die offiziellen AWS-Signaturbeispiele geprüft, aber noch nicht gegen einen
-laufenden S3-Anbieter; „Ziel testen“ zeigt dir sofort, ob dein Anbieter funktioniert.
+Offsite-Anbindung ist gegen die offiziellen AWS-Signaturbeispiele und gegen einen laufenden S3-Server mit echter
+Signaturprüfung (Garage: Upload, Download, Löschen, Sonderzeichen im Schlüssel, falsches Geheimnis und falsche Region
+werden abgelehnt) geprüft; bei AWS selbst, Backblaze, Wasabi & Co. zeigt dir „Ziel testen“ sofort, ob dein Anbieter funktioniert.
 
 **Änderungen ansehen:** Der Knopf „Änderungen“ neben einer Sicherung zeigt, was sich gegenüber der
 vorherigen geändert hat. Geheimnisse (Passwörter, Schlüssel, Tokens, Zertifikate) erscheinen nur als

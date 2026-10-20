@@ -1604,7 +1604,7 @@
     "scopes": "Scopes",
     "claim": "Groups claim",
     "mapping": "Which group gets which role",
-    "mappingHint": "Enter the group names as the provider sends them. The most privileged matching role wins; a person in none of them cannot sign in. Roles of SSO accounts are managed at the provider and refreshed at every login.",
+    "mappingHint": "Enter the group names as the provider sends them. The most privileged matching role wins; a person in none of them cannot sign in. Roles of SSO accounts are managed at the provider and refreshed at every login. Providers that only send groups when asked (e.g. Okta) need the scope \"groups\" added to the scopes.",
     "test": "Test the provider",
     "dutiesTitle": "Separation of duties",
     "dutiesIntro": "When switched off, operators can prepare changes (edit, preview) but only an administrator may roll them out: deploy, remove or roll back a deployment, run or schedule maintenance and apply network changes. The refusal is recorded in the audit.",

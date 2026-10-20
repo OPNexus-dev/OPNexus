@@ -1604,7 +1604,7 @@
     "scopes": "Scopes",
     "claim": "Gruppen-Claim",
     "mapping": "Welche Gruppe welche Rolle bekommt",
-    "mappingHint": "Gruppennamen so eintragen, wie der Anbieter sie sendet. Die höchste passende Rolle gilt; wer in keiner Gruppe ist, kann sich nicht anmelden. Die Rolle von SSO-Konten wird beim Anbieter gepflegt und bei jeder Anmeldung aktualisiert.",
+    "mappingHint": "Gruppennamen so eintragen, wie der Anbieter sie sendet. Die höchste passende Rolle gilt; wer in keiner Gruppe ist, kann sich nicht anmelden. Die Rolle von SSO-Konten wird beim Anbieter gepflegt und bei jeder Anmeldung aktualisiert. Anbieter, die Gruppen nur auf Anfrage senden (z. B. Okta), brauchen zusätzlich den Scope „groups“ in den Scopes.",
     "test": "Anbieter testen",
     "dutiesTitle": "Aufgabentrennung",
     "dutiesIntro": "Ist es ausgeschaltet, können Operatoren Änderungen vorbereiten (bearbeiten, Vorschau), aber nur ein Administrator rollt sie aus: ausrollen, ein Deployment entfernen oder zurückrollen, Wartung ausführen oder planen und Netzwerkänderungen anwenden. Die Ablehnung steht im Audit.",

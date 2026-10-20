@@ -21,7 +21,7 @@ export function OidcSection() {
   const [issuer, setIssuer] = useState("");
   const [clientId, setClientId] = useState("");
   const [secret, setSecret] = useState("");
-  const [scopes, setScopes] = useState("openid profile email groups");
+  const [scopes, setScopes] = useState("openid profile email");
   const [claim, setClaim] = useState("groups");
   const [admin, setAdmin] = useState("");
   const [operator, setOperator] = useState("");

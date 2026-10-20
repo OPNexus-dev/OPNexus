@@ -50,7 +50,7 @@ async def get_settings(db: AsyncSession) -> OidcSettings:
     if row is None:
         row = OidcSettings(
             id=SINGLETON_ID, enabled=False, display_name="SSO", client_secret_set=False,
-            scopes="openid profile email groups", groups_claim="groups",
+            scopes="openid profile email", groups_claim="groups",
         )
         db.add(row)
         await db.flush()

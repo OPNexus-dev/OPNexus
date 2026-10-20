@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.2] "Harrier" — 2026-10-20
+
+- **SSO-Fix (gefunden beim Test gegen ein echtes Keycloak):** Die Standard-Scopes enthalten nicht mehr `groups` – Keycloak und Entra ID
+  lehnten die Anmeldung damit mit `invalid_scope` ab. Bestehende Einstellungen mit dem alten Standardwert werden umgestellt (Migration
+  `0018`); Anbieter wie Okta tragen `groups` bei Bedarf selbst ein (Hinweis in den Einstellungen).
+
 ## [1.23.1] "Harrier" — 2026-10-20
 
 - **Sicherheit (Ergebnis eines unabhängigen Reviews der Versionen 1.18–1.23):**
