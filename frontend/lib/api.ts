@@ -1229,6 +1229,7 @@ export interface UpdaterJob {
   from_version: string | null;
 }
 
+export type UpdateCheckSettings = { enabled: boolean; feed_url: string; managed_by_server: boolean };
 export interface UpdaterStatus {
   /** false = Updater nicht aktiviert/erreichbar (`reason` sagt warum). */
   available: boolean;
@@ -1287,6 +1288,8 @@ export const api = {
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
   versionCheck: () => request<VersionCheck>("/system/version-check"),
+  updateCheck: () => request<UpdateCheckSettings>("/system/update-check"),
+  updateUpdateCheck: (body: { enabled?: boolean; feed_url?: string }) => request<UpdateCheckSettings>("/system/update-check", { method: "PUT", body: JSON.stringify(body) }),
   updaterStatus: () => request<UpdaterStatus>("/system/updater"),
   updaterUpdate: (version: string) => request<{ job: UpdaterJob }>("/system/updater/update", { method: "POST", body: JSON.stringify({ version }) }),
   updaterRollback: () => request<{ job: UpdaterJob }>("/system/updater/rollback", { method: "POST" }),

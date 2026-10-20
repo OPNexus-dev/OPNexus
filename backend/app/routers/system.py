@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
+from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser
 from app.routers.auth import current_user
@@ -10,10 +13,10 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 
 @router.get("/version-check")
-async def version_check() -> dict:
+async def version_check(db: AsyncSession = Depends(get_db)) -> dict:
     """Ist eine neuere OPNexus-Version veröffentlicht? Aus, solange
     UPDATE_CHECK_URL nicht gesetzt ist (dann ohne ausgehende Anfrage)."""
-    return await update_check_service.check()
+    return await update_check_service.check(db)
 
 
 def _admin(user: AdminUser) -> AdminUser:
@@ -31,16 +34,63 @@ def _major(version: str | None) -> int | None:
         return None
 
 
+class UpdateCheckRead(BaseModel):
+    enabled: bool
+    feed_url: str
+    managed_by_server: bool
+
+
+class UpdateCheckUpdate(BaseModel):
+    enabled: bool | None = None
+    feed_url: str | None = Field(default=None, max_length=500)
+
+
+async def _update_check_settings(db: AsyncSession) -> UpdateCheckRead:
+    row = await update_check_service.get_settings(db)
+    managed = update_check_service.managed_by_server()
+    return UpdateCheckRead(
+        enabled=True if managed else row.enabled,
+        feed_url=settings.update_check_url.strip() if managed else row.feed_url,
+        managed_by_server=managed,
+    )
+
+
+@router.get("/update-check", response_model=UpdateCheckRead)
+async def read_update_check(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+    """Versionsprüfung für „Einstellungen › OPNexus aktualisieren“ (nur Admins)."""
+    _admin(user)
+    return await _update_check_settings(db)
+
+
+@router.put("/update-check", response_model=UpdateCheckRead)
+async def update_update_check(payload: UpdateCheckUpdate, db: AsyncSession = Depends(get_db),
+                              user: AdminUser = Depends(current_user)):
+    _admin(user)
+    if update_check_service.managed_by_server():
+        raise api_error(409, ErrorCode.UPDATE_CHECK_MANAGED_BY_SERVER)
+    row = await update_check_service.get_settings(db)
+    if payload.feed_url is not None:
+        url = payload.feed_url.strip()
+        if not update_check_service.valid_feed_url(url):
+            raise api_error(422, ErrorCode.UPDATE_CHECK_URL_INVALID)
+        row.feed_url = url
+    if payload.enabled is not None:
+        row.enabled = payload.enabled
+    await db.commit()
+    update_check_service.reset_cache()
+    return await _update_check_settings(db)
+
+
 class UpdateRequest(BaseModel):
     version: str = Field(min_length=5, max_length=20)
 
 
 @router.get("/updater")
-async def updater_status(user: AdminUser = Depends(current_user)) -> dict:
+async def updater_status(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)) -> dict:
     """Zustand für den Abschnitt "OPNexus aktualisieren" in den Einstellungen:
     Versionshinweis des Release-Feeds plus (falls aktiviert) der Updater."""
     _admin(user)
-    check = await update_check_service.check()
+    check = await update_check_service.check(db)
     result: dict = {
         "available": False, "reason": None, "mode": None,
         "current": check["current"], "latest": check["latest"], "update_available": check["update_available"],
@@ -77,11 +127,12 @@ async def updater_status(user: AdminUser = Depends(current_user)) -> dict:
 
 
 @router.post("/updater/update", status_code=202)
-async def updater_update(payload: UpdateRequest, user: AdminUser = Depends(current_user)) -> dict:
+async def updater_update(payload: UpdateRequest, db: AsyncSession = Depends(get_db),
+                         user: AdminUser = Depends(current_user)) -> dict:
     """Aktualisiert OPNexus auf die vom Release-Feed gemeldete neueste stabile
     Version. Beliebige Versionen werden bewusst nicht angenommen."""
     _admin(user)
-    check = await update_check_service.check()
+    check = await update_check_service.check(db)
     if not check["update_available"] or payload.version.lstrip("v") != check["latest"]:
         raise api_error(409, ErrorCode.UPDATE_NOT_OFFERED)
     if _major(check["latest"]) != _major(check["current"]):

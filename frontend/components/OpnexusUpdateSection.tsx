@@ -2,9 +2,11 @@
 
 import { Badge, badgeToneClasses } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { FieldGroup, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
-import { api, UpdaterStatus } from "@/lib/api";
+import { api, UpdateCheckSettings, UpdaterStatus } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useNotAdmin } from "@/lib/useReadOnly";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
@@ -13,6 +15,74 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const POLL_MS = 2000;
 const RELOAD_DELAY_MS = 3500;
+
+/** Versionsprüfung an/aus und Feed-Adresse — statt UPDATE_CHECK_URL in der .env (die weiterhin Vorrang hat). */
+function FeedSettings({ onSaved }: { onSaved: () => void }) {
+  const { t, errorMessage } = useLanguage();
+  const toast = useToast();
+  const [feed, setFeed] = useState<UpdateCheckSettings | null>(null);
+  const [url, setUrl] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.updateCheck().then((next) => {
+      setFeed(next);
+      setUrl(next.feed_url);
+    }).catch(() => setFeed(null));
+  }, []);
+
+  if (!feed) return null;
+
+  async function save(body: { enabled?: boolean; feed_url?: string }) {
+    setSaving(true);
+    try {
+      const next = await api.updateUpdateCheck(body);
+      setFeed(next);
+      setUrl(next.feed_url);
+      toast.show(t("settings.update.feedSaved"), "success");
+      onSaved();
+    } catch (e) {
+      toast.show(errorMessage(e, "common.requestFailed"), "danger");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 p-3 text-sm">
+      <p className="flex items-center gap-2 font-medium">
+        {t("settings.update.feedTitle")}
+        <InfoTip text={t("settings.update.feedHint")} />
+      </p>
+      {feed.managed_by_server ? (
+        <>
+          <p className="text-slate-600">{t("settings.update.feedManaged")}</p>
+          <code className="block overflow-x-auto rounded bg-slate-50 p-2 text-xs">{feed.feed_url}</code>
+        </>
+      ) : (
+        <>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={feed.enabled}
+              disabled={saving}
+              onChange={(e) => void save({ enabled: e.target.checked })}
+            />
+            {t("settings.update.feedToggle")}
+          </label>
+          <FieldGroup label={t("settings.update.feedUrl")}>
+            <div className="flex gap-2">
+              <Input value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" spellCheck={false} />
+              <Button variant="secondary" disabled={saving || url.trim() === feed.feed_url} onClick={() => void save({ feed_url: url })}>
+                {t("settings.update.feedSave")}
+              </Button>
+            </div>
+          </FieldGroup>
+        </>
+      )}
+    </div>
+  );
+}
 
 /**
  * Settings card "OPNexus aktualisieren": zeigt die verfügbare Version und löst
@@ -125,6 +195,8 @@ export function OpnexusUpdateSection() {
             </dd>
           </dl>
 
+          <FeedSettings onSaved={() => void load()} />
+
           {!status.feed_enabled && <p className="text-sm text-slate-600">{t("settings.update.feedOff")}</p>}
           {status.feed_enabled && status.feed_error && <p className="text-sm text-amber-700">{t("settings.update.feedError")}</p>}
           {status.feed_enabled && !status.feed_error && !status.update_available && (
@@ -142,7 +214,7 @@ export function OpnexusUpdateSection() {
                   <p>{t("settings.update.notEnabledBody")}</p>
                   <p>{t("settings.update.notEnabledStep1")}</p>
                   <pre className="overflow-x-auto rounded bg-white p-2 text-xs">
-                    {status.feed_enabled ? "" : "UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json\n"}COMPOSE_PROFILES=updater
+                    COMPOSE_PROFILES=updater
                   </pre>
                   <p>{t("settings.update.notEnabledStep2")}</p>
                   <pre className="overflow-x-auto rounded bg-white p-2 text-xs">docker compose up -d</pre>

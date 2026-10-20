@@ -31,6 +31,12 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.6] "Harrier" — 2026-10-20
+
+- **Versionsprüfung im Webinterface:** Unter Einstellungen › OPNexus aktualisieren lässt sich die Prüfung auf neue Versionen jetzt per Schalter
+  und Feed-Adresse einstellen – kein Eingriff in die `.env` mehr nötig (Migration `0019`). Standardmäßig bleibt sie aus. Ein gesetztes
+  `UPDATE_CHECK_URL` in der `.env` hat weiter Vorrang und sperrt den Schalter (mit Hinweis).
+
 ## [1.23.5] "Harrier" — 2026-10-20
 
 - **Fix (Ursache des Vorfalls vom 20.10. in 1.23.4):** OPNsense merkt ein CARP-VIP zum Löschen vor, wenn eine Änderung kein `interface` mitschickt,

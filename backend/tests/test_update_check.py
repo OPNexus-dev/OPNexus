@@ -112,3 +112,75 @@ async def test_unreachable_feed_keeps_last_known_result(client, respx_mock, monk
 @pytest.mark.asyncio
 async def test_requires_login(anon_client):
     assert (await anon_client.get("/api/system/version-check")).status_code == 401
+
+
+# ── Einstellung im Webinterface (statt .env) ────────────────────────────
+
+WEB_FEED = "https://mirror.test/latest.json"
+
+
+@pytest.fixture
+def _env_unset(monkeypatch):
+    monkeypatch.setattr(settings, "update_check_url", "")
+
+
+async def _reset_row(client):
+    await client.put("/api/system/update-check", json={"enabled": False, "feed_url": "https://updates.opnexus.dev/latest.json"})
+
+
+@pytest.mark.asyncio
+async def test_check_is_off_by_default_and_can_be_switched_on_in_the_ui(client, respx_mock, _env_unset):
+    await _reset_row(client)
+    body = (await client.get("/api/system/update-check")).json()
+    assert body == {"enabled": False, "feed_url": "https://updates.opnexus.dev/latest.json", "managed_by_server": False}
+    assert (await client.get("/api/system/version-check")).json()["enabled"] is False
+    assert len(respx_mock.calls) == 0
+
+    newer = _bump(APP_VERSION, minor=1)
+    respx_mock.get(WEB_FEED).mock(return_value=httpx.Response(200, json={"tag_name": f"v{newer}"}))
+    resp = await client.put("/api/system/update-check", json={"enabled": True, "feed_url": f" {WEB_FEED} "})
+    assert resp.status_code == 200 and resp.json()["feed_url"] == WEB_FEED and resp.json()["enabled"] is True
+    check = (await client.get("/api/system/version-check")).json()
+    assert check["enabled"] is True and check["latest"] == newer and check["update_available"] is True
+    await _reset_row(client)
+
+
+@pytest.mark.asyncio
+async def test_switching_the_check_off_again_stops_requests(client, respx_mock, _env_unset):
+    respx_mock.get(WEB_FEED).mock(return_value=httpx.Response(200, json={"tag_name": f"v{_bump(APP_VERSION, minor=1)}"}))
+    await client.put("/api/system/update-check", json={"enabled": True, "feed_url": WEB_FEED})
+    assert (await client.get("/api/system/version-check")).json()["latest"]
+    await client.put("/api/system/update-check", json={"enabled": False})
+    after = (await client.get("/api/system/version-check")).json()
+    assert after["enabled"] is False and after["latest"] is None
+    await _reset_row(client)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["", "ftp://x.test/f", "javascript:alert(1)", "https://a b.test/", "https://x.test/" + "a" * 500])
+async def test_invalid_feed_urls_are_rejected(client, _env_unset, url):
+    resp = await client.put("/api/system/update-check", json={"feed_url": url})
+    assert resp.status_code in (422, 400)
+    if resp.status_code == 422 and isinstance(resp.json().get("detail"), dict):
+        assert resp.json()["detail"]["code"] == "UPDATE_CHECK_URL_INVALID"
+
+
+@pytest.mark.asyncio
+async def test_env_setting_wins_and_locks_the_ui(client, respx_mock):
+    # the autouse fixture sets UPDATE_CHECK_URL = FEED, i.e. the server decides
+    body = (await client.get("/api/system/update-check")).json()
+    assert body == {"enabled": True, "feed_url": FEED, "managed_by_server": True}
+    resp = await client.put("/api/system/update-check", json={"enabled": False})
+    assert resp.status_code == 409 and resp.json()["detail"]["code"] == "UPDATE_CHECK_MANAGED_BY_SERVER"
+
+
+@pytest.mark.asyncio
+async def test_only_admins_can_read_or_change_the_setting(client, _env_unset):
+    from tests.test_users import _login_as
+    await client.post("/api/users", json={"username": "viewer-upc", "password": "password-123456", "role": "read_only"})
+    viewer = await _login_as("viewer-upc", "password-123456")
+    try:
+        assert (await viewer.get("/api/system/update-check")).status_code == 403
+        assert (await viewer.put("/api/system/update-check", json={"enabled": True})).status_code == 403
+    finally:
+        await viewer.aclose()

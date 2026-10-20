@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.23.5` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.23.6` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -64,7 +64,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.23.5
+OPNEXUS_VERSION=1.23.6
 ```
 
 ```bash
@@ -77,7 +77,7 @@ docker compose pull && docker compose up -d --no-build
 
 ## Privacy
 
-OPNexus is self-hosted and has no telemetry. It only connects to your firewalls and to notification targets you configure yourself. The optional new-version notice (`UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json`) is **off** unless you set it; when on, it makes one plain `GET` at most every 12 hours with the user agent `OPNexus/<version>` — no instance or user data.
+OPNexus is self-hosted and has no telemetry. It only connects to your firewalls and to notification targets you configure yourself. The optional new-version notice (switch under Settings › Update OPNexus, or `UPDATE_CHECK_URL` in the `.env`) is **off** unless you turn it on; when on, it makes one plain `GET` at most every 12 hours with the user agent `OPNexus/<version>` — no instance or user data.
 
 ## License
 

@@ -206,7 +206,7 @@ Alle Einstellungen stehen in der `.env` neben der `docker-compose.yml`. Nach ein
 | `BIND_ADDRESS` | Schnittstelle für Backend und Frontend (Standard `127.0.0.1`). |
 | `BACKEND_PORT`, `FRONTEND_PORT` | Host-Ports (Standard 8100 und 3100), z. B. für eine zweite Instanz. |
 | `OPNEXUS_IMAGE_REPO`, `OPNEXUS_VERSION` | Registry und Version der Release-Images. `OPNEXUS_VERSION` ist die „Spur“, siehe [Updates](#opnexus-aktualisieren). |
-| `UPDATE_CHECK_URL`, `UPDATE_CHECK_INTERVAL_HOURS` | Hinweis auf neue Versionen, standardmäßig **aus**. |
+| `UPDATE_CHECK_URL`, `UPDATE_CHECK_INTERVAL_HOURS` | Hinweis auf neue Versionen, standardmäßig **aus**. Einstellbar auch im Webinterface; ein Wert in der `.env` hat Vorrang. |
 | `COMPOSE_PROFILES=updater` | Aktiviert den optionalen Updater für Updates per Klick. |
 | `ALLOW_INSECURE_FIREWALL_URLS` | Erlaubt `http://`-Adressen für Firewalls. Nur für isolierte Labore. |
 | `SMTP_CA_FILE`, `ALLOW_INSECURE_SMTP_AUTH` | Eigene CA für den Mailserver bzw. SMTP-Anmeldung ohne Verschlüsselung (bleibt standardmäßig gesperrt). |
@@ -1160,11 +1160,11 @@ die Sicherung. Installationen bis 1.8.x gehen zuerst auf 1.9.x.
 ### Hinweis auf neue Versionen
 
 Optional zeigt OPNexus Administratoren oben einen Hinweis, wenn eine neuere Version
-veröffentlicht ist:
-
-```bash
-UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json
-```
+veröffentlicht ist. Eingeschaltet wird das unter **Einstellungen › OPNexus aktualisieren**
+(Schalter „Versionsprüfung aktivieren“, Feed-Adresse `https://updates.opnexus.dev/latest.json`)
+— ein Eingriff in die `.env` ist nicht nötig. Wer die Prüfung zentral festlegen will, kann
+stattdessen `UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json` in die `.env`
+schreiben; dann ist der Schalter im Webinterface gesperrt.
 
 Standardmäßig ist das **aus**, dann macht OPNexus keine ausgehende Anfrage. Eingeschaltet
 geht höchstens alle 12 Stunden (`UPDATE_CHECK_INTERVAL_HOURS`) ein einzelnes `GET` mit
@@ -1184,8 +1184,10 @@ Das ist **bewusst aus** und muss aktiviert werden, weil es Docker-Zugriff brauch
 ```bash
 # .env
 COMPOSE_PROFILES=updater
-UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json
 ```
+
+Die Versionsprüfung (Feed) schaltest du dazu im Webinterface ein, siehe oben.
+
 ```bash
 docker compose pull && docker compose up -d --no-build
 ```

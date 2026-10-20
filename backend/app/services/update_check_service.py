@@ -17,8 +17,10 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.models.update_check_settings import DEFAULT_FEED_URL, UpdateCheckSettings
 from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ class _State:
     latest: str | None = None
     release_url: str | None = None
     error: str | None = None
+    url: str | None = None
 
 
 _state = _State()
@@ -45,9 +48,39 @@ _lock = asyncio.Lock()
 
 
 def reset_cache() -> None:
-    """Nur für Tests."""
+    """Verwirft den gemerkten Stand (Tests, geänderter Feed)."""
     global _state
     _state = _State()
+
+
+_SINGLETON_ID = 1
+_URL = re.compile(r"^https?://[^\s<>\"']+$")
+
+
+def valid_feed_url(value: str) -> bool:
+    return bool(_URL.match(value)) and len(value) <= 500
+
+
+async def get_settings(db: AsyncSession) -> UpdateCheckSettings:
+    row = await db.get(UpdateCheckSettings, _SINGLETON_ID)
+    if row is None:
+        row = UpdateCheckSettings(id=_SINGLETON_ID, enabled=False, feed_url=DEFAULT_FEED_URL)
+        db.add(row)
+        await db.flush()
+    return row
+
+
+def managed_by_server() -> bool:
+    """UPDATE_CHECK_URL in the server's .env wins over the setting in the web UI."""
+    return bool(settings.update_check_url.strip())
+
+
+async def feed_url(db: AsyncSession) -> str:
+    """The feed to ask, or "" while the check is off."""
+    if managed_by_server():
+        return settings.update_check_url.strip()
+    row = await get_settings(db)
+    return row.feed_url.strip() if row.enabled else ""
 
 
 def _parse(tag: str) -> tuple[int, int, int] | None:
@@ -62,10 +95,10 @@ def _safe_url(value: object) -> str | None:
     return None
 
 
-async def _fetch() -> tuple[str, str | None]:
+async def _fetch(url: str) -> tuple[str, str | None]:
     async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS, follow_redirects=True, max_redirects=3) as http:
         response = await http.get(
-            settings.update_check_url,
+            url,
             headers={"Accept": "application/json", "User-Agent": f"OPNexus/{APP_VERSION}"},
         )
     response.raise_for_status()
@@ -78,9 +111,10 @@ async def _fetch() -> tuple[str, str | None]:
     return tag, _safe_url(data.get("html_url"))
 
 
-async def check() -> dict:
+async def check(db: AsyncSession) -> dict:
     """Aktueller Stand für GET /api/system/version-check."""
-    enabled = bool(settings.update_check_url.strip())
+    url = await feed_url(db)
+    enabled = bool(url)
     current = _parse(APP_VERSION)
     result = {
         "enabled": enabled,
@@ -95,6 +129,9 @@ async def check() -> dict:
         return result
 
     async with _lock:
+        if _state.url != url:  # Feed geändert: alter Stand gehört nicht mehr dazu
+            reset_cache()
+            _state.url = url
         now = datetime.now(timezone.utc)
         interval = timedelta(hours=max(1, settings.update_check_interval_hours))
         fresh = _state.checked_at is not None and now - _state.checked_at < interval
@@ -102,12 +139,12 @@ async def check() -> dict:
         if not fresh and not backing_off:
             _state.attempted_at = now
             try:
-                tag, url = await _fetch()
+                tag, release_url = await _fetch(url)
                 if _parse(tag) is None:
                     # z. B. eine Vorabversion — kein Fehler, nur kein Update.
                     _state.latest, _state.release_url = None, None
                 else:
-                    _state.latest, _state.release_url = tag.lstrip("v"), url
+                    _state.latest, _state.release_url = tag.lstrip("v"), release_url
                 _state.checked_at, _state.error = now, None
             except Exception as exc:  # Netz, HTTP, JSON, Format: alles nur "geht gerade nicht"
                 logger.warning("Update-Check fehlgeschlagen: %s", exc.__class__.__name__)

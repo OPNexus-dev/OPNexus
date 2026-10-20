@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.23.5` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.23.6` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -62,7 +62,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.23.5
+OPNEXUS_VERSION=1.23.6
 ```
 
 ```bash
@@ -73,7 +73,7 @@ Aktualisiert wird danach mit `scripts/opnexus update` / `rollback` (erst ziehen,
 
 ## Datenschutz
 
-OPNexus wird selbst betrieben und hat keine Telemetrie. Es verbindet sich nur mit deinen Firewalls und mit Benachrichtigungszielen, die du selbst einrichtest. Der optionale Hinweis auf neue Versionen (`UPDATE_CHECK_URL=https://updates.opnexus.dev/latest.json`) ist **aus**, solange du ihn nicht setzt; eingeschaltet geht höchstens alle 12 Stunden ein einfaches `GET` mit dem User-Agent `OPNexus/<Version>` hinaus — ohne Instanz- oder Nutzerdaten.
+OPNexus wird selbst betrieben und hat keine Telemetrie. Es verbindet sich nur mit deinen Firewalls und mit Benachrichtigungszielen, die du selbst einrichtest. Der optionale Hinweis auf neue Versionen (Schalter unter Einstellungen › OPNexus aktualisieren, oder `UPDATE_CHECK_URL` in der `.env`) ist **aus**, solange du ihn nicht einschaltest; eingeschaltet geht höchstens alle 12 Stunden ein einfaches `GET` mit dem User-Agent `OPNexus/<Version>` hinaus — ohne Instanz- oder Nutzerdaten.
 
 ## Lizenz
 
