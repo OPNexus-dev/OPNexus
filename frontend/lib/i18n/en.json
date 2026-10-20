@@ -122,7 +122,7 @@
       "upToDate": "OPNexus is up to date.",
       "notes": "Release notes",
       "checked": "Last checked: {time}",
-      "feedOff": "The version check is off. Switch it on below so OPNexus can detect new versions.",
+      "feedOff": "The version check is off. Switch it on above so OPNexus can detect new versions.",
       "feedTitle": "Check for new versions",
       "feedHint": "Regularly asks the release feed whether a newer version has been published. Only a plain request (GET) carrying your own version number is sent, nothing else. Off by default.",
       "feedToggle": "Enable version check",

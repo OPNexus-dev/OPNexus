@@ -31,6 +31,10 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.23.7] "Harrier" — 2026-10-20
+
+- Hinweistext der Versionsprüfung verweist auf den Schalter „oben“ statt „unten“.
+
 ## [1.23.6] "Harrier" — 2026-10-20
 
 - **Versionsprüfung im Webinterface:** Unter Einstellungen › OPNexus aktualisieren lässt sich die Prüfung auf neue Versionen jetzt per Schalter

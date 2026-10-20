@@ -122,7 +122,7 @@
       "upToDate": "OPNexus ist auf dem neuesten Stand.",
       "notes": "Release-Notes",
       "checked": "Zuletzt geprüft: {time}",
-      "feedOff": "Die Versionsprüfung ist aus. Unten einschalten, damit OPNexus neue Versionen erkennt.",
+      "feedOff": "Die Versionsprüfung ist aus. Schalte sie oben ein, damit OPNexus neue Versionen erkennt.",
       "feedTitle": "Auf neue Versionen prüfen",
       "feedHint": "Fragt regelmäßig den Release-Feed ab, ob eine neuere Version erschienen ist. Gesendet wird nur eine einfache Anfrage (GET) mit der eigenen Versionsnummer, nichts sonst. Standardmäßig aus.",
       "feedToggle": "Versionsprüfung aktivieren",
