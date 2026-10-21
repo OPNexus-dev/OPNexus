@@ -42,7 +42,12 @@ class ScheduledMaintenance(Base):
     host_operation_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     # Opt-in: hand the traffic over to the CARP partner first, run the action, then switch back.
     carp_handover: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    # Only while status == "running" with a handover: handover_wait | job_wait | leave | leave_wait.
+    # 1.25: check the result automatically (job_wait -> verify) and close the operation, instead of
+    # leaving it "submitted" for a human. Every rollout step sets it; off for existing plans.
+    auto_verify: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # manual | rollout (created by a rollout run, see models/rollout.py RolloutRunHost.scheduled_maintenance_id)
+    origin: Mapped[str] = mapped_column(String(16), nullable=False, default="manual", server_default="manual")
+    # Only while status == "running" with a handover or auto_verify: handover_wait | job_wait | verify | leave | leave_wait.
     # State lives here, not in memory, so a backend restart in the middle of a run resumes cleanly.
     phase: Mapped[str | None] = mapped_column(String(16), nullable=True)
     phase_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

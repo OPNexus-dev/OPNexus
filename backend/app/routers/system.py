@@ -7,6 +7,7 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser
 from app.routers.auth import current_user
+from app.services import rollout_engine
 from app.services import update_check_service, updater_client
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -99,6 +100,9 @@ async def updater_status(db: AsyncSession = Depends(get_db), user: AdminUser = D
         "can_update": False, "major_change": False,
         "job": None, "phases": [], "log": [], "services": {},
         "rollback_available": False, "rollback_loses_data": False, "rollback_version": None,
+        # A restart in the middle of a firmware rollout is safe (its state is in the database), but the
+        # UI warns: the run pauses its 15-second steps for as long as OPNexus is down.
+        "active_rollouts": await rollout_engine.count_active(db),
     }
     try:
         updater = await updater_client.status()

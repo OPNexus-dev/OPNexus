@@ -285,6 +285,9 @@ export function OpnexusUpdateSection() {
             </details>
           )}
 
+          {status.can_update && (status.active_rollouts ?? 0) > 0 && (
+            <p role="status" className="rounded-lg bg-flame-50 p-3 text-sm text-flame-800">{t("rollouts.updaterWarning")}</p>
+          )}
           {status.can_update && status.latest && !running && (
             <Button onClick={() => setConfirm("update")} disabled={busy}>
               {t("settings.update.button", { latest: status.latest })}

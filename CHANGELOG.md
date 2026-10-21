@@ -31,6 +31,46 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.25.0] "Goshawk" — 2026-10-21
+
+Geplant als MINOR-Release **1.25.0** (Flotten-Rollout).
+
+- **Rollouts in Wellen (System › Rollouts):** Firmware-Updates für die ganze Flotte in Ringen, z. B. erst
+  `ring-canary`, dann `ring-pilot`, dann `ring-prod` (Wellen aus Gerätegruppen). Jeder Host läuft über die
+  bestehende geplante Wartung (Backup vor dem Update, CARP-Übergabe für den MASTER, Audit), immer nur ein Host
+  gleichzeitig und nur ein Rollout zur selben Zeit; im Cluster zuerst der BACKUP, dann der MASTER. Nach jeder Welle
+  folgen eine Beobachtungszeit und eine **Gesundheitsprüfung** (erreichbar, Zielversion installiert, CARP je VHID,
+  Gateways und Dienste wie vorher, keine offenen Sperren, optional Sicherheits-Score). Rot hält den Rollout an
+  (nach einer Nachprüfung zwei Minuten später) und meldet sich. Anhalten, Fortsetzen (prüft zuerst alles bisher
+  Aktualisierte erneut), Welle freigeben, Host überspringen und Abbrechen auf der Lauf-Seite; die Seite zeigt
+  Wellen, Hosts (Version vorher → nachher, aktueller Schritt) und die Prüfmatrix.
+- **Sicherheitsnetz:** Weicht die angebotene Version in einem späteren Ring von der des ersten Rings ab, hält der
+  Rollout an (OPNsense installiert immer die neueste). Ein Host ohne Update wird übersprungen, ein fehlgeschlagener
+  nie von selbst wiederholt. Angehalten wird auch, wenn die verantwortliche Person das Recht zum Ausrollen verliert,
+  eine fremde Wartung im Cluster länger als 15 Minuten offen ist, der MASTER ohne Übergabe dran wäre oder ein Lauf
+  älter als 14 Tage ist. Höchstens 10 Wellen und 100 Hosts je Plan.
+- **Wiederkehrende Wartungsfenster:** wöchentlich oder monatlich (n-ter Wochentag, letzter, fester Tag) in einer
+  Zeitzone, mit Sommerzeit-Regel, Abschneidezeit („neue Hosts nur in den ersten N Minuten“) und einzelnen Terminen
+  zum Auslassen oder Verschieben. Ein Plan mit Fenster startet neue Hosts nur darin; mit **automatischem Start**
+  (nur stabile Updates) beginnt er zu jedem Termin von selbst, aber nur, solange Plan, Gruppen und Fenster seit
+  der Aktivierung unverändert sind. Jede Änderung deaktiviert ihn.
+- **Geplante Wartung prüft sich selbst:** Neue Option „Ergebnis automatisch prüfen und abschließen“ (im Dialog
+  vorausgewählt, bei Rollouts immer an). Nach dem Auftrag prüft OPNexus, ob die Firmware wieder bereit ist, der
+  erwartete Neustart stattfand und die Version lesbar ist, und schließt die Wartung dann selbst ab. Bisher blieb
+  sie auf „übergeben“ und sperrte Host und Cluster, bis jemand sie von Hand abschloss.
+- **Benachrichtigungen:** „Rollout angehalten“ und „Rollout nicht automatisch gestartet“ (ein Schalter, standardmäßig an).
+- **Rechte:** Rollout starten/aktivieren/fortsetzen/freigeben/überspringen/abbrechen und Wartungsfenster ändern
+  gelten als Ausrollen (Aufgabentrennung); **Anhalten** darf jeder mit Schreibrecht. Update Center: Hosts im
+  laufenden Rollout sind für manuelle Firmware-Aktionen gesperrt. Ein OPNexus-Update während eines Rollouts ist
+  sicher, wird aber angekündigt.
+- **Getestet:** live auf den Test-Firewalls (OPNsense 26.7): automatischer Start im Fenster, Canary-Update
+  26.7.1_1 → 26.7.7, absichtlich gestoppter Dienst → Gate rot → angehalten (zweiter Ring unberührt,
+  Benachrichtigung), Fortsetzen, Pilot-Update 26.7.6 → 26.7.7 auf dem damaligen MASTER mit CARP-Übergabe und einem
+  Neustart des OPNexus-Backends mitten im Auftrag (genau ein Update-Auftrag), Freigabe, Host ohne Update
+  übersprungen, Anhalten/Fortsetzen/Abbrechen von Hand, Termin auslassen. **Nur gemockt:** Major-Upgrade als
+  Rollout, ein Cluster in *einer* Welle, Cluster-Prüfung vor dem zweiten Knoten, abweichende Zielversion,
+  Zeitüberschreitungen, Rechteverlust, Fenster schließt mitten im Lauf; die Sommerzeit-Regeln sind Rechentests.
+
 ## [1.24.0] "Merlin" — 2026-10-21
 
 - **Alarme für Gateways, Ressourcen und Dienste:** Neue Ereignisse in Einstellungen › Benachrichtigungen.

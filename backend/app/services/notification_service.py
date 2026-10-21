@@ -37,11 +37,13 @@ _CHECKS = [
     ("gateway_down", "gateway_down_enabled", monitor_checks.check_gateway_down),
     ("resource_threshold", "resource_threshold_enabled", monitor_checks.check_resource_threshold),
     ("service_down", "service_down_enabled", monitor_checks.check_service_down),
+    ("rollout_paused", "rollout_problems_enabled", notification_checks.check_rollout_paused),
+    ("rollout_start_failed", "rollout_problems_enabled", notification_checks.check_rollout_start_failed),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no
 # "behoben" message goes out for them.
-_NO_RESOLVED_NOTICE = {"scheduled_maintenance_failed"}
+_NO_RESOLVED_NOTICE = {"scheduled_maintenance_failed", "rollout_start_failed"}
 
 
 async def _deliver(

@@ -47,6 +47,7 @@ async def test_status_reports_update_and_can_update(client, respx_mock):
     body = (await client.get("/api/system/updater")).json()
     assert body["available"] is True and body["can_update"] is True
     assert body["latest"] == _bump(minor=1) and body["major_change"] is False
+    assert body["active_rollouts"] == 0  # the UI warns before restarting OPNexus in the middle of a rollout
 
 
 @pytest.mark.asyncio

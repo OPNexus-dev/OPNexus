@@ -1273,6 +1273,7 @@ export interface UpdaterStatus {
   rollback_available: boolean;
   rollback_loses_data: boolean;
   rollback_version: string | null;
+  active_rollouts?: number;
 }
 
 export const api = {
@@ -1311,8 +1312,32 @@ export const api = {
   stopService: (id:string, name:string) => request<{result:string}>(`/hosts/${id}/services/${encodeURIComponent(name)}/stop`,{method:"POST"}),
   restartService: (id:string, name:string) => request<{result:string}>(`/hosts/${id}/services/${encodeURIComponent(name)}/restart`,{method:"POST"}),
   listScheduledMaintenance: (id:string) => request<ScheduledMaintenanceItem[]>(`/hosts/${id}/maintenance/schedule`),
-  createScheduledMaintenance: (id:string, action:"reboot"|"update"|"major_update", run_at:string, carp_handover=false) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule`,{method:"POST",body:JSON.stringify({action,run_at,acknowledge_unattended:true,carp_handover})}),
+  createScheduledMaintenance: (id:string, action:"reboot"|"update"|"major_update", run_at:string, carp_handover=false, auto_verify=false) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule`,{method:"POST",body:JSON.stringify({action,run_at,acknowledge_unattended:true,carp_handover,auto_verify})}),
   cancelScheduledMaintenance: (id:string, scheduleId:string) => request<ScheduledMaintenanceItem>(`/hosts/${id}/maintenance/schedule/${scheduleId}`,{method:"DELETE"}),
+  // Maintenance windows and firmware rollouts (1.25)
+  listMaintenanceWindows: () => request<MaintenanceWindow[]>("/maintenance-windows"),
+  createMaintenanceWindow: (data: MaintenanceWindowWrite) => request<MaintenanceWindow>("/maintenance-windows", { method: "POST", body: JSON.stringify(data) }),
+  updateMaintenanceWindow: (id: string, data: MaintenanceWindowWrite) => request<MaintenanceWindow>(`/maintenance-windows/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteMaintenanceWindow: (id: string) => request<void>(`/maintenance-windows/${id}`, { method: "DELETE" }),
+  addWindowException: (id: string, data: { occurrence_date: string; kind: "skip" | "move"; moved_start?: string; reason?: string }) => request<MaintenanceWindow>(`/maintenance-windows/${id}/exceptions`, { method: "POST", body: JSON.stringify(data) }),
+  deleteWindowException: (id: string, exceptionId: string) => request<MaintenanceWindow>(`/maintenance-windows/${id}/exceptions/${exceptionId}`, { method: "DELETE" }),
+  listRolloutPlans: () => request<RolloutPlan[]>("/rollouts/plans"),
+  getRolloutPlan: (id: string) => request<RolloutPlan>(`/rollouts/plans/${id}`),
+  createRolloutPlan: (data: RolloutPlanWrite) => request<RolloutPlan>("/rollouts/plans", { method: "POST", body: JSON.stringify(data) }),
+  updateRolloutPlan: (id: string, data: RolloutPlanWrite) => request<RolloutPlan>(`/rollouts/plans/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+  deleteRolloutPlan: (id: string) => request<void>(`/rollouts/plans/${id}`, { method: "DELETE" }),
+  previewRolloutPlan: (id: string) => request<RolloutPreview>(`/rollouts/plans/${id}/preview`, { method: "POST" }),
+  activateRolloutPlan: (id: string, preview_token: string) => request<RolloutPlan>(`/rollouts/plans/${id}/activate`, { method: "POST", body: JSON.stringify({ preview_token }) }),
+  deactivateRolloutPlan: (id: string) => request<RolloutPlan>(`/rollouts/plans/${id}/deactivate`, { method: "POST" }),
+  startRolloutPlan: (id: string, preview_token: string, confirm_name: string) => request<RolloutRunDetail>(`/rollouts/plans/${id}/start`, { method: "POST", body: JSON.stringify({ preview_token, confirm_name, acknowledge_unattended: true }) }),
+  listRolloutRuns: () => request<RolloutRunSummary[]>("/rollouts/runs"),
+  rolloutStatus: () => request<RolloutStatus>("/rollouts/status"),
+  getRolloutRun: (id: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}`),
+  pauseRolloutRun: (id: string, reason: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/pause`, { method: "POST", body: JSON.stringify({ reason }) }),
+  resumeRolloutRun: (id: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/resume`, { method: "POST" }),
+  approveRolloutWave: (id: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/approve`, { method: "POST" }),
+  skipRolloutHost: (id: string, host_id: string, reason: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/skip-host`, { method: "POST", body: JSON.stringify({ host_id, reason }) }),
+  abortRolloutRun: (id: string, reason: string, confirm_name: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/abort`, { method: "POST", body: JSON.stringify({ reason, confirm_name }) }),
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
   versionCheck: () => request<VersionCheck>("/system/version-check"),
@@ -1746,7 +1771,62 @@ export interface MaintenanceState {
 export interface HostOperation { id:string; host_id:string; action:"reboot"|"update"|"major_update"|"carp_enter"|"carp_leave"; status:string; created_at:string; expires_at:string; actor:string; message:string|null; }
 export interface OpnsenseService { id:string; name:string; description:string; locked:boolean|number; running:boolean|number; }
 export interface HostResourceSample { id:string; sampled_at:string; mem_used_pct:number|null; load_avg_1m:number|null; disk_used_pct:number|null; raw:Record<string,unknown>; }
-export interface ScheduledMaintenanceItem { id:string; host_id:string; action:"reboot"|"update"|"major_update"; run_at:string; status:"pending"|"running"|"succeeded"|"failed"|"cancelled"; actor:string; created_at:string; result:{error?:string;response?:unknown;handover?:boolean;version_before?:string|null;version_after?:string|null;reboot_required?:boolean}; host_operation_id:string|null; carp_handover:boolean; phase:"handover_wait"|"job_wait"|"leave"|"leave_wait"|null; }
+export interface ScheduledMaintenanceItem { id:string; host_id:string; action:"reboot"|"update"|"major_update"; run_at:string; status:"pending"|"running"|"succeeded"|"failed"|"cancelled"; actor:string; created_at:string; result:{error?:string;response?:unknown;handover?:boolean;auto_verified?:boolean;version_before?:string|null;version_after?:string|null;reboot_required?:boolean}; host_operation_id:string|null; carp_handover:boolean; phase:"handover_wait"|"job_wait"|"verify"|"leave"|"leave_wait"|null; auto_verify?:boolean; origin?:"manual"|"rollout"; rollout_run_id?:string|null; }
+
+// ── Maintenance windows and firmware rollouts (1.25) ──
+export interface Occurrence { local_date: string; start: string; end: string; cutoff: string; moved: boolean; skipped: boolean; }
+export interface MaintenanceWindowWrite {
+  name: string; timezone: string; recurrence: "weekly" | "monthly"; weekdays: number[];
+  month_mode: "nth_weekday" | "day" | null; month_nth: number | null; month_weekday: number | null; month_day: number | null;
+  start_time: string; duration_minutes: number; start_cutoff_minutes: number; enabled: boolean;
+}
+export interface MaintenanceWindow extends MaintenanceWindowWrite {
+  id: string; created_by: string; created_at: string; open_now: boolean; next: Occurrence[];
+  exceptions: { id: string; occurrence_date: string; kind: "skip" | "move"; moved_start: string | null; reason: string; actor: string; created_at: string }[];
+  used_by: { id: string; name: string; auto_start: boolean; active: boolean }[];
+}
+export type RolloutCheck = "online" | "version" | "carp" | "gateways" | "services" | "locks" | "compliance";
+export interface RolloutIssue { code: string; params: Record<string, string | number | boolean | null>; }
+export interface RolloutWaveWrite { label: string; group_ids: string[]; soak_minutes: number; carp_handover: boolean; require_approval: boolean; }
+export interface RolloutPlanWrite {
+  name: string; description: string; action: "update" | "major_update"; window_id: string | null; auto_start: boolean;
+  gate_checks: Partial<Record<RolloutCheck, boolean>>; compliance_mode: "warn" | "fail"; waves: RolloutWaveWrite[];
+}
+export interface RolloutPlan extends Omit<RolloutPlanWrite, "waves"> {
+  id: string;
+  waves: (RolloutWaveWrite & { id: string; position: number; groups: string[]; host_count: number })[];
+  active: boolean; activated_by: string | null; activated_at: string | null; fingerprint_ok: boolean;
+  auto_start_error: { occurrence: string; at: string; code: string; params?: Record<string, string> } | null;
+  window: { id: string; name: string; next: Occurrence[] } | null; errors: RolloutIssue[]; warnings: RolloutIssue[];
+  host_count: number; last_run: { id: string; status: RolloutRunStatus; created_at: string } | null;
+  created_by: string; created_at: string; updated_at: string;
+}
+export interface RolloutPreview {
+  waves: { index: number; label: string; soak_minutes: number; carp_handover: boolean; require_approval: boolean; groups: string[];
+           hosts: { id: string; name: string; cluster_name: string | null; enabled: boolean }[] }[];
+  errors: RolloutIssue[]; warnings: RolloutIssue[]; window: RolloutPlan["window"]; preview_token: string; can_start: boolean; plan: RolloutPlan;
+}
+export type RolloutRunStatus = "waiting_window" | "preflight" | "wave_running" | "soaking" | "gate" | "awaiting_approval" | "resuming" | "paused" | "succeeded" | "cancelled";
+export type RolloutHostStatus = "queued" | "running" | "verifying" | "succeeded" | "skipped" | "failed" | "blocked" | "cancelled";
+export interface RolloutCheckResult { result: "ok" | "warn" | "fail" | "skip"; code: string; params: Record<string, string | number | null>; }
+export interface RolloutGate { hosts: Record<string, Partial<Record<RolloutCheck, RolloutCheckResult>>>; verdict: "ok" | "warn" | "fail"; }
+export interface RolloutRunSummary {
+  id: string; plan_id: string | null; plan_name: string; action: "update" | "major_update"; status: RolloutRunStatus; paused_from: string | null;
+  current_wave: number; wave_count: number; current_wave_label: string | null; target_version: string | null;
+  pause_reason: string | null; pause_detail: Record<string, unknown> | null; started_by: string; trigger: "manual" | "window";
+  window_occurrence: string | null; created_at: string; finished_at: string | null; step_at: string | null;
+  host_counts: Partial<Record<RolloutHostStatus, number>>; active: boolean;
+}
+export interface RolloutRunDetail extends RolloutRunSummary {
+  soak_until: string | null; progress: { gate_recheck_at?: string | null; cluster_recheck_at?: string | null; blocked_since?: string | null; resume_gate?: RolloutGate; cluster_gate?: RolloutGate; resume_recheck_at?: string | null };
+  waves: { index: number; label: string; status: string; gate_result: RolloutGate | null; gate_attempts: number; soak_until: string | null;
+           approved_by: string | null; started_at: string | null; finished_at: string | null;
+           spec: { label: string; soak_minutes: number; carp_handover: boolean; require_approval: boolean; groups: string[] } | null }[];
+  hosts: { id: string; host_id: string | null; host_name: string; cluster_name: string | null; wave_index: number; order: number; status: RolloutHostStatus;
+           version_before: string | null; version_after: string | null; detail: RolloutIssue | null; started_at: string | null; finished_at: string | null;
+           schedule: { id: string; status: string; phase: string | null; carp_handover: boolean; host_operation_id: string | null } | null }[];
+}
+export interface RolloutStatus { active: RolloutRunSummary | null; host_ids: string[]; current_host_ids: string[]; }
 export interface MaintenanceRead {state:MaintenanceState|null;error:string|null;operations:HostOperation[];}
 export interface MaintenancePreview {preview_id:string;expires_at:string;action:"reboot"|"update"|"major_update";state:MaintenanceState;}
 export interface CarpSwitchState {
@@ -1797,6 +1877,7 @@ export interface NotificationSettings {
   gateway_down_enabled: boolean;
   resource_threshold_enabled: boolean;
   service_down_enabled: boolean;
+  rollout_problems_enabled: boolean;
   gateway_loss_threshold_pct: number;
   gateway_delay_threshold_ms: number;
   disk_threshold_pct: number;
@@ -1853,6 +1934,7 @@ export interface NotificationSettingsUpdate {
   gateway_down_enabled?: boolean;
   resource_threshold_enabled?: boolean;
   service_down_enabled?: boolean;
+  rollout_problems_enabled?: boolean;
   gateway_loss_threshold_pct?: number;
   gateway_delay_threshold_ms?: number;
   disk_threshold_pct?: number;
@@ -1889,7 +1971,8 @@ export type ProblemType =
   | "backup_stale"
   | "backup_offsite_failed"
   | "compliance_finding"
-  | "gateway_down" | "resource_threshold" | "service_down";
+  | "gateway_down" | "resource_threshold" | "service_down"
+  | "rollout_paused" | "rollout_start_failed";
 
 export interface CarpEvent {
   id: string;

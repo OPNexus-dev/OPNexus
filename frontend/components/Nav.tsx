@@ -35,6 +35,7 @@ import {
   Tags,
   Users,
   Waypoints,
+  Waves,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -137,6 +138,12 @@ export const navGroups: NavGroup[] = [
         label: "Update Center",
         icon: RefreshCw,
         keywords: ["Firmware", "OPNsense-Updates", "Pakete", "Wartung", "Neustart erforderlich", "Versionen"],
+      },
+      {
+        href: "/rollouts",
+        label: "Rollouts",
+        icon: Waves,
+        keywords: ["Update-Ringe", "Canary", "Wellen", "Rollout", "Wartungsfenster", "Firmware-Rollout", "Pilot", "Health-Gate", "Ringe"],
       },
       {
         href: "/settings",

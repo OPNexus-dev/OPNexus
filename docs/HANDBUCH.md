@@ -822,7 +822,15 @@ frische Backup erneut. Eine blockierte Aktion wird als „fehlgeschlagen“ mark
 und **nicht** wiederholt. Sie steht im Status der geplanten Wartung und meldet sich
 zusätzlich per Benachrichtigung („Geplante Wartung nicht ausgeführt“, einzeln
 schaltbar), damit man es am nächsten Morgen nicht erst beim Nachsehen merkt.
-Wiederkehrende Zeitpläne gibt es nicht.
+Wiederkehrende Termine und ganze Flotten laufen über [Rollouts](#rollouts-in-wellen).
+
+**Ergebnis automatisch prüfen und abschließen** (im Dialog vorausgewählt): Nach dem Auftrag
+wartet OPNexus, bis der Firmware-Auftrag beendet ist, und prüft dann selbst: Firmware
+mindestens eine Minute am Stück bereit, ein erwarteter Neustart hat wirklich stattgefunden
+(Host offline gesehen oder neue Boot-Zeit), Version lesbar. Erst dann wird die Wartungsaktion
+als abgeschlossen markiert und sperrt Host und Cluster nicht mehr. Gelingt das nicht innerhalb
+von 20 Minuten, bleibt sie „unklar“ (gesperrt, mit Benachrichtigung). Ohne die Option bleibt
+sie wie bisher „übergeben“, bis jemand sie von Hand abschließt.
 
 In einem Cluster läuft unbeaufsichtigte Wartung standardmäßig **nur auf dem
 CARP-BACKUP**. Ist der Host beim Einplanen gerade MASTER, lehnt OPNexus das sofort mit
@@ -849,7 +857,72 @@ der Plan steht auf „fehlgeschlagen“, die Wartungsaktion auf „unklar“, un
 Benachrichtigung. Der CARP-Umschalter wird nie blind wiederholt. Beendest du die
 Wartungsaktion von Hand, stoppt der Ablauf und fasst nichts mehr an. Bei Erfolg schließt
 OPNexus die Wartungsaktion selbst ab. Sie läuft auch einen Neustart des OPNexus-Backends
-mitten im Ablauf weiter (der Zustand steht in der Datenbank).
+mitten im Ablauf weiter (der Zustand steht in der Datenbank). Mit „Ergebnis automatisch
+prüfen“ kommt die Prüfung **vor** dem Verlassen des Wartungsmodus: Der Host bekommt den
+Verkehr erst zurück, wenn er nachweislich fertig ist.
+
+### Rollouts in Wellen
+
+**System › Rollouts** verteilt ein Firmware-Update (stabiles Update oder Major-Upgrade) in
+Wellen über die Flotte. Die Wellen bestehen aus [Gerätegruppen](#gerätegruppen), die man
+als Ringe anlegt, zum Beispiel `ring-canary` (eine unwichtige Firewall), `ring-pilot`
+(einige) und `ring-prod` (der Rest). Steht ein Host in mehreren Wellen, gilt die früheste.
+
+**Ablauf je Welle:**
+
+1. **Vorprüfung:** Update-Suche auf den Hosts der Welle, dann Bestand aufnehmen (Version,
+   Gateways, laufende Dienste, Sicherheits-Score). Hosts ohne passendes Update werden
+   übersprungen. Die Version, die in der ersten Welle installiert wird, ist die
+   **Zielversion**; bietet ein Host einer späteren Welle eine andere an, hält der Rollout an
+   (OPNsense installiert immer die neueste, sonst bekäme „prod“ eine Version, die im
+   Canary-Ring nie lief).
+2. **Hosts nacheinander:** Jeder Host läuft als [geplante Wartung](#geplante-wartung) mit
+   automatischer Prüfung (Backup vor dem Update, Sperren, Audit). Immer nur ein Host,
+   immer nur ein Rollout gleichzeitig. Im Cluster zuerst der BACKUP, dann der MASTER;
+   der MASTER nur, wenn die Welle die CARP-Übergabe erlaubt, sonst hält der Rollout an.
+   Vor dem zweiten Knoten eines Clusters werden der Cluster (alle Knoten erreichbar,
+   genau ein MASTER je VHID, kein Wartungsmodus) und der schon aktualisierte Knoten
+   erneut geprüft.
+3. **Beobachtungszeit** (je Welle einstellbar), dann die **Gesundheitsprüfung** der
+   aktualisierten Hosts: erreichbar und Firmware bereit, Zielversion installiert, CARP
+   gesund, Gateways und Dienste, die vorher liefen, laufen wieder (vorher schon gestörte
+   nur als Hinweis), keine offenen Sperren, optional Sicherheits-Score nicht gesunken
+   (Hinweis oder Halt). Ist etwas rot, prüft OPNexus zwei Minuten später noch einmal
+   (langsamer Start nach dem Neustart) und hält dann an.
+4. **Freigabe** (optional je Welle): Die Welle beginnt erst, wenn jemand auf „Welle
+   freigeben“ klickt.
+
+**Angehalten** wird bei jeder Unklarheit, nie wird etwas von selbst wiederholt: Gate rot,
+Host fehlgeschlagen oder ungewöhnlich lange unterwegs, Host in der Vorprüfung nicht bereit,
+abweichende Zielversion, MASTER ohne Übergabe, eine fremde offene Wartung im Cluster länger
+als 15 Minuten, die verantwortliche Person darf nicht mehr ausrollen, das Fenster wurde
+gelöscht, der Lauf ist älter als 14 Tage. Es kommt die Benachrichtigung „Rollout
+angehalten“. **Fortsetzen** prüft zuerst alle bisher aktualisierten Hosts erneut; wer
+fortsetzt, ist ab dann verantwortlich. Ein fehlgeschlagener Host muss vorher ausdrücklich
+**übersprungen** werden (seine Wartungsaktion bleibt „unklar“, bis du sie auf der
+Host-Seite abschließt). **Abbrechen** verwirft alles, was noch nicht begonnen hat; eine
+Aktion, die schon auf einer Firewall läuft, wird geführt zu Ende gebracht. **Anhalten**
+darf jeder mit Schreibrecht, alles andere braucht das Recht zum Ausrollen.
+
+**Wartungsfenster** (Reiter „Wartungsfenster“): wöchentlich an bestimmten Tagen oder
+monatlich (erster…vierter oder letzter Wochentag, oder ein fester Tag 1–28), Beginn in einer
+Zeitzone, Dauer und Abschneidezeit: Nach den ersten N Minuten beginnt kein neuer Host mehr,
+laufende Updates laufen zu Ende, und der Rollout wartet auf den nächsten Termin (dann wird
+zuerst das Bisherige erneut geprüft). Sommerzeit: Eine Uhrzeit, die es an dem Tag nicht gibt,
+rückt vor (02:30 → 03:30); eine doppelte gilt beim ersten Mal. Einzelne Termine lassen sich
+auslassen oder verschieben. Ein Fenster, das ein Plan nutzt, lässt sich nicht löschen.
+
+**Automatischer Start:** Ein Plan mit Fenster und stabilem Update kann zu jedem Termin von
+selbst starten. Dazu muss ihn jemand mit Ausroll-Recht nach der Vorschau **aktivieren**.
+OPNexus merkt sich dabei einen Fingerabdruck von Plan, aufgelösten Hosts und Fenster; ändert
+sich davon etwas (auch die Mitglieder einer Gruppe), startet nichts, und es kommt „Rollout
+nicht automatisch gestartet“. Jede Bearbeitung des Plans deaktiviert ihn. So kann niemand
+die Ziele eines aktivierten Plans unbemerkt ändern.
+
+Das **Update Center** zeigt den laufenden Rollout als Banner; Hosts, die er noch bearbeitet,
+sind dort für manuelle Firmware-Aktionen gesperrt. Ein Neustart oder Update von OPNexus
+während eines Rollouts ist sicher (der Zustand steht in der Datenbank), hält ihn aber für
+diese Zeit an.
 
 ### Dienste und Systemauslastung
 
@@ -1425,8 +1498,11 @@ nach einem Neustart erhalten. Alternativ legt ihn OPNexus unter
   OPNsense, keine Ausführung durch OPNexus.
 - **Logs:** kein Live-Streaming (Polling im Sekundenbereich), die Freitextsuche ist
   eine einfache Teilstring-Suche ohne Index.
-- **Geplante Wartung:** nur einmalige Zeitpunkte, ohne Benachrichtigung bei
-  Fehlschlag.
+- **Geplante Wartung und Rollouts:** Rollouts kennen keine Zielversion „von außen“
+  (OPNsense installiert immer die neueste angebotene) und keinen automatischen Rückweg zur
+  alten Version. Major-Upgrade-Rollouts sind nur gegen eine nachgestellte Firewall getestet.
+  Die Gesundheitsprüfung sieht die Firewall aus Sicht der Verwaltung; ob der Nutzverkehr
+  durchgeht, prüft sie nicht.
 - **Dienste:** keine Auswahlliste, alle Dienste sind steuerbar.
 - **VPN:** Umfang je Verfahren siehe [VPN](#vpn-ipsec-openvpn-wireguard).
 - **Zertifikate:** kein Push auf mehrere Hosts, keine Verwaltung von DNS-Providern

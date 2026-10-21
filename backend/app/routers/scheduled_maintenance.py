@@ -24,6 +24,8 @@ class Schedule(BaseModel):
     acknowledge_unattended: Literal[True]
     # Hand the traffic over to the CARP partner first and switch back afterwards (cluster nodes only).
     carp_handover: bool = False
+    # Check the result automatically afterwards and close the operation (no manual "Wartung abschließen").
+    auto_verify: bool = False
 
 
 def _read(sched: ScheduledMaintenance) -> dict:
@@ -32,6 +34,8 @@ def _read(sched: ScheduledMaintenance) -> dict:
         "status": sched.status, "actor": sched.actor, "created_at": sched.created_at,
         "result": sched.result, "host_operation_id": sched.host_operation_id,
         "carp_handover": sched.carp_handover, "phase": sched.phase,
+        "auto_verify": sched.auto_verify, "origin": sched.origin,
+        "rollout_run_id": ((sched.progress or {}).get("rollout") or {}).get("run_id"),
     }
 
 
@@ -80,6 +84,7 @@ async def create_scheduled(host_id: uuid.UUID, payload: Schedule, request: Reque
     sched = ScheduledMaintenance(
         host_id=host.id, host_name=host.name, action=payload.action, run_at=run_at,
         actor=request.state.user.username, created_at=now, carp_handover=payload.carp_handover,
+        auto_verify=payload.auto_verify,
     )
     db.add(sched)
     await db.commit()
@@ -90,7 +95,9 @@ async def create_scheduled(host_id: uuid.UUID, payload: Schedule, request: Reque
 async def cancel_scheduled(host_id: uuid.UUID, schedule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     await policy_lock(db)
     await _host_or_404(db, host_id)
-    sched = await db.get(ScheduledMaintenance, schedule_id)
+    # Locked and re-read: the poll loop may be firing this very row right now (it holds the lock meanwhile).
+    sched = await db.scalar(select(ScheduledMaintenance).where(ScheduledMaintenance.id == schedule_id)
+                            .with_for_update().execution_options(populate_existing=True))
     if not sched or sched.host_id != host_id:
         raise api_error(404, ErrorCode.GEPLANTE_WARTUNG_NICHT_GEFUNDEN)
     if sched.status != "pending":

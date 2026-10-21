@@ -50,7 +50,10 @@ from app.routers import gateways as gateways_router
 from app.routers import resource_samples as resource_samples_router
 from app.services import resource_monitor_service
 from app.routers import scheduled_maintenance as scheduled_maintenance_router
+from app.routers import maintenance_windows as maintenance_windows_router
+from app.routers import rollouts as rollouts_router
 from app.services import scheduled_maintenance_service
+from app.services import rollout_engine
 from app.services import compliance_service
 from app.services import audit_export_service
 from app.services import overlay_service, variables_service
@@ -255,6 +258,12 @@ async def _scheduled_maintenance_poll_loop():
         except Exception:
             logger.exception("Geplante-Wartung-Poll fehlgeschlagen")
             in_progress = 0
+        # Firmware rollouts (1.25) only ever create schedules; the next tick of the lines above fires them.
+        try:
+            async with SessionLocal() as db:
+                in_progress += await rollout_engine.advance_runs(db)
+        except Exception:
+            logger.exception("Rollout-Poll fehlgeschlagen")
         # A handover run is stepped quickly (the partner should take over within a minute or two);
         # otherwise the relaxed cadence is plenty.
         await asyncio.sleep(_RUNNING_MAINTENANCE_POLL_SECONDS if in_progress else _SCHEDULED_MAINTENANCE_POLL_SECONDS)
@@ -518,3 +527,5 @@ app.include_router(network_drift_router.router, prefix="/api")
 app.include_router(diagnostics_router.router, prefix="/api")
 app.include_router(resource_samples_router.router, prefix="/api")
 app.include_router(scheduled_maintenance_router.router, prefix="/api")
+app.include_router(maintenance_windows_router.router, prefix="/api")
+app.include_router(rollouts_router.router, prefix="/api")

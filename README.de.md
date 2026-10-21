@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.24.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.25.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -20,7 +20,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Zertifikate** — Trust-Store für alle Firewalls und Ausstellung per ACME / Let's Encrypt.
 - **Alarme** — Gateway-/WAN-Ausfall (down, Paketverlust, Latenz), Schwellen für Platte, Speicher, Swap und CPU sowie ausgefallene Dienste; über mehrere Messungen entprellt, damit Einzelspitzen und flackernde Verbindungen schweigen. Zustellung per E-Mail, Webhook, ntfy, Gotify, Telegram, Microsoft Teams oder Matrix, jedes Ereignis einzeln schaltbar.
 - **Logs & Audit** — zentrale Log-Suche mit Korrelation, Dashboards und lückenloser Deploy-Verlauf.
-- **Update-Center** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus.
+- **Update-Center und Rollouts** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus; Rollouts in Wellen (Canary → Pilot → Prod) mit wiederkehrenden Wartungsfenstern, Gesundheitsprüfung zwischen den Wellen und automatischem Halt bei jeder Auffälligkeit.
 - **Einrichtungsassistent** — geführter Erststart nach der Installation: eigenes Passwort, Zwei-Faktor und die erste Firewall verbinden.
 - **Selbst-Update** — OPNexus aktualisiert sich auf Wunsch aus der eigenen Oberfläche, mit Fortschritt und automatischem Rollback (optional).
 - **Automatisierung** — persönliche API-Tokens (Lesen / Ausrollen / Admin), Prometheus-Metriken, ein nur lesender MCP-Endpunkt für KI-Assistenten und ein OpenAPI-Schema.
@@ -63,7 +63,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.24.0
+OPNEXUS_VERSION=1.25.0
 ```
 
 ```bash

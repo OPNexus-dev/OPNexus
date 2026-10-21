@@ -119,6 +119,8 @@ export const serverMessagesEn: Array<[string | RegExp, string]> = [
   [/^Manuell abgebrochen, kein bestätigter Abschluss\. Grund: (?<reason>[\s\S]*)$/, "Manually cancelled, no confirmed completion. Reason: {reason}"],
   ["Unerwarteter Fehler beim Ausführen", "Unexpected error during execution"],
   ["Host nicht gefunden oder deaktiviert", "Host not found or disabled"],
+  ["Rollout-Schritt nicht rechtzeitig gestartet, nichts ausgeführt", "Rollout step not started in time, nothing was run"],
+  ["Rollout angehalten, nicht ausgeführt", "Rollout paused, not run"],
   [/^Host nicht erreichbar: (?<detail>[\s\S]*)$/, "Host unreachable: {detail}"],
   [/^Automatisches Backup vor dem Update fehlgeschlagen: (?<detail>[\s\S]*)$/, "Automatic backup before the update failed: {detail}"],
   [/^Vorbereitung der CARP-Übergabe fehlgeschlagen, nichts wurde verändert: (?<detail>[\s\S]*)$/, "Preparing the CARP handover failed, nothing was changed: {detail}"],

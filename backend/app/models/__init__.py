@@ -93,3 +93,9 @@ __all__ += ["HostResourceSample"]
 
 from app.models.scheduled_maintenance import ScheduledMaintenance
 __all__ += ["ScheduledMaintenance"]
+
+from app.models.maintenance_window import MaintenanceWindow, MaintenanceWindowException
+__all__ += ["MaintenanceWindow", "MaintenanceWindowException"]
+
+from app.models.rollout import RolloutPlan, RolloutPlanWave, RolloutRun, RolloutRunHost, RolloutRunWave, rollout_wave_groups
+__all__ += ["RolloutPlan", "RolloutPlanWave", "RolloutRun", "RolloutRunHost", "RolloutRunWave", "rollout_wave_groups"]

@@ -17,6 +17,7 @@ ProblemType = Literal[
     "backup_offsite_failed",
     "compliance_finding",
     "gateway_down", "resource_threshold", "service_down",
+    "rollout_paused", "rollout_start_failed",
 ]
 ChannelType = Literal["ntfy", "gotify", "telegram", "teams", "matrix"]
 
@@ -52,6 +53,7 @@ class NotificationSettingsRead(BaseModel):
     gateway_down_enabled: bool = True
     resource_threshold_enabled: bool = False
     service_down_enabled: bool = False
+    rollout_problems_enabled: bool = True
     gateway_loss_threshold_pct: int = 20
     gateway_delay_threshold_ms: int = 500
     disk_threshold_pct: int = 90
@@ -108,6 +110,7 @@ class NotificationSettingsUpdate(BaseModel):
     gateway_down_enabled: bool | None = None
     resource_threshold_enabled: bool | None = None
     service_down_enabled: bool | None = None
+    rollout_problems_enabled: bool | None = None
     # 0 switches that single threshold off.
     gateway_loss_threshold_pct: int | None = Field(default=None, ge=0, le=100)
     gateway_delay_threshold_ms: int | None = Field(default=None, ge=0, le=60000)

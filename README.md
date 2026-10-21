@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.24.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.25.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -20,7 +20,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
 - **Alerts** — gateway/WAN outage (down, packet loss, latency), disk/memory/swap/CPU thresholds and stopped services, debounced over several measurements so spikes and flapping links stay quiet; delivered by email, webhook, ntfy, Gotify, Telegram, Microsoft Teams or Matrix, all switchable per event.
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
-- **Update center** — firmware updates for the fleet, aware of HA order and maintenance mode.
+- **Update center & rollouts** — firmware updates for the fleet, aware of HA order and maintenance mode; rollouts in waves (canary → pilot → prod) with recurring maintenance windows, a health gate between the waves and an automatic stop on anything unusual.
 - **Setup assistant** — a guided first run after installation: your own password, two-factor, and connecting the first firewall.
 - **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Automation** — personal API tokens (read / deploy / admin), Prometheus metrics, a read-only MCP endpoint for AI assistants and an OpenAPI schema.
@@ -65,7 +65,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.24.0
+OPNEXUS_VERSION=1.25.0
 ```
 
 ```bash

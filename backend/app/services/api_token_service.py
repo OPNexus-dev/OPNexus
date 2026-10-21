@@ -90,7 +90,10 @@ _ROLLOUT_POST = re.compile(
     r"|deployments/[^/]+/(remove|retry-rollback)"
     r"|maintenance/(execute|carp-execute|schedule)"
     r"|network/changes"
-    r"|services/[^/]+/(start|stop|restart))$"
+    r"|services/[^/]+/(start|stop|restart)"
+    # Firmware rollouts (1.25): starting/arming a plan and moving a run forward. Pausing is deliberately absent.
+    r"|rollouts/plans/[^/]+/(start|activate)"
+    r"|rollouts/runs/[^/]+/(resume|approve|skip-host|abort))$"
 )
 _ROLLOUT_DELETE = re.compile(
     r"^/api/(rules|aliases|port-forward|one-to-one|outbound-nat|policy-hierarchy/rules|ipsec/tunnels|openvpn/instances"
@@ -99,7 +102,13 @@ _ROLLOUT_DELETE = re.compile(
 )
 
 
+# Recurring maintenance windows decide WHEN unattended firmware actions run (1.25): every write counts.
+_ROLLOUT_ANY_WRITE = re.compile(r"^/api/maintenance-windows(/|$)")
+
+
 def is_rollout(method: str, path: str) -> bool:
+    if method in ("POST", "PUT", "PATCH", "DELETE") and _ROLLOUT_ANY_WRITE.match(path):
+        return True
     if method == "POST":
         return bool(_ROLLOUT_POST.search(path))
     return method == "DELETE" and bool(_ROLLOUT_DELETE.match(path))

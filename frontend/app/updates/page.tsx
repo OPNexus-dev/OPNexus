@@ -17,7 +17,9 @@ import {
   MaintenancePreview,
   MaintenanceRead,
   MaintenanceState,
+  RolloutStatus,
 } from "@/lib/api";
+import { RolloutStatusBanner } from "@/components/RolloutStatusBanner";
 import { useReadOnly } from "@/lib/useReadOnly";
 import { useLanguage } from "@/components/LanguageProvider";
 import type { TranslationParams } from "@/lib/i18n";
@@ -132,6 +134,7 @@ export default function UpdatesPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [log, setLog] = useState<{ host: Host; text: string } | null>(null);
+  const [rollout, setRollout] = useState<RolloutStatus | null>(null);
 
   useEffect(() => {
     mounted.current = true;
@@ -341,6 +344,7 @@ export default function UpdatesPage() {
         </div>
       </div>
 
+      <RolloutStatusBanner onStatus={setRollout} />
       {pageError && <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{pageError}</p>}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -373,6 +377,9 @@ export default function UpdatesPage() {
           const carpWarning = state ? carpMaintenanceWarning(host, state, t) : null;
           const canCheck = host.enabled && state?.running === "ready" && !activeOperation;
           const isExpanded = expanded.has(host.id);
+          // A host the active rollout still owns: no manual firmware action next to it (the rollout does it or skips it).
+          const inRollout = Boolean(rollout?.host_ids.includes(host.id));
+          const rolloutLock = inRollout ? [<span key="rollout">{t("rollouts.inRolloutTip")}</span>] : [];
           return (
             <Card key={host.id} className="overflow-hidden">
               <div className="p-4 sm:p-5">
@@ -384,18 +391,19 @@ export default function UpdatesPage() {
                       {!host.enabled && <Badge tone="neutral">{t("updates.disabled")}</Badge>}
                       {(state?.carp_status ?? host.carp_status) && <Badge tone="neutral">CARP {state?.carp_status ?? host.carp_status}</Badge>}
                       {carpWarning && <Tooltip content={carpWarning} focusable><Badge tone="warning">{t("updates.carpMode")}</Badge></Tooltip>}
+                      {inRollout && <Tooltip content={t("rollouts.inRolloutTip")} focusable><Badge tone="accent">{t("rollouts.inRollout")}</Badge></Tooltip>}
                       {state?.reboot_required && <Tooltip content={t("updates.tipRebootRequired")} focusable><Badge tone="warning"><AlertTriangle size={12} />{t("updates.rebootRequired")}</Badge></Tooltip>}
                     </div>
                     <p className="mt-1 truncate text-xs text-slate-400">{host.base_url}{host.cluster_name ? t("updates.clusterSuffix", { name: host.cluster_name }) : ""}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Tooltip content={t("updates.tipCheck")} focusable={!canCheck}><Button variant="secondary" disabled={readOnly || !canCheck || detail?.checking || submitting || bulkChecking} onClick={() => void checkHost(host)}>{detail?.checking ? <Spinner size={13} /> : <RefreshCw size={14} />}{t("updates.check")}</Button></Tooltip>
-                    {state && <CarpSwitchControl host={host} state={state} disabled={readOnly || Boolean(activeOperation) || submitting || detail?.checking} onChanged={() => loadOne(host)} />}
-                    <BlockedTip reasons={readOnly ? [t("updates.readOnlyNote")] : blockerReasons(visibleBlockers)}>
-                      <Button disabled={readOnly || blockers.length > 0 || submitting || detail?.checking} onClick={() => void openPreview(host, "update")}>{blockers.length > 0 && !readOnly && <Lock size={13} aria-label={t("updates.lockedPrefix")} />}{t("updates.prepareUpdate")}</Button>
+                    {state && <CarpSwitchControl host={host} state={state} disabled={readOnly || inRollout || Boolean(activeOperation) || submitting || detail?.checking} onChanged={() => loadOne(host)} />}
+                    <BlockedTip reasons={readOnly ? [t("updates.readOnlyNote")] : [...rolloutLock, ...blockerReasons(visibleBlockers)]}>
+                      <Button disabled={readOnly || inRollout || blockers.length > 0 || submitting || detail?.checking} onClick={() => void openPreview(host, "update")}>{blockers.length > 0 && !readOnly && <Lock size={13} aria-label={t("updates.lockedPrefix")} />}{t("updates.prepareUpdate")}</Button>
                     </BlockedTip>
-                    <BlockedTip reasons={readOnly ? [t("updates.readOnlyNote")] : blockerReasons(visibleMajorBlockers)}>
-                      <Button variant="danger" disabled={readOnly || majorBlockers.length > 0 || submitting || detail?.checking} onClick={() => void openPreview(host, "major_update")}>{majorBlockers.length > 0 && !readOnly && <Lock size={13} aria-label={t("updates.lockedPrefix")} />}{t("updates.prepareMajor")}</Button>
+                    <BlockedTip reasons={readOnly ? [t("updates.readOnlyNote")] : [...rolloutLock, ...blockerReasons(visibleMajorBlockers)]}>
+                      <Button variant="danger" disabled={readOnly || inRollout || majorBlockers.length > 0 || submitting || detail?.checking} onClick={() => void openPreview(host, "major_update")}>{majorBlockers.length > 0 && !readOnly && <Lock size={13} aria-label={t("updates.lockedPrefix")} />}{t("updates.prepareMajor")}</Button>
                     </BlockedTip>
                     {/* Not nested under `state &&`: a host can be offline/unreachable
                         precisely because a maintenance action is stuck — the operator

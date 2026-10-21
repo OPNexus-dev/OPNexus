@@ -68,6 +68,8 @@ class NotificationSettings(Base):
     gateway_down_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     resource_threshold_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     service_down_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Rollouts (1.25): a run paused (gate, failure, window...) or an automatic start did not happen.
+    rollout_problems_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     # Gateway: OPNsense' own verdict (down / loss / delay) decides "offline"; these two add an
     # OPNexus threshold on the measured values (0 = off).
     gateway_loss_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=20, server_default="20")

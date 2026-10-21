@@ -56,9 +56,9 @@ _READ_ONLY_ALLOWED_WRITES = {
 _SECURITY_KINDS = {
     "ipsec": "ipsec_tunnel", "openvpn": "openvpn_instance", "wireguard": "wireguard_tunnel",
     "certificates": "certificate", "acme": "acme", "notifications": "notification", "auth": "auth",
-    "tokens": "api_token",
+    "tokens": "api_token", "rollouts": "rollout",
 }
-_COLLECTIONS = {"tunnels", "instances", "managed", "accounts", "certificates", "settings"}
+_COLLECTIONS = {"tunnels", "instances", "managed", "accounts", "certificates", "settings", "plans", "runs"}
 
 
 def _is_uuid(value: str) -> bool:
@@ -117,7 +117,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
             if user is not None:
                 parts = request.url.path.strip("/").split("/")
-                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system", "backups": "backup"}
+                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system", "backups": "backup", "maintenance-windows": "maintenance_window"}
                 writing = request.method in ("POST", "PUT", "PATCH", "DELETE")
                 if len(parts) > 1 and parts[1] in _SECURITY_KINDS:
                     event = {**_security_event(parts, request.method), "details": {"method": request.method, "path": request.url.path}}

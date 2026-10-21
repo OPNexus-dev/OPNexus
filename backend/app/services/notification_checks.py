@@ -363,3 +363,49 @@ async def check_compliance(db: AsyncSession) -> dict[str, dict]:
                     "beispiele": ", ".join(params.get("examples", [])) or None,
                 }
     return problems
+
+
+# ── Rollouts (1.25) ─────────────────────────────────────────────────────────
+
+def _short(detail) -> str | None:
+    if not detail:
+        return None
+    parts = []
+    for key, value in detail.items():
+        if isinstance(value, list):
+            value = ", ".join(str(v) for v in value[:8])
+        parts.append(f"{key}: {value}")
+    return "; ".join(parts)[:500]
+
+
+async def check_rollout_paused(db: AsyncSession) -> dict[str, dict]:
+    """Open while a rollout run stands still waiting for a human (gate, failed host, window gone...)."""
+    from app.models.rollout import RolloutRun
+    problems: dict[str, dict] = {}
+    for run in (await db.scalars(select(RolloutRun).where(RolloutRun.status == "paused"))).all():
+        wave = next((w.label for w in run.waves if w.index == run.current_wave), None)
+        problems[str(run.id)] = {
+            "run_id": str(run.id), "plan": run.plan_name, "grund": run.pause_reason, "welle": wave,
+            "zielversion": run.target_version, "details": _short(run.pause_detail),
+        }
+    return problems
+
+
+ROLLOUT_START_FAILURE_WINDOW = timedelta(days=3)
+
+
+async def check_rollout_start_failed(db: AsyncSession) -> dict[str, dict]:
+    """An automatic start at a window occurrence did not happen (event: closed without a 'resolved' notice)."""
+    from app.models.rollout import RolloutPlan
+    since = datetime.now(timezone.utc) - ROLLOUT_START_FAILURE_WINDOW
+    problems: dict[str, dict] = {}
+    for plan in (await db.scalars(select(RolloutPlan).where(RolloutPlan.auto_start_error.is_not(None)))).all():
+        error = plan.auto_start_error or {}
+        at = datetime.fromisoformat(error["at"]) if error.get("at") else None
+        if at is None or at < since:
+            continue
+        problems[f"{plan.id}:{error.get('occurrence')}"] = {
+            "plan_id": str(plan.id), "plan": plan.name, "grund": error.get("code"), "termin": error.get("occurrence"),
+            "details": _short(error.get("params")),
+        }
+    return problems

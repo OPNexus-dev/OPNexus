@@ -40,6 +40,8 @@ _LABELS = {
     "gateway_down": "Gateway gestört",
     "resource_threshold": "Ressourcen-Schwelle überschritten",
     "service_down": "Dienst ausgefallen",
+    "rollout_paused": "Rollout angehalten",
+    "rollout_start_failed": "Rollout nicht automatisch gestartet",
     "test": "Testbenachrichtigung",
 }
 
