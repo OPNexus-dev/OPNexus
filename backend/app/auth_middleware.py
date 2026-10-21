@@ -7,7 +7,7 @@ from starlette.responses import JSONResponse
 
 from app.database import SessionLocal
 from app.errors import ErrorCode
-from app.routers.auth import COOKIE_NAME
+from app.routers.auth import session_token
 from app.routers import governance
 from app.routers.auth import client_ip
 from app.services import api_token_service, auth_service
@@ -94,10 +94,14 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
+        if request.url.path.startswith("/internal/gui/"):
+            # GUI gateway only: never routed by the proxy, authenticated by the
+            # shared gateway token inside routers/gui_access.py.
+            return await call_next(request)
 
         api_token = None
         bearer = api_token_service.bearer_from_header(request.headers.get("authorization", ""))
-        token = request.cookies.get(COOKIE_NAME, "")
+        token = session_token(request)
         if bearer is not None:
             # An API token wins over a cookie; a bad one never falls back to it.
             async with SessionLocal() as db:

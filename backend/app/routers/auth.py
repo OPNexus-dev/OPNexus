@@ -15,7 +15,36 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# Plain name: used on HTTP-only (lab) deployments and accepted for a while on
+# HTTPS deployments so that sessions issued before 1.27 survive the upgrade.
 COOKIE_NAME = "opnexus-session"
+# HTTPS deployments: the __Host- prefix makes the browser refuse any cookie of
+# this name that is not Secure, has a Domain attribute or a Path other than
+# "/". A page on another port of the same host (the GUI gateway slots, any
+# other service on that machine) therefore cannot toss a narrower-path cookie
+# that shadows the real session, and cannot overwrite it from script (HttpOnly).
+SECURE_COOKIE_NAME = "__Host-opnexus-session"
+
+
+def session_cookie_name() -> str:
+    return SECURE_COOKIE_NAME if settings.cookie_secure else COOKIE_NAME
+
+
+def session_token(request: Request) -> str:
+    """The session token the browser sent. On HTTPS the __Host- cookie always
+    wins; the plain name is only a migration fallback when the browser has no
+    __Host- cookie yet (it is replaced on the next /api/auth/me)."""
+    if settings.cookie_secure:
+        return request.cookies.get(SECURE_COOKIE_NAME) or request.cookies.get(COOKIE_NAME, "")
+    return request.cookies.get(COOKIE_NAME, "")
+
+
+def uses_legacy_cookie(request: Request) -> bool:
+    return settings.cookie_secure and not request.cookies.get(SECURE_COOKIE_NAME) and bool(request.cookies.get(COOKIE_NAME))
+
+
+def has_session_cookie(request: Request) -> bool:
+    return bool(request.cookies.get(SECURE_COOKIE_NAME) or request.cookies.get(COOKIE_NAME))
 
 
 def client_ip(request: Request) -> str:
@@ -32,7 +61,7 @@ def client_ip(request: Request) -> str:
 
 def _set_session_cookie(response: Response, token: str, max_age: int | None = None) -> None:
     response.set_cookie(
-        key=COOKIE_NAME,
+        key=session_cookie_name(),
         value=token,
         max_age=max_age or settings.session_lifetime,
         httponly=True,
@@ -40,10 +69,15 @@ def _set_session_cookie(response: Response, token: str, max_age: int | None = No
         secure=settings.cookie_secure,
         path="/",
     )
+    if settings.cookie_secure:
+        # Migration: a pre-1.27 plain-name cookie must not linger next to the new one.
+        response.delete_cookie(key=COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
 
 
 def _clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(key=COOKIE_NAME, path="/")
+    response.delete_cookie(key=COOKIE_NAME, path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
+    if settings.cookie_secure:
+        response.delete_cookie(key=SECURE_COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
 
 
 def _check_account_budget(user: AdminUser, action: str) -> None:
@@ -71,7 +105,7 @@ async def resolve_user(request: Request, db: AsyncSession) -> AdminUser:
         user = await db.get(AdminUser, resolved.id)
         if user is not None:
             return user
-    token = request.cookies.get(COOKIE_NAME, "")
+    token = session_token(request)
     user = await auth_service.resolve_session(db, token)
     if user is None:
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.NICHT_AUTHENTIFIZIERT)
@@ -229,7 +263,7 @@ async def totp_enable(
     user.totp_last_step = step
     user.totp_recovery_hashes = hashes
     # Other sessions were established without the second factor — end them.
-    await auth_service.revoke_sessions(db, user.id, keep_token=request.cookies.get(COOKIE_NAME, ""), commit=False)
+    await auth_service.revoke_sessions(db, user.id, keep_token=session_token(request), commit=False)
     await db.commit()
     logger.info("Two-factor enabled for '%s'", user.username)
     return {"enabled": True, "recovery_codes": plain}
@@ -254,7 +288,7 @@ async def totp_disable(
     user.totp_enabled = False
     user.totp_recovery_hashes = None
     user.totp_last_step = 0
-    await auth_service.revoke_sessions(db, user.id, keep_token=request.cookies.get(COOKIE_NAME, ""), commit=False)
+    await auth_service.revoke_sessions(db, user.id, keep_token=session_token(request), commit=False)
     await db.commit()
     logger.info("Two-factor disabled for '%s'", user.username)
     return {"enabled": False}
@@ -262,14 +296,14 @@ async def totp_disable(
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    token = request.cookies.get(COOKIE_NAME, "")
+    token = session_token(request)
     await auth_service.revoke_session(db, token)
     _clear_session_cookie(response)
     return {"authenticated": False}
 
 
 @router.get("/me")
-async def me(request: Request, db: AsyncSession = Depends(get_db)):
+async def me(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     raw = api_token_service.bearer_from_header(request.headers.get("authorization", ""))
     if raw is not None:
         resolved = await api_token_service.resolve(db, raw, client_ip(request))
@@ -278,10 +312,14 @@ async def me(request: Request, db: AsyncSession = Depends(get_db)):
         user, api_token = resolved
         return {"authenticated": True, "username": user.username, "role": user.role,
                 "via": "token", "scope": api_token.scope, "token_name": api_token.name}
-    token = request.cookies.get(COOKIE_NAME, "")
+    token = session_token(request)
     user = await auth_service.resolve_session(db, token)
     if user is None:
         return {"authenticated": False}
+    if uses_legacy_cookie(request):
+        # Soft migration (1.27): the same server-side session moves to the
+        # __Host- cookie and the plain-name cookie is deleted — nobody is logged out.
+        _set_session_cookie(response, token)
     return {"authenticated": True, "username": user.username, "role": user.role}
 
 

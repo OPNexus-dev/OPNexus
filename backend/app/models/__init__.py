@@ -99,3 +99,6 @@ __all__ += ["MaintenanceWindow", "MaintenanceWindowException"]
 
 from app.models.rollout import RolloutPlan, RolloutPlanWave, RolloutRun, RolloutRunHost, RolloutRunWave, rollout_wave_groups
 __all__ += ["RolloutPlan", "RolloutPlanWave", "RolloutRun", "RolloutRunHost", "RolloutRunWave", "rollout_wave_groups"]
+
+from app.models.gui_access import GuiAccessSettings, GuiSession, GuiTicket
+__all__ += ["GuiAccessSettings", "GuiSession", "GuiTicket"]

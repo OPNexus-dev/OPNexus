@@ -6,5 +6,5 @@ convention — but both are bumped together whenever a release ships).
 Versioning scheme: see CHANGELOG.md ("Versionierung").
 """
 
-APP_VERSION = "1.26.0"
-APP_CODENAME = "Kite"
+APP_VERSION = "1.27.0"
+APP_CODENAME = "Buzzard"

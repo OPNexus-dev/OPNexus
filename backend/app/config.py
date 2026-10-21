@@ -6,6 +6,17 @@ class Settings(BaseSettings):
     def allowed_origins(self) -> list[str]:
         return [o.strip().rstrip("/") for o in self.frontend_origin.split(",") if o.strip()]
 
+    @property
+    def gui_site_origins(self) -> list[str]:
+        return [o.strip().rstrip("/") for o in self.opnexus_gui_sites.split(",") if o.strip()]
+
+    def gui_origin_conflicts(self) -> list[str]:
+        """Slot origins of the GUI gateway that are also listed in FRONTEND_ORIGIN.
+        Such an origin would get CORS with credentials and pass the Sec-Fetch-Site
+        exception — a firewall GUI could then read OPNexus' API. Startup is refused."""
+        allowed = {o.lower() for o in self.allowed_origins}
+        return [o for o in self.gui_site_origins if o.lower() in allowed]
+
     database_url: str = (
         "postgresql+asyncpg://opnexus:opnexus@postgres:5432/opnexus"
     )
@@ -91,6 +102,14 @@ class Settings(BaseSettings):
     # proxy) — any client could then spoof the header to dodge the
     # per-IP lockout entirely.
     trust_proxy_headers: bool = False
+
+    # ── GUI gateway (1.27, optional container "gui-gateway") ─────────
+    # Slot origins the gateway is served on, comma-separated, e.g.
+    # "https://192.0.2.10:9441,https://192.0.2.10:9442". Empty = feature unavailable.
+    opnexus_gui_sites: str = ""
+    # Shared secret between backend and gateway for /internal/gui/* (at least
+    # 32 characters). Empty = the internal endpoints answer 404.
+    gui_gateway_token: str = ""
 
     # ── Deploy lockout protection ────────────────────────────────────
     deploy_confirm_window_seconds: int = 180

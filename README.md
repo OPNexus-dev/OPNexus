@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.26.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.27.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -19,6 +19,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Network** — interfaces, VLANs, virtual IPs, gateways, routes, LAGG/bridge/GRE, DNS and DHCP per firewall, plus tunables, cron, syslog, snapshots and diagnostics (ping, traceroute, port check, DNS), a comparison of cluster nodes, with a diff preview, a backup before every change and a guard against cutting your own connection; rules, aliases and NAT rules created by hand on a firewall can be adopted.
 - **Certificates** — trust store for all firewalls and ACME / Let's Encrypt issuance.
 - **Alerts** — gateway/WAN outage (down, packet loss, latency), disk/memory/swap/CPU thresholds and stopped services, debounced over several measurements so spikes and flapping links stay quiet; delivered by email, webhook, ntfy, Gotify, Telegram, Microsoft Teams or Matrix, all switchable per event.
+- **Firewall interface through OPNexus** — open a firewall's own web interface in a separate browser tab through OPNexus, even behind NAT; admins only, one-time ticket, isolated origin, time limits and audit (off by default).
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
 - **Update center & rollouts** — firmware updates for the fleet, aware of HA order and maintenance mode; rollouts in waves (canary → pilot → prod) with recurring maintenance windows, a health gate between the waves and an automatic stop on anything unusual.
 - **Setup assistant** — a guided first run after installation: your own password, two-factor, and connecting the first firewall.
@@ -66,7 +67,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.26.0
+OPNEXUS_VERSION=1.27.0
 ```
 
 ```bash

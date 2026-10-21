@@ -410,6 +410,83 @@ angesprochen (keine DNS-Namen). Nicht enthalten: Die Einrichtung auf der Firewal
 (bei einer Firewall hinter NAT kann es sie ja nicht erreichen); bei einer erreichbaren Firewall kannst du
 alternativ unter VPN › WireGuard einen Tunnel mit denselben Werten verteilen.
 
+### Firewall-Oberfläche über OPNexus
+
+Mit **Oberfläche öffnen** auf der Host-Seite öffnest du die Weboberfläche einer Firewall in einem neuen
+Browser-Tab, und zwar **über OPNexus**. Das lohnt sich vor allem bei Firewalls hinter NAT, die nur über den
+[Management-Tunnel](#firewalls-hinter-nat-management-tunnel) erreichbar sind: Dein Browser braucht keinen eigenen
+Zugang zum Tunnel-Netz. Du meldest dich an der Firewall wie gewohnt mit deren Benutzer und Passwort an; OPNexus
+kennt und speichert diese Zugangsdaten nicht und meldet nichts automatisch an.
+
+**Standardmäßig ist die Funktion aus** und doppelt gesichert: Sie braucht eine Einrichtung auf dem Server und
+einen Schalter in den Einstellungen.
+
+**Einrichten** (in der `.env` im OPNexus-Verzeichnis):
+
+1. **HTTPS und `COOKIE_SECURE=true`** (siehe [Zugriff aus dem Netz und TLS](#zugriff-aus-dem-netz-und-tls)).
+   Ohne sichere Cookies lässt sich die Funktion nicht einschalten.
+2. **Compose-Profil `gui`** aktivieren: `COMPOSE_PROFILES=gui` (mit weiteren Profilen kommagetrennt, z. B.
+   `overlay,gui`). Das startet den Container `gui-gateway`.
+3. **Slot-Adressen** festlegen: `OPNEXUS_GUI_SITES=https://10.0.0.5:9441, https://10.0.0.5:9442, https://10.0.0.5:9443, https://10.0.0.5:9444`.
+   Es ist dieselbe Adresse wie in `OPNEXUS_SITES`, je Slot ein Port. Diese Ursprünge dürfen **nicht** in
+   `FRONTEND_ORIGIN` stehen (OPNexus startet sonst nicht).
+4. **Gemeinsames Geheimnis** `GUI_GATEWAY_TOKEN` (mindestens 32 Zeichen, z. B. `openssl rand -hex 32`).
+5. **Ports:** `GUI_PORTS=9441-9444` (die Ports aus `OPNEXUS_GUI_SITES`) sind die Slot-Ports am Proxy. Setze den
+   Eintrag ausdrücklich: ohne ihn vergibt Docker zufällige freie Ports, damit ein Update nicht an schon belegten
+   Ports (z. B. Portainer auf 9443) scheitert. `GUI_BIND_ADDRESS` bestimmt, wo
+   sie lauschen; Standard ist `127.0.0.1` (nur lokal). Für den Zugriff aus dem Netz trägst du die Adresse des
+   OPNexus-Rechners ein und gibst die Ports in der Firewall des Rechners nur für Administratoren frei.
+6. `docker compose up -d`, dann unter **Einstellungen › Firewall-Oberfläche über OPNexus** den Schalter einschalten.
+   Fehlt etwas, nennt die Einstellungsseite genau, was.
+
+In den Einstellungen legst du außerdem fest: **Inaktivität** (Standard 15 Minuten, 1 bis 240), **Gesamtdauer**
+(Standard 60 Minuten, 5 bis 720) und die Zahl der **gleichzeitigen Plätze** (Standard 4, 1 bis 4). Ausschalten
+beendet alle offenen Sitzungen (das Gateway bemerkt es spätestens nach 20 Sekunden).
+
+**So ist es abgesichert:**
+
+- **Eigene Origin:** Jede Firewall-Oberfläche läuft auf einem eigenen Port (einem „Platz“) und damit in einem
+  eigenen Browser-Ursprung, getrennt von OPNexus. Skripte der Firewall-Oberfläche können OPNexus nicht
+  ansprechen; OPNexus lehnt außerdem Anfragen mit Anmelde-Cookie von fremden Ursprüngen ab.
+- **Cookies bleiben auf dem Server:** Das Gateway reicht die OPNexus-Sitzung nie an die Firewall weiter und
+  die Cookies der Firewall nie an deinen Browser. Die Firewall-Sitzung liegt nur im Arbeitsspeicher des Gateways.
+- **Nur Admins**, nur mit angemeldeter Browsersitzung (nie mit einem API-Token). Das Gateway prüft alle 20
+  Sekunden nach: Abmelden, Entzug der Admin-Rolle oder Ausschalten beendet die Sitzung.
+- **Einmal-Ticket:** Der Klick erzeugt ein Ticket, das nur **30 Sekunden** und **genau einmal** gilt und an deine
+  Sitzung und den Platz gebunden ist. Danach verschwindet es aus der Adresszeile.
+- **Nur sichere Firewalls:** https-Adresse und geprüftes oder festgesetztes Zertifikat (siehe Pinning); sonst
+  bleibt der Knopf deaktiviert und nennt den Grund.
+- **Zeitlimits** (Inaktivität und Gesamtdauer) und **Audit:** Unter **Monitoring › Audit** (Art „GUI-Zugriff“)
+  stehen Ticket, Start und Ende jeder Sitzung mit Benutzer, Firewall, Platz und Client-IP. Was du in der
+  Oberfläche tust, protokolliert die Firewall selbst, dort aber mit der Adresse von OPNexus; das OPNexus-Audit
+  zeigt, wer dahinter stand.
+- **Anmeldeschutz:** Das Gateway lässt höchstens drei fehlgeschlagene Anmeldungen pro Firewall in fünf Minuten zu.
+
+**Wichtig: OPNexus-Adresse beim Anmeldeschutz der Firewall eintragen.** Über das Gateway kommen alle
+Anmeldungen von der Adresse von OPNexus (bei Firewalls im Tunnel von der des Hubs). Die Anmeldesperre von
+OPNsense (sshguard) sperrt nach mehreren Fehlversuchen diese Adresse, und damit auch die **API-Zugriffe von
+OPNexus**. Trage sie deshalb auf jeder Firewall unter **System › Einstellungen › Administration** (Login
+Protection) in die Whitelist ein, bevor du die Funktion benutzt.
+
+**Einschränkungen:**
+
+- **Kein WebSocket** (Funktionen, die einen brauchen, gehen nicht) und **keine automatische Anmeldung**.
+- **Höchstens 4 Plätze gleichzeitig.** Ein Platz bleibt pro OPNexus-Sitzung bei derselben Firewall; sind alle
+  belegt, schließe eine Oberfläche oder warte, bis sie abläuft. Ein noch offener Tab einer alten Sitzung auf
+  einem wiederverwendeten Platz bleibt ein theoretisches Restrisiko; schließe Tabs nach der Arbeit.
+- Nach einem **Neustart des wg-hub** braucht der Management-Tunnel 2 bis 4 Minuten, bis die Firewalls
+  sich wieder verbunden haben; bis dahin lässt sich die Oberfläche nicht öffnen.
+- Mit `COOKIE_SECURE=false` ist die Funktion nicht verfügbar.
+
+**Hinweis für Betreiber mit eigenen Skripten:** Seit dieser Funktion heißt das Sitzungs-Cookie bei HTTPS
+`__Host-opnexus-session` (bestehende Sitzungen werden beim nächsten Seitenaufruf übernommen, niemand wird abgemeldet), und Anfragen an `/api` mit Cookie
+und `Sec-Fetch-Site: same-site` oder `cross-site` werden abgelehnt. Skripte mit API-Token (`Authorization: Bearer`)
+sind nicht betroffen.
+
+**Alternative ohne diese Funktion:** Du richtest dir einen eigenen WireGuard-Zugang in das Netz der Firewalls ein
+(z. B. am Standort oder auf der Firewall selbst) und rufst die Oberfläche direkt auf. Das ist unabhängig von
+OPNexus, hat aber keine Rollenprüfung und kein Audit durch OPNexus.
+
 ---
 
 ## Regeln sicher ausrollen

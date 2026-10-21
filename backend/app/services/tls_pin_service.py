@@ -18,7 +18,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509.oid import ExtensionOID, NameOID
 
-from app.services import overlay_service, proxy_connect
+from app.services import proxy_connect
 
 MAX_PEM_BYTES = 32 * 1024
 
@@ -94,6 +94,8 @@ def verify_argument(verify_tls: bool, tls_ca_pem: str | None):
 
 async def _open_tls(base_url: str, parsed, ctx: ssl.SSLContext, timeout: float):
     """TLS connection to the firewall: directly, or through the overlay hub's proxy for overlay addresses."""
+    # Imported here so that pinned_context() stays usable without the database layer (gui-gateway container).
+    from app.services import overlay_service
     proxy = overlay_service.proxy_for(base_url)
     port = parsed.port or 443
     if proxy is None:

@@ -86,6 +86,12 @@ overlay_enabled() {
   [[ ",$profiles," == *",overlay,"* ]]
 }
 
+gui_enabled() {
+  local profiles
+  profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
+  [[ ",$profiles," == *",gui,"* ]]
+}
+
 # Welche Dienste `up` anfasst: im Updater-Container nur die Anwendung, auf dem
 # Host (CLI) alles — dort darf sich auch der Updater selbst erneuern.
 up_targets() {
@@ -93,6 +99,8 @@ up_targets() {
     printf '%s\n' "${SERVICES[@]}"
     # Der WireGuard-Hub (Profil "overlay") läuft mit dem Backend-Image und muss mit.
     overlay_enabled && echo wg-hub
+    # Ebenso das GUI-Gateway (Profil "gui"): Backend-Image, muss zur Backend-Version passen.
+    gui_enabled && echo gui-gateway
   fi
   return 0
 }

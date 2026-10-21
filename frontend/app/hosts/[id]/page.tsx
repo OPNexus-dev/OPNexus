@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { api, AliasOption, Host, HostBackup, LiveRule, PolicyAlias, RestoreOperation, Rule } from "@/lib/api";
 import { ArrowLeft, Download, ExternalLink, GitCompare, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { OpenFirewallUi } from "@/components/OpenFirewallUi";
 import { HostVariables } from "@/components/HostVariables";
 import { BackupDiffModal } from "@/components/BackupDiffModal";
 import Link from "next/link";
@@ -144,13 +145,14 @@ export default function HostDetailPage() {
               </span>
             )}
           </div>
-          <div className="mb-6 flex items-center gap-4 text-sm text-slate-500">
+          <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
             <span>{host.base_url}</span>
             <StatusDot status={host.status} />
             <Button href={host.base_url} target="_blank" rel="noopener noreferrer" variant="ghost">
               <ExternalLink size={14} />
               {t("hosts.openInOpnsense")}
             </Button>
+            <OpenFirewallUi host={host} />
           </div>
 
           <HostResourceUsage host={host} />

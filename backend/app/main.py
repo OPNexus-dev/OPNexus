@@ -53,6 +53,7 @@ from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.routers import maintenance_windows as maintenance_windows_router
 from app.routers import rollouts as rollouts_router
 from app.routers import rule_analysis as rule_analysis_router
+from app.routers import gui_access as gui_access_router
 from app.services import scheduled_maintenance_service
 from app.services import rollout_engine
 from app.services import compliance_service
@@ -323,6 +324,10 @@ async def _backup_poll_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    conflicts = settings.gui_origin_conflicts()
+    if conflicts:
+        # A GUI-gateway slot must never be a trusted OPNexus origin (CORS with credentials).
+        raise RuntimeError(f"OPNEXUS_GUI_SITES overlaps FRONTEND_ORIGIN: {', '.join(conflicts)} — refusing to start")
     await migrate.run()
     async with SessionLocal() as db:
         await auth_service.bootstrap_admin(db)
@@ -531,3 +536,5 @@ app.include_router(scheduled_maintenance_router.router, prefix="/api")
 app.include_router(maintenance_windows_router.router, prefix="/api")
 app.include_router(rollouts_router.router, prefix="/api")
 app.include_router(rule_analysis_router.router, prefix="/api")
+app.include_router(gui_access_router.router, prefix="/api")
+app.include_router(gui_access_router.internal_router)

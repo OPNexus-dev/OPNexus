@@ -31,6 +31,24 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.27.0] "Buzzard" — 2026-10-21
+
+Vorgesehen als MINOR-Release **1.27.0** „Firewall-Oberfläche über OPNexus“.
+
+- **Firewall-Oberfläche über OPNexus:** Auf der Host-Seite öffnet **Oberfläche öffnen** die Weboberfläche der Firewall
+  in einem neuen Tab, auch bei Firewalls hinter NAT im Management-Tunnel. Nur für Admins; jede Firewall läuft in einer
+  eigenen Browser-Origin (Platz = Port), Cookies bleiben auf dem Server, das Ticket gilt einmalig 30 Sekunden,
+  Inaktivitäts- und Gesamtlimit sind einstellbar, Ticket, Start und Ende stehen im Audit (Art „GUI-Zugriff“).
+  Standardmäßig **aus**: braucht das Compose-Profil `gui`, `OPNEXUS_GUI_SITES`, `GUI_PORTS`, `GUI_GATEWAY_TOKEN`,
+  `COOKIE_SECURE=true` und den Schalter unter Einstellungen (Handbuch, „Firewall-Oberfläche über OPNexus“).
+  Live getestet auf OPNsense 26.7.
+- **Einschränkungen:** kein WebSocket, keine automatische Anmeldung, höchstens 4 Plätze gleichzeitig. OPNexus-Adresse
+  vorher in die Whitelist des Anmeldeschutzes (sshguard) der Firewall eintragen, sonst können Fehlanmeldungen die
+  API-Zugriffe von OPNexus aussperren. Nach einem Neustart des wg-hub braucht der Tunnel 2 bis 4 Minuten.
+- **Hinweis für Betreiber mit eigenen Skripten:** Bei HTTPS heißt das Sitzungs-Cookie jetzt `__Host-opnexus-session`
+  (bestehende Sitzungen werden ohne Abmelden übernommen), und Cookie-Anfragen an `/api` mit `Sec-Fetch-Site: same-site/cross-site`
+  werden abgelehnt. Zugriffe mit API-Token sind nicht betroffen.
+
 ## [1.26.0] "Kite" — 2026-10-21
 
 Geplant als MINOR-Release **1.26.0** (Regel-Analyse). Backend, MCP und Oberfläche.

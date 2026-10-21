@@ -722,6 +722,13 @@
     "OPEN_RESTORE_BLOCKS_DEPLOY": "Eine Wiederherstellung ist für diesen Host offen. Bitte zuerst bestätigen oder abbrechen.",
     "READ_ONLY_ACCESS": "Nur-Lese-Zugriff: Diese Aktion erfordert die Rolle „Admin“.",
     "CROSS_ORIGIN_BLOCKED": "Anfrage von einer fremden Herkunft blockiert",
+    "CROSS_SITE_REQUEST_BLOCKED": "Anfrage aus einer anderen Website blockiert (Sec-Fetch-Site). Öffne OPNexus direkt über seine eigene Adresse.",
+    "GUI_SESSION_REQUIRED": "Die Firewall-Oberfläche lässt sich nur aus einer angemeldeten Browsersitzung öffnen, nicht mit einem API-Token.",
+    "GUI_GATEWAY_NOT_CONFIGURED": "Der GUI-Zugriff ist auf diesem Server nicht eingerichtet (HTTPS-Cookies, Gateway-Token und Slot-Adressen nötig).",
+    "GUI_REQUIRES_HTTPS": "Der GUI-Zugriff setzt eine HTTPS-Anmeldung voraus (COOKIE_SECURE). Bitte neu anmelden.",
+    "GUI_ACCESS_DISABLED": "Der GUI-Zugriff ist ausgeschaltet. Ein Admin kann ihn in den Einstellungen einschalten.",
+    "GUI_HOST_NOT_ELIGIBLE": "Diese Firewall lässt sich nicht über OPNexus öffnen: Sie muss aktiv sein, per https:// erreichbar und mit geprüftem oder gepinntem Zertifikat.",
+    "GUI_NO_FREE_SLOT": "Alle {slots} Plätze für Firewall-Oberflächen sind belegt. Schließe eine geöffnete Oberfläche oder warte, bis sie abläuft.",
     "TLS_PROBE_FAILED": "Das Zertifikat der Firewall konnte nicht abgerufen werden",
     "TLS_PEM_INVALID": "Kein gültiges PEM-Zertifikat",
     "TLS_PIN_MISMATCH": "Die Firewall präsentiert ein anderes Zertifikat als das festgesetzte",
@@ -2098,7 +2105,8 @@
       "certificate": "Zertifikate",
       "acme": "ACME",
       "notification": "Benachrichtigungen",
-      "system": "OPNexus-System"
+      "system": "OPNexus-System",
+      "gui_access": "GUI-Zugriff"
     },
     "action": {
       "deploy": "Push",
@@ -2135,7 +2143,10 @@
       "2fa/enable": "2FA aktivieren",
       "2fa/disable": "2FA deaktivieren",
       "reset-password": "Passwort zurücksetzen",
-      "reset-2fa": "2FA zurücksetzen"
+      "reset-2fa": "2FA zurücksetzen",
+      "ticket": "Ticket ausgestellt",
+      "redeem": "Sitzung gestartet",
+      "end": "Sitzung beendet"
     },
     "status": {
       "requested": "Angefordert",
@@ -3476,6 +3487,45 @@
       "FIRST_PACKET_hint": "Bewertet wird das erste Paket einer neuen Verbindung. Antworten und bestehende Verbindungen folgen dem Zustand, nicht den Regeln.",
       "SRC_PORT_EPHEMERAL": "Dynamischer Quellport",
       "SRC_PORT_EPHEMERAL_hint": "Ohne Quellport wird ein beliebiger Port aus dem dynamischen Bereich angenommen."
+    }
+  },
+  "guiAccess": {
+    "title": "Firewall-Oberfläche über OPNexus",
+    "intro": "Öffnet die Weboberfläche einer verwalteten Firewall in einem eigenen Browser-Tab über OPNexus, auch wenn die Firewall nur über den Management-Tunnel erreichbar ist. Nur Admins; die Anmeldung an der Firewall erfolgt wie gewohnt dort. Das Ticket gilt einmalig 30 Sekunden, jede Sitzung hat Zeitlimits und wird im Audit protokolliert. Einzelheiten: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“.",
+    "defaultOff": "Standardmäßig aus. Zum Einrichten braucht der Server das Compose-Profil „gui“, OPNEXUS_GUI_SITES und GUI_GATEWAY_TOKEN (siehe Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“).",
+    "on": "An",
+    "off": "Aus",
+    "notReady": "Noch nicht eingerichtet. Es fehlt:",
+    "reason": {
+      "cookie_secure": "HTTPS-Anmeldung (COOKIE_SECURE=true)",
+      "gateway_token": "GUI_GATEWAY_TOKEN (mindestens 32 Zeichen)",
+      "gui_sites": "OPNEXUS_GUI_SITES mit den Slot-Adressen (und Compose-Profil „gui“)"
+    },
+    "enabled": "Öffnen der Firewall-Oberfläche erlauben",
+    "enabledTip": "Schaltet die Funktion für alle Admins ein. Beim Ausschalten werden offene Sitzungen beendet (binnen etwa 20 Sekunden).",
+    "idle": "Inaktivität (Minuten)",
+    "idleTip": "Nach so vielen Minuten ohne Aktivität wird die Sitzung beendet (1 bis 240). Darf nicht länger als das Gesamtlimit sein.",
+    "absolute": "Gesamtdauer (Minuten)",
+    "absoluteTip": "Spätestens nach dieser Zeit endet jede Sitzung, auch bei Aktivität (5 bis 720).",
+    "slotCount": "Gleichzeitige Plätze",
+    "slotCountTip": "Wie viele Firewall-Oberflächen gleichzeitig offen sein können (1 bis 4). Jeder Platz hat einen eigenen Port und damit einen eigenen Browser-Ursprung.",
+    "orderError": "Das Inaktivitätslimit darf nicht größer sein als die Gesamtdauer.",
+    "activeSlots": "Aktive Plätze (Ports)",
+    "activeSlotsTip": "Die konfigurierten Slot-Ports aus OPNEXUS_GUI_SITES, soweit sie bei der gewählten Anzahl genutzt werden. Welcher Platz gerade belegt ist, steht im Audit (Art „GUI-Zugriff“).",
+    "noSlots": "keine konfiguriert",
+    "lastChange": "Zuletzt geändert von {who} am {when}",
+    "saved": "Einstellungen für die Firewall-Oberfläche gespeichert"
+  },
+  "guiOpen": {
+    "button": "Oberfläche öffnen",
+    "tip": "Öffnet die Weboberfläche dieser Firewall über OPNexus in einem neuen Tab.",
+    "opened": "Oberfläche wird in einem neuen Tab geöffnet (Platz {slot}). Falls nichts passiert, Pop-ups für diese Seite erlauben.",
+    "failed": "Oberfläche konnte nicht geöffnet werden",
+    "reason": {
+      "off": "Ausgeschaltet. Ein Admin kann die Funktion unter Einstellungen einschalten.",
+      "host_disabled": "Diese Firewall ist deaktiviert.",
+      "host_https": "Nur Firewalls mit https://-Adresse lassen sich öffnen.",
+      "host_tls": "Nur mit geprüftem oder gepinntem Zertifikat möglich (TLS-Prüfung ist bei dieser Firewall aus)."
     }
   }
 }

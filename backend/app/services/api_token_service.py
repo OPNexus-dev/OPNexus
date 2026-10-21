@@ -38,7 +38,8 @@ MAX_TOKENS_PER_USER = 50
 _LAST_USED_GRANULARITY = timedelta(minutes=1)
 
 _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
-_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)")
+# GUI tickets open a firewall's web interface in the browser: an interactive admin session only.
+_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-ticket$")
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
 _ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/|^/api/overlay/peers/[^/]+/instructions$")
@@ -48,6 +49,7 @@ _ADMIN_ONLY_WRITES = re.compile(
     r"^/api/(users|settings|system|notifications|overlay)(/|$)"
     r"|^/api/logs/settings$"
     r"|^/api/hosts(/tls-probe|/[^/]+)?$"
+    r"|^/api/hosts/[^/]+/gui-ticket$"
 )
 
 

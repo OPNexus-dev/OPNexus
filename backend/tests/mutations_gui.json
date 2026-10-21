@@ -1,0 +1,170 @@
+[
+ {
+  "name": "AP1 sec-fetch: cross-site not blocked",
+  "file": "app/security_middleware.py",
+  "old": "    if site == \"cross-site\":\n        return True",
+  "new": "    if site == \"cross-site\":\n        return False",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP1 sec-fetch: same-site always allowed",
+  "file": "app/security_middleware.py",
+  "old": "        return not _explicit_frontend_origin(request.headers.get(\"origin\", \"\"))",
+  "new": "        return False",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP1 sec-fetch: check not wired",
+  "file": "app/security_middleware.py",
+  "old": "        if sec_fetch_blocked(request):",
+  "new": "        if False:",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP1 cookie: plain name falls back even with __Host-",
+  "file": "app/routers/auth.py",
+  "old": "        return request.cookies.get(SECURE_COOKIE_NAME) or request.cookies.get(COOKIE_NAME, \"\")",
+  "new": "        return request.cookies.get(COOKIE_NAME) or request.cookies.get(SECURE_COOKIE_NAME, \"\")",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP1 cookie: no __Host- prefix",
+  "file": "app/routers/auth.py",
+  "old": "    return SECURE_COOKIE_NAME if settings.cookie_secure else COOKIE_NAME",
+  "new": "    return COOKIE_NAME",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP1 startup: conflict check removed",
+  "file": "app/main.py",
+  "old": "    if conflicts:\n",
+  "new": "    if False:\n",
+  "tests": "tests/test_session_hardening.py"
+ },
+ {
+  "name": "AP2 ticket expiry ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    elif ticket.expires_at <= now:",
+  "new": "    elif False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 replay allowed",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if replayed:\n        reason = \"replayed\"",
+  "new": "    if False:\n        reason = \"replayed\"",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 session binding ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    elif not secrets.compare_digest(ticket.session_hash, session_hash):",
+  "new": "    elif False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 slot binding ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    elif ticket.slot != slot:",
+  "new": "    elif False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 revalidate: role not rechecked",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if user is None or user.role != \"admin\":",
+  "new": "    if user is None:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 revalidate: session not rechecked",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if session is None or session.expires_at <= _now() or session.user_id != user_id:",
+  "new": "    if False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 revalidate: switch not rechecked",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if not row.enabled:\n        return \"disabled\", user, None",
+  "new": "",
+  "tests": "tests/test_gui_access.py::test_revalidate_fails_when_switched_off"
+ },
+ {
+  "name": "AP2 absolute limit ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if _now() >= gs.started_at + timedelta(minutes=row.absolute_timeout_minutes):",
+  "new": "    if False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 host tls requirement dropped",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if not host.verify_tls:\n        return \"tls\"",
+  "new": "",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 slot limit ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    if not free:\n        raise",
+  "new": "    if False:\n        raise",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 gateway token not compared",
+  "file": "app/routers/gui_access.py",
+  "old": "    if not hmac.compare_digest(",
+  "new": "    if False and not hmac.compare_digest(",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 switch not checked for tickets",
+  "file": "app/routers/gui_access.py",
+  "old": "    if not row.enabled:\n        raise api_error(status.HTTP_409_CONFLICT, ErrorCode.GUI_ACCESS_DISABLED)",
+  "new": "",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 legacy cookie accepted for tickets",
+  "file": "app/routers/gui_access.py",
+  "old": "    session_cookie = request.cookies.get(SECURE_COOKIE_NAME, \"\")",
+  "new": "    session_cookie = request.cookies.get(SECURE_COOKIE_NAME) or request.cookies.get(\"opnexus-session\", \"\")",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 enabling without https allowed",
+  "file": "app/routers/gui_access.py",
+  "old": "    if payload.enabled and svc.unavailable_reasons():",
+  "new": "    if False:",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP2 redeem leaks api key",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "        \"upstream_origin\": firewall_origin(host.base_url),",
+  "new": "        \"upstream_origin\": firewall_origin(host.base_url), \"k\": host.api_key,",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "AP7 revalidation interval back to 30 s (switch-off took 31 s live)",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "REVALIDATE_SECONDS = 20",
+  "new": "REVALIDATE_SECONDS = 30",
+  "tests": "tests/test_gui_access.py"
+ },
+ {
+  "name": "Review: multipart login not counted",
+  "file": "app/gui_gateway.py",
+  "old": "    if content_type.lower().startswith(\"multipart/form-data\"):",
+  "new": "    if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "Review: decoded path forwarded upstream",
+  "file": "app/gui_gateway.py",
+  "old": "url = gs.upstream_origin + raw_path +",
+  "new": "url = gs.upstream_origin + scope[\"path\"] +",
+  "tests": "tests/test_gui_gateway.py"
+ }
+]

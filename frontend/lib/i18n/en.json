@@ -722,6 +722,13 @@
     "OPEN_RESTORE_BLOCKS_DEPLOY": "A restore is open for this host. Please confirm or cancel it first.",
     "READ_ONLY_ACCESS": "Read-only access: this action requires the “Admin” role.",
     "CROSS_ORIGIN_BLOCKED": "Request from a foreign origin blocked",
+    "CROSS_SITE_REQUEST_BLOCKED": "Request from another site blocked (Sec-Fetch-Site). Open OPNexus directly at its own address.",
+    "GUI_SESSION_REQUIRED": "The firewall interface can only be opened from a signed-in browser session, not with an API token.",
+    "GUI_GATEWAY_NOT_CONFIGURED": "GUI access is not set up on this server (HTTPS cookies, gateway token and slot addresses required).",
+    "GUI_REQUIRES_HTTPS": "GUI access requires an HTTPS sign-in (COOKIE_SECURE). Please sign in again.",
+    "GUI_ACCESS_DISABLED": "GUI access is switched off. An admin can switch it on in the settings.",
+    "GUI_HOST_NOT_ELIGIBLE": "This firewall cannot be opened through OPNexus: it must be enabled, reachable via https:// and use a verified or pinned certificate.",
+    "GUI_NO_FREE_SLOT": "All {slots} slots for firewall interfaces are in use. Close an open interface or wait until it expires.",
     "TLS_PROBE_FAILED": "The firewall's certificate could not be retrieved",
     "TLS_PEM_INVALID": "Not a valid PEM certificate",
     "TLS_PIN_MISMATCH": "The firewall presents a different certificate than the pinned one",
@@ -2098,7 +2105,8 @@
       "certificate": "Certificates",
       "acme": "ACME",
       "notification": "Notifications",
-      "system": "OPNexus system"
+      "system": "OPNexus system",
+      "gui_access": "GUI access"
     },
     "action": {
       "deploy": "Push",
@@ -2135,7 +2143,10 @@
       "2fa/enable": "2FA enable",
       "2fa/disable": "2FA disable",
       "reset-password": "Password reset",
-      "reset-2fa": "2FA reset"
+      "reset-2fa": "2FA reset",
+      "ticket": "Ticket issued",
+      "redeem": "Session started",
+      "end": "Session ended"
     },
     "status": {
       "requested": "Requested",
@@ -3476,6 +3487,45 @@
       "FIRST_PACKET_hint": "The first packet of a new connection is evaluated. Replies and established connections follow state, not rules.",
       "SRC_PORT_EPHEMERAL": "Ephemeral source port",
       "SRC_PORT_EPHEMERAL_hint": "Without a source port, any port from the ephemeral range is assumed."
+    }
+  },
+  "guiAccess": {
+    "title": "Firewall interface through OPNexus",
+    "intro": "Opens the web interface of a managed firewall in its own browser tab through OPNexus, even when the firewall is only reachable over the management tunnel. Admins only; you still sign in on the firewall itself. The ticket works once for 30 seconds, every session has time limits and is logged in the audit. Details: manual (German), chapter “Firewall-Oberfläche über OPNexus”.",
+    "defaultOff": "Off by default. Setting it up needs the Compose profile “gui”, OPNEXUS_GUI_SITES and GUI_GATEWAY_TOKEN on the server (see the manual, chapter “Firewall-Oberfläche über OPNexus”).",
+    "on": "On",
+    "off": "Off",
+    "notReady": "Not set up yet. Missing:",
+    "reason": {
+      "cookie_secure": "HTTPS sign-in (COOKIE_SECURE=true)",
+      "gateway_token": "GUI_GATEWAY_TOKEN (at least 32 characters)",
+      "gui_sites": "OPNEXUS_GUI_SITES with the slot addresses (and the Compose profile “gui”)"
+    },
+    "enabled": "Allow opening the firewall interface",
+    "enabledTip": "Turns the feature on for all admins. Turning it off ends open sessions (within about 20 seconds).",
+    "idle": "Inactivity (minutes)",
+    "idleTip": "A session ends after this many minutes without activity (1 to 240). Must not exceed the total duration.",
+    "absolute": "Total duration (minutes)",
+    "absoluteTip": "Every session ends after this time at the latest, even when active (5 to 720).",
+    "slotCount": "Simultaneous slots",
+    "slotCountTip": "How many firewall interfaces can be open at the same time (1 to 4). Each slot has its own port and therefore its own browser origin.",
+    "orderError": "The inactivity limit must not exceed the total duration.",
+    "activeSlots": "Active slots (ports)",
+    "activeSlotsTip": "The slot ports configured in OPNEXUS_GUI_SITES that are used with the chosen count. Which slot is in use right now is shown in the audit (type “GUI access”).",
+    "noSlots": "none configured",
+    "lastChange": "Last changed by {who} on {when}",
+    "saved": "Firewall interface settings saved"
+  },
+  "guiOpen": {
+    "button": "Open interface",
+    "tip": "Opens this firewall’s web interface through OPNexus in a new tab.",
+    "opened": "Opening the interface in a new tab (slot {slot}). If nothing happens, allow pop-ups for this site.",
+    "failed": "Could not open the interface",
+    "reason": {
+      "off": "Switched off. An admin can turn the feature on under Settings.",
+      "host_disabled": "This firewall is disabled.",
+      "host_https": "Only firewalls with an https:// address can be opened.",
+      "host_tls": "Only possible with a verified or pinned certificate (TLS verification is off for this firewall)."
     }
   }
 }

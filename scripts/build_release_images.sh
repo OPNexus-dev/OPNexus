@@ -37,7 +37,8 @@ if [ "$multi" = 1 ]; then
   free_mb="$(df --output=avail -BM . | tail -1 | tr -dc 0-9)"
   [ "$free_mb" -ge 3500 ] || { echo "Nur ${free_mb} MB frei (für --multiarch werden ca. 3500 MB gebraucht): Platz schaffen (docker image prune, docker buildx prune)" >&2; exit 1; }
   # Emulation ist nach einem Neustart weg; ohne sie scheitert der arm64-Teil erst nach Minuten.
-  docker buildx inspect "$builder" | grep -q 'linux/arm64' \
+  platforms="$(docker buildx inspect "$builder" --bootstrap 2>/dev/null || true)"   # nicht per Pipe an grep -q: SIGPIPE + pipefail
+  grep -q 'linux/arm64' <<<"$platforms" \
     || { echo "arm64 nicht verfügbar: docker run --privileged --rm tonistiigi/binfmt --install arm64" >&2; exit 1; }
 fi
 version="${tag#v}"

@@ -61,3 +61,39 @@ http:// {
 		reverse_proxy frontend:3000
 	}
 }
+
+# GUI remote access (optional, compose profile "gui"): every slot port is its
+# own browser origin for one firewall web interface, served by the gui-gateway
+# container. OPNEXUS_GUI_SITES lists the slot origins, e.g.
+# "https://10.0.0.5:9441, https://10.0.0.5:9442". Unset, a localhost
+# placeholder keeps the Caddyfile valid; without the gateway it answers 502.
+# Certificates come from the same internal CA (bare IPs work).
+{$OPNEXUS_GUI_SITES:https://localhost:9441} {
+	# The gateway sets CSP, X-Frame-Options, no-store etc. itself; no `encode`
+	# (it passes the firewall's own content encoding through) and no access log
+	# (the redeem URL carries a one-time ticket in its query string).
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+		-X-Powered-By
+	}
+
+	# The backend's internal gateway API is never reachable from outside, and
+	# the gateway would not forward it either; refuse it here as well.
+	handle /internal/* {
+		respond 404
+	}
+
+	handle {
+		# Config restore uploads go through the firewall GUI: same limit as the
+		# gateway (64 MB).
+		request_body {
+			max_size 64MB
+		}
+		reverse_proxy gui-gateway:8080 {
+			# The slot is the port this connection actually arrived on (not the
+			# client's Host header); any client-sent X-Onx-Slot is overwritten.
+			header_up X-Onx-Slot {http.request.local.port}
+		}
+	}
+}

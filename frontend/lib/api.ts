@@ -773,6 +773,26 @@ export interface ComplianceHost {
   findings?: ComplianceFinding[];
 }
 
+export interface GuiAccessSettings {
+  enabled: boolean;
+  idle_timeout_minutes: number;
+  absolute_timeout_minutes: number;
+  slot_count: number;
+  available: boolean;
+  unavailable_reasons: string[];
+  slots: number[];
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export type GuiAccessUpdate = Pick<GuiAccessSettings, "enabled" | "idle_timeout_minutes" | "absolute_timeout_minutes" | "slot_count">;
+
+export interface GuiTicket {
+  url: string;
+  slot: number;
+  expires_in: number;
+}
+
 export interface AuditExportSettings {
   syslog_enabled: boolean;
   syslog_host: string | null;
@@ -1284,6 +1304,9 @@ export const api = {
   saveNotificationSettings: (data: NotificationSettingsUpdate) => request<NotificationSettings>("/notifications/settings", { method: "PUT", body: JSON.stringify(data) }),
   logSettings: () => request<LogSettings>("/logs/settings"),
   saveLogSettings: (data: LogSettingsUpdate) => request<LogSettings>("/logs/settings", { method: "PUT", body: JSON.stringify(data) }),
+  getGuiAccess: () => request<GuiAccessSettings>("/settings/gui-access"),
+  updateGuiAccess: (data: GuiAccessUpdate) => request<GuiAccessSettings>("/settings/gui-access", { method: "PUT", body: JSON.stringify(data) }),
+  createGuiTicket: (hostId: string) => request<GuiTicket>(`/hosts/${hostId}/gui-ticket`, { method: "POST" }),
   getAuditExport: () => request<AuditExportSettings>("/settings/audit-export"),
   updateAuditExport: (data: Partial<AuditExportUpdate>) => request<AuditExportSettings>("/settings/audit-export", { method: "PUT", body: JSON.stringify(data) }),
   testAuditExport: () => request<{ success: boolean }>("/settings/audit-export/test", { method: "POST" }),

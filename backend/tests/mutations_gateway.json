@@ -1,0 +1,226 @@
+[
+ {
+  "name": "GW browser Cookie forwarded",
+  "file": "app/gui_gateway.py",
+  "old": "    out_headers = {k: v for k, v in headers.items() if k in _FORWARD_REQUEST_HEADERS}",
+  "new": "    out_headers = {k: v for k, v in headers.items() if k in _FORWARD_REQUEST_HEADERS or k == \"cookie\"}",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW Referer/Authorization forwarded",
+  "file": "app/gui_gateway.py",
+  "old": "\"accept\", \"accept-language\", \"content-type\", \"user-agent\", \"x-requested-with\", \"x-csrftoken\", \"range\",",
+  "new": "\"accept\", \"accept-language\", \"content-type\", \"user-agent\", \"x-requested-with\", \"x-csrftoken\", \"range\", \"referer\", \"authorization\",",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW Set-Cookie passed to browser",
+  "file": "app/gui_gateway.py",
+  "old": "\"content-range\", \"accept-ranges\", \"content-security-policy\",",
+  "new": "\"content-range\", \"accept-ranges\", \"content-security-policy\", \"set-cookie\",",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW jar never forgets deleted cookies",
+  "file": "app/gui_gateway.py",
+  "old": "                if expired:\n                    gs.jar.pop(name, None)",
+  "new": "                if False:\n                    gs.jar.pop(name, None)",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW foreign Location kept",
+  "file": "app/gui_gateway.py",
+  "old": "        if _origin_of(location) != _origin_of(upstream_origin):\n            return None",
+  "new": "        pass",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW backslash Location kept",
+  "file": "app/gui_gateway.py",
+  "old": "    if not location or \"\\\\\" in location",
+  "new": "    if not location",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW Sec-Fetch-Site lax",
+  "file": "app/gui_gateway.py",
+  "old": "        if site not in (\"same-origin\", \"none\"):",
+  "new": "        if site in (\"cross-site\",):",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW redeem Sec-Fetch-Site unchecked",
+  "file": "app/gui_gateway.py",
+  "old": "            if method != \"GET\" or site not in (\"same-site\", \"same-origin\", \"none\"):",
+  "new": "            if method != \"GET\":",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW redeem without OPNexus cookie",
+  "file": "app/gui_gateway.py",
+  "old": "        if not ticket or len(ticket) > 128 or not browser_session:",
+  "new": "        if not ticket or len(ticket) > 128:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW Origin unchecked for writes",
+  "file": "app/gui_gateway.py",
+  "old": "            if _origin_of(origin) not in own_origins:",
+  "new": "            if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW absolute-form accepted",
+  "file": "app/gui_gateway.py",
+  "old": "        if not path.startswith(\"/\") or path.startswith(\"//\") or not raw_path.startswith(b\"/\") \\",
+  "new": "        if False \\",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW CONNECT accepted",
+  "file": "app/gui_gateway.py",
+  "old": "        if method in (\"CONNECT\", \"TRACE\"):",
+  "new": "        if method in (\"TRACE\",):",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW Upgrade accepted",
+  "file": "app/gui_gateway.py",
+  "old": "        if \"upgrade\" in headers or \"upgrade\" in headers.get(\"connection\", \"\").lower():",
+  "new": "        if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW service worker accepted",
+  "file": "app/gui_gateway.py",
+  "old": "        if headers.get(\"service-worker\", \"\").lower() == \"script\":",
+  "new": "        if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW slot header optional",
+  "file": "app/gui_gateway.py",
+  "old": "        if not own_origins:\n            return await self._respond(send, 400, _FORBIDDEN)",
+  "new": "        if False:\n            return await self._respond(send, 400, _FORBIDDEN)",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW foreign slot cookie accepted",
+  "file": "app/gui_gateway.py",
+  "old": "        if gs is None or gs.slot != slot:",
+  "new": "        if gs is None:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW login rate limit off",
+  "file": "app/gui_gateway.py",
+  "old": "        if login and self.limiter.blocked(gs.upstream_origin):",
+  "new": "        if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW login failures not counted",
+  "file": "app/gui_gateway.py",
+  "old": "            if login and not (300 <= response.status_code < 400):",
+  "new": "            if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW no periodic re-check",
+  "file": "app/gui_gateway.py",
+  "old": "        if self.clock() >= gs.next_check:\n            state = await self._recheck(key, gs)",
+  "new": "        if False:\n            state = await self._recheck(key, gs)",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW fail-open when backend down",
+  "file": "app/gui_gateway.py",
+  "old": "            if state is None:\n                return await self._respond(send, 503, _UNAVAILABLE)",
+  "new": "",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW idle timeout off",
+  "file": "app/gui_gateway.py",
+  "old": "        if self.clock() - gs.last_activity >= gs.idle_timeout:",
+  "new": "        if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW absolute timeout off",
+  "file": "app/gui_gateway.py",
+  "old": "        if self.wall_clock() >= gs.absolute_deadline:",
+  "new": "        if False:",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW no CSP",
+  "file": "app/gui_gateway.py",
+  "old": "    (b\"content-security-policy\", _GATEWAY_CSP.encode()),",
+  "new": "",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW no X-Frame-Options",
+  "file": "app/gui_gateway.py",
+  "old": "    (b\"x-frame-options\", b\"DENY\"),",
+  "new": "",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW no no-store",
+  "file": "app/gui_gateway.py",
+  "old": "    (b\"cache-control\", b\"no-store\"),",
+  "new": "",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW streaming body limit off",
+  "file": "app/gui_gateway.py",
+  "old": "            if size > BODY_LIMIT:\n                return None",
+  "new": "",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW query logged",
+  "file": "app/gui_gateway.py",
+  "old": "scope.get(\"path\", \"?\")[:200], status,",
+  "new": "scope.get(\"path\", \"?\")[:200] + \"?\" + scope.get(\"query_string\", b\"\").decode(), status,",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW httpx URL logging on",
+  "file": "app/gui_gateway.py",
+  "old": "    logging.getLogger(_noisy).setLevel(logging.WARNING)",
+  "new": "    pass",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW weak gateway cookie",
+  "file": "app/gui_gateway.py",
+  "old": "={value}; Path=/; Secure; HttpOnly; SameSite=Strict\"",
+  "new": "={value}; Path=/\"",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW no Clear-Site-Data",
+  "file": "app/gui_gateway.py",
+  "old": "            (b\"set-cookie\", cookie.encode()), (b\"clear-site-data\", b'\"cache\", \"storage\"'),",
+  "new": "            (b\"set-cookie\", cookie.encode()),",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW pin not used",
+  "file": "app/gui_gateway.py",
+  "old": "        verify = pinned_context(gs.ca_pem)",
+  "new": "        verify = False",
+  "tests": "tests/test_gui_gateway.py"
+ },
+ {
+  "name": "GW access log on",
+  "file": "app/gui_gateway.py",
+  "old": "http=\"h11\", ws=\"none\", access_log=False,",
+  "new": "http=\"h11\", ws=\"none\", access_log=True,",
+  "tests": "tests/test_gui_gateway.py"
+ }
+]
