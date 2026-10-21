@@ -152,6 +152,8 @@ async def test_nested_alias_waits_for_its_target_but_bulk_orders_them(client, re
     refused = await client.post("/api/aliases/adopt", json={"host_id": host_id, "uuid": "uuid-outer"})
     assert refused.status_code == 409 and refused.json()["detail"]["code"] == "OBJECT_NOT_ADOPTABLE"
     assert "references_unmanaged_alias" in refused.json()["detail"]["params"]["reasons"]
+    import json  # the UI fills "{detail}" of the reason text from this
+    assert json.loads(refused.json()["detail"]["params"]["reason_details"]) == {"references_unmanaged_alias": "inner"}
     # ... after its target is managed it works
     assert (await client.post("/api/aliases/adopt", json={"host_id": host_id, "uuid": "uuid-base"})).status_code == 201
     assert (await client.post("/api/aliases/adopt", json={"host_id": host_id, "uuid": "uuid-inner"})).status_code == 201

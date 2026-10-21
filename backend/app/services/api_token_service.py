@@ -50,6 +50,8 @@ _ADMIN_ONLY_WRITES = re.compile(
     r"|^/api/logs/settings$"
     r"|^/api/hosts(/tls-probe|/[^/]+)?$"
     r"|^/api/hosts/[^/]+/gui-ticket$"
+    # The per-gateway alert switch is a notification setting (same rights as PUT /api/notifications/settings).
+    r"|^/api/hosts/[^/]+/gateways/[^/]+/alert$"
 )
 
 

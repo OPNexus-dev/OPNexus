@@ -33,6 +33,12 @@ class OpnsenseAmbiguousError(OpnsenseAPIError):
     outcome of a write is unknown and must be reconciled, not retried blindly."""
 
 
+class OpnsenseForbiddenError(OpnsenseAPIError):
+    """The firewall answered 403: the API key lacks the privilege for this endpoint. A refusal, not an unknown
+    outcome; callers that only read can tell "no rights" from "unreachable". 401 (wrong key or secret) stays a
+    plain OpnsenseAPIError."""
+
+
 def _client(host: OpnsenseHost) -> httpx.AsyncClient:
     # Before the secret is even read: an http:// host must never receive credentials.
     reason = firewall_url.check_base_url(host.base_url)
@@ -71,7 +77,8 @@ async def _do_request(host: OpnsenseHost, method: str, path: str, **kwargs) -> h
         except httpx.HTTPStatusError as exc:
             # The body may reflect submitted secrets: keep only a scrubbed, bounded excerpt.
             secret = opnsense_secret_store.read_secret(host.id)
-            error = OpnsenseAmbiguousError if exc.response.status_code >= 500 else OpnsenseAPIError
+            status = exc.response.status_code
+            error = OpnsenseAmbiguousError if status >= 500 else OpnsenseForbiddenError if status == 403 else OpnsenseAPIError
             raise error(
                 f"{exc.response.status_code} {path}: {redact_text(exc.response.text, host.api_key, secret)}"
             ) from exc

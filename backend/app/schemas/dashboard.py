@@ -14,6 +14,9 @@ class DashboardHost(BaseModel):
     cluster_name: str | None
     # From the last resource sample (no live call); None when there is no sample from the last 3 minutes.
     gateways: list[GatewayHealth] | None = None
+    # Readings the newest fresh sample could not take because the API key lacks the right (gateways, services, ...);
+    # None = no fresh sample (or one from before this existed), [] = nothing missing.
+    api_rights_missing: list[str] | None = None
 
 
 class PendingAction(BaseModel):

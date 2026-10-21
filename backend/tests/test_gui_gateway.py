@@ -434,6 +434,49 @@ async def test_backend_unreachable_fails_closed(setup):
     assert len(setup["fw"].requests) == 0
 
 
+@pytest.mark.asyncio
+async def test_session_ends_when_host_address_changes(setup):
+    from sqlalchemy import update
+    from app.models.host import OpnsenseHost
+    cookie = await _open(setup)
+    assert (await _get(setup, "/ui/x", cookie)).status_code == 200
+    async with SessionLocal() as db:
+        await db.execute(update(OpnsenseHost).where(OpnsenseHost.id == setup["host_id"]).values(base_url="https://fw-moved.test"))
+        await db.commit()
+    assert (await _get(setup, "/ui/x", cookie)).status_code == 200  # check not due yet
+    setup["clock"].now += 21
+    assert (await _get(setup, "/ui/x", cookie)).status_code == 401
+    assert setup["gateway"].sessions == {}
+    async with SessionLocal() as db:
+        assert (await db.scalars(select(GuiSession.end_reason))).one() == "target"
+
+
+@pytest.mark.asyncio
+async def test_session_limit_refuses_new_instead_of_evicting(setup, monkeypatch):
+    monkeypatch.setattr(gw, "MAX_SESSIONS", 1)
+    gateway = setup["gateway"]
+    other = await _https_login(settings.admin_username, settings.admin_password)
+    first = await _open(setup)
+    ticket = (await other.post(f"/api/hosts/{setup['host_id']}/gui-ticket")).json()
+    assert ticket["slot"] == 9441
+    resp = await setup["browser"].get(f"/__onx/redeem?t={ticket['url'].split('?t=', 1)[1]}", headers={
+        "X-Onx-Slot": "9441", "Sec-Fetch-Site": "same-site",
+        "Cookie": f"{SECURE_COOKIE_NAME}={other.cookies.get(SECURE_COOKIE_NAME)}"})
+    assert resp.status_code == 503 and "set-cookie" not in resp.headers
+    assert len(gateway.sessions) == 1
+    async with SessionLocal() as db:  # refused up front: the ticket was not even redeemed at the backend
+        assert len((await db.scalars(select(GuiSession))).all()) == 1
+    assert (await _get(setup, "/ui/x", first)).status_code == 200  # the running session survived
+    # An expired session is cleared to make room.
+    next(iter(gateway.sessions.values())).absolute_deadline = gateway.wall_clock() - 1
+    ticket = (await other.post(f"/api/hosts/{setup['host_id']}/gui-ticket")).json()
+    resp = await setup["browser"].get(f"/__onx/redeem?t={ticket['url'].split('?t=', 1)[1]}", headers={
+        "X-Onx-Slot": "9441", "Sec-Fetch-Site": "same-site",
+        "Cookie": f"{SECURE_COOKIE_NAME}={other.cookies.get(SECURE_COOKIE_NAME)}"})
+    assert resp.status_code == 200
+    await other.aclose()
+
+
 # ── upstream transport and isolation ──────────────────────────────────────
 
 def _pem() -> str:

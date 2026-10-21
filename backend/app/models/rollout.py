@@ -44,6 +44,8 @@ class RolloutPlan(Base):
     gate_checks: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     compliance_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="warn", server_default="warn")
     activated_by: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    # Stable id of that account (1.29, no foreign key on purpose: a deleted account stays gone, a new one with the same name is someone else).
+    activated_by_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     activated_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Why the last automatic start did not happen: {"occurrence", "code", "params", "at"} (notification source).
@@ -91,6 +93,7 @@ class RolloutRun(Base):
     pause_reason: Mapped[str | None] = mapped_column(String(40), nullable=True)
     pause_detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     started_by: Mapped[str] = mapped_column(String(150))
+    started_by_id: Mapped[uuid.UUID | None] = mapped_column(PGUUID(as_uuid=True), nullable=True)  # see activated_by_id
     trigger: Mapped[str] = mapped_column(String(8))  # manual | window
     window_occurrence: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Optimistic lock: every state change bumps it; an engine step computed on an older revision is dropped.

@@ -21,6 +21,7 @@ from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
 from app.models.notification import DEFAULT_SERVICE_WATCHLIST, NotificationProblem
 from app.models.resource_sample import HostResourceSample
+from app.models.rollout import RolloutRun
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.routers.dashboard import collect_pending_actions
 from app.services import compliance_service, gateway_health_service, notification_settings_service
@@ -105,6 +106,7 @@ async def render(db: AsyncSession) -> str:
     out.family("opnexus_host_gateway_delay_seconds", "Round-trip time to the gateway monitor address (last sample).")
     out.family("opnexus_host_gateway_stddev_seconds", "Round-trip time deviation to the gateway monitor address (last sample).")
     out.family("opnexus_host_service_running", "1 if a watched service (Settings > Notifications) runs, 0 if it is stopped (last sample).")
+    out.family("opnexus_host_api_rights_missing", "1 if the firewall refused a side reading (read=gateways, services, swap, cpu) because the API key lacks the right (last sample); absent otherwise.")
     configured = (await notification_settings_service.get_settings(db)).service_watchlist
     watchlist = set(DEFAULT_SERVICE_WATCHLIST if configured is None else configured)
     out.family("opnexus_host_carp_master", "1 if the host's last observed CARP role is MASTER, 0 if BACKUP; absent if unknown.")
@@ -136,6 +138,8 @@ async def render(db: AsyncSession) -> str:
                 ):
                     if value is not None:
                         out.sample(name, round(value * factor, 6), **gw_labels)
+            for read in sorted(str(r) for r in raw.get("denied") or []):
+                out.sample("opnexus_host_api_rights_missing", 1, **labels, read=read)
             for key, running in sorted((raw.get("services") or {}).items()):
                 if key.split("/")[0] in watchlist:
                     out.sample("opnexus_host_service_running", running, **labels, service=key.split("/")[0], instance=key.split("/", 1)[1] if "/" in key else None)
@@ -175,5 +179,9 @@ async def render(db: AsyncSession) -> str:
     out.family("opnexus_scheduled_maintenance_pending", "Scheduled maintenance jobs that have not run yet.")
     pending = await db.scalar(select(func.count()).select_from(ScheduledMaintenance).where(ScheduledMaintenance.status == "pending"))
     out.sample("opnexus_scheduled_maintenance_pending", pending or 0)
+
+    out.family("opnexus_rollout_runs", "Fleet rollout runs by status (waiting_window, wave_running, paused, succeeded, ...).")
+    for status, count in sorted((await db.execute(select(RolloutRun.status, func.count()).group_by(RolloutRun.status))).all()):
+        out.sample("opnexus_rollout_runs", count, status=status)
 
     return out.text()

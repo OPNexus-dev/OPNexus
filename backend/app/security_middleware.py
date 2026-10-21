@@ -48,7 +48,17 @@ def _origin_allowed(origin: str, host_header: str) -> bool:
 
 # The SSO provider sends the browser back here by a cross-site navigation;
 # the endpoint authenticates by its own state cookie and creates the session.
+# The exemption is only for exactly that: a top-level GET navigation (a script, image or fetch from another site
+# is still blocked, whatever it carries) — and the callback fails without the matching state cookie anyway.
 _SEC_FETCH_EXEMPT = {"/api/auth/oidc/callback"}
+
+
+def _is_top_level_navigation(request: Request) -> bool:
+    if request.method != "GET":
+        return False
+    mode = request.headers.get("sec-fetch-mode", "").strip().lower()
+    dest = request.headers.get("sec-fetch-dest", "").strip().lower()
+    return mode in ("", "navigate") and dest in ("", "document")
 
 
 def _explicit_frontend_origin(origin: str) -> bool:
@@ -62,7 +72,9 @@ def _explicit_frontend_origin(origin: str) -> bool:
 
 def sec_fetch_blocked(request: Request) -> bool:
     path = request.url.path
-    if not (path == "/api" or path.startswith("/api/")) or path in _SEC_FETCH_EXEMPT:
+    if not (path == "/api" or path.startswith("/api/")):
+        return False
+    if path in _SEC_FETCH_EXEMPT and _is_top_level_navigation(request):
         return False
     if not has_session_cookie(request):
         return False

@@ -17,7 +17,7 @@ from app.models.host import OpnsenseHost
 from app.models.resource_sample import HostResourceSample
 from app.services import gateway_health_service
 from app.services import opnsense_client as client
-from app.services.opnsense_client import OpnsenseAPIError
+from app.services.opnsense_client import OpnsenseAPIError, OpnsenseForbiddenError
 
 logger = logging.getLogger(__name__)
 
@@ -91,10 +91,19 @@ def _services_compact(listing) -> dict[str, int]:
     return result
 
 
-async def _optional(operation):
-    """The extra readings must never cost the base sample (older firmware, an endpoint that is missing)."""
+async def _optional(operation, name: str, denied: list[str], ok: list[str]):
+    """The extra readings must never cost the base sample (older firmware, an endpoint that is missing).
+    A refusal by the firewall (403: the API key lacks the privilege) is recorded in ``denied`` so the
+    missing right becomes visible; a reading that went through is recorded in ``ok`` (the proof that a right is
+    back, whatever the answer contains); any other failure stays "unknown" and is no finding about rights."""
     try:
-        return await operation
+        result = await operation
+        ok.append(name)
+        return result
+    except OpnsenseForbiddenError:
+        denied.append(name)
+        logger.debug("Optionale Messung %s: API-Recht fehlt", name)
+        return None
     except Exception as exc:
         logger.debug("Optionale Messung fehlgeschlagen: %s", type(exc).__name__)
         return None
@@ -105,11 +114,13 @@ async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
     system_time = await client.get_system_time(host)
     disk = await client.get_system_disk(host)
     interfaces = await client.get_interface_statistics(host)
+    denied: list[str] = []
+    ok: list[str] = []
     swap, cpu_type, gateways, services = await asyncio.gather(
-        _optional(client.get_system_swap(host)),
-        _optional(client.get_cpu_type(host)),
-        _optional(gateway_health_service.get_gateway_health(host)),
-        _optional(client.search_services(host)),
+        _optional(client.get_system_swap(host), "swap", denied, ok),
+        _optional(client.get_cpu_type(host), "cpu", denied, ok),
+        _optional(gateway_health_service.get_gateway_health(host), "gateways", denied, ok),
+        _optional(client.search_services(host), "services", denied, ok),
     )
     db.add(
         HostResourceSample(
@@ -125,6 +136,9 @@ async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
                 "cpu_threads": _cpu_threads(cpu_type) if cpu_type is not None else None,
                 "gateways": gateway_health_service.compact(gateways) if gateways is not None else None,
                 "services": _services_compact(services) if services is not None else None,
+                # Readings the firewall refused (403) because the API key lacks the right; always a list.
+                "denied": sorted(denied),
+                "ok": sorted(ok),
             },
         )
     )

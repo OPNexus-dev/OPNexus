@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.oidc import OidcLoginState, OidcSettings
 from app.models.user import AdminUser
-from app.services import notification_secret_store
+from app.services import notification_secret_store, url_guard
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ async def _get_json(url: str, **kw) -> dict:
     if not url.startswith("https://"):
         raise OidcError("provider", "Nur https:// wird akzeptiert")
     try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
+        async with url_guard.guarded_client(timeout=10, follow_redirects=False) as client:
             response = await client.get(url, **kw)
             response.raise_for_status()
             data = response.json()
@@ -168,7 +168,7 @@ async def _exchange(cfg: OidcSettings, doc: dict, code: str, state: OidcLoginSta
         else:
             data["client_secret"] = secret
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+        async with url_guard.guarded_client(timeout=15, follow_redirects=False) as client:
             response = await client.post(doc["token_endpoint"], data=data, auth=auth)
         if response.status_code >= 400:
             raise OidcError("token", f"Token-Endpunkt antwortet mit HTTP {response.status_code}")

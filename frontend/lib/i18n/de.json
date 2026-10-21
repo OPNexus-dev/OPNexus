@@ -71,7 +71,8 @@
         "gatewayDown": "Gateway gestört (offline, Paketverlust oder Latenz über der Schwelle)",
         "resourceThreshold": "Ressourcen-Schwelle überschritten (Festplatte, Speicher, Swap, CPU-Last; standardmäßig aus)",
         "serviceDown": "Überwachter Dienst ausgefallen (standardmäßig aus)",
-        "rolloutProblems": "Rollout angehalten oder nicht automatisch gestartet"
+        "rolloutProblems": "Rollout angehalten oder nicht automatisch gestartet",
+        "apiRights": "API-Rechte fehlen (Gateway- oder Dienststatus nicht lesbar)"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
       "pollHint": "Mindestens 60 Sekunden, um die Firewalls nicht unnötig zu belasten.",
@@ -370,8 +371,11 @@
     "alert": {
       "gateway_down": "Gateway",
       "resource_threshold": "Ressource",
-      "service_down": "Dienst"
-    }
+      "service_down": "Dienst",
+      "api_rights_missing": "API-Rechte"
+    },
+    "moreGateways": "+ {count} weitere Gateways (auf der Seite der Firewall)",
+    "apiRightsLine": "{name}: API-Recht fehlt ({read})"
   },
   "hosts": {
     "add": "Host hinzufügen",
@@ -511,6 +515,10 @@
   },
   "adopt": {
     "button": "Von Firewall übernehmen",
+    "noHosts": {
+      "title": "Keine aktive Firewall",
+      "description": "Es gibt keine aktive Firewall, von der etwas übernommen werden könnte. Lege unter „Hosts“ eine Firewall an oder aktiviere eine vorhandene."
+    },
     "title": {
       "aliases": "Aliase von der Firewall übernehmen",
       "portForward": "Port-Forwards von der Firewall übernehmen",
@@ -779,6 +787,8 @@
     "GUI_ACCESS_DISABLED": "Der GUI-Zugriff ist ausgeschaltet. Ein Admin kann ihn in den Einstellungen einschalten.",
     "GUI_HOST_NOT_ELIGIBLE": "Diese Firewall lässt sich nicht über OPNexus öffnen: Sie muss aktiv sein, per https:// erreichbar und mit geprüftem oder gepinntem Zertifikat.",
     "GUI_NO_FREE_SLOT": "Alle {slots} Plätze für Firewall-Oberflächen sind belegt. Schließe eine geöffnete Oberfläche oder warte, bis sie abläuft.",
+    "GUI_SLOT_COOLING_DOWN": "Ein Platz wurde gerade erst frei, wird aber für eine andere Firewall erst nach {minutes} Min. neu vergeben (Schutz, falls dort noch ein Fenster offen ist). Öffne dieselbe Firewall erneut oder warte kurz.",
+    "GUI_TOO_MANY_SESSIONS": "Es laufen schon zu viele Firewall-Oberflächen gleichzeitig (höchstens {max}). Warte, bis eine endet, oder beende eine nicht mehr benötigte Sitzung.",
     "TLS_PROBE_FAILED": "Das Zertifikat der Firewall konnte nicht abgerufen werden",
     "TLS_PEM_INVALID": "Kein gültiges PEM-Zertifikat",
     "TLS_PIN_MISMATCH": "Die Firewall präsentiert ein anderes Zertifikat als das festgesetzte",
@@ -854,7 +864,11 @@
     "ANALYSE_FAMILIEN_MISCHUNG": "Quelle und Ziel müssen beide IPv4 oder beide IPv6 sein.",
     "ANALYSE_INTERFACE_UNBEKANNT": "Interface „{interface}“ gibt es auf dieser Firewall nicht. Vorhanden: {known}.",
     "ANALYSE_PARAMETER_UNGUELTIG": "Ungültiger Wert für {field}: {value}.",
-    "ANALYSE_FIREWALL_NICHT_LESBAR": "Die Regeln dieser Firewall konnten nicht gelesen werden. Ist sie erreichbar?"
+    "ANALYSE_FIREWALL_NICHT_LESBAR": "Die Regeln dieser Firewall konnten nicht gelesen werden. Ist sie erreichbar?",
+    "API_RIGHTS_MISSING": "Dem API-Benutzer fehlt das Recht, den Gateway-Status zu lesen",
+    "GATEWAY_NAME_INVALID": "Ungültiger Gateway-Name",
+    "GATEWAY_UNKNOWN": "Dieses Gateway kennt OPNexus auf der Firewall nicht (Name prüfen, Groß-/Kleinschreibung)",
+    "GATEWAY_MUTE_LIMIT": "Es können höchstens {limit} Gateways stummgeschaltet werden"
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -2946,6 +2960,32 @@
       "offline": "Offline",
       "forced_down": "Abgeschaltet",
       "unknown": "Unbekannt"
+    },
+    "alert": {
+      "label": "Alarm für Gateway {name}",
+      "off": "Alarm aus",
+      "tooltipOn": "Alarm für dieses Gateway: an. Klicken, um ihn abzuschalten (z. B. ruhendes Zweit-WAN).",
+      "tooltipOff": "Alarm für dieses Gateway: aus. Klicken, um ihn wieder einzuschalten.",
+      "adminOnly": "Nur Administratoren können den Alarm für ein Gateway ändern.",
+      "nowOn": "Alarm für {name} eingeschaltet",
+      "nowOff": "Alarm für {name} ausgeschaltet",
+      "failed": "Alarm konnte nicht geändert werden"
+    },
+    "rights": {
+      "badge": "API-Rechte fehlen: {reads}",
+      "hint": "Der API-Benutzer von OPNexus darf diese Messwerte nicht lesen, die Alarme dazu können nicht auslösen. In OPNsense beim Benutzer oder der Gruppe unter System ▸ Zugang ergänzen:",
+      "read": {
+        "gateways": "Gateways",
+        "services": "Dienste",
+        "swap": "Swap",
+        "cpu": "CPU"
+      },
+      "acl": {
+        "gateways": "System: Gateways",
+        "services": "Status: Services",
+        "swap": "Lobby: Dashboard",
+        "cpu": "Lobby: Dashboard"
+      }
     }
   },
   "rollouts": {
@@ -3565,7 +3605,7 @@
     "slotCountTip": "Wie viele Firewall-Oberflächen gleichzeitig offen sein können (1 bis 4). Jeder Platz hat einen eigenen Port, damit sich die offenen Firewalls im Browser nicht gegenseitig stören.",
     "orderError": "Das Inaktivitätslimit darf nicht größer sein als die Gesamtdauer.",
     "activeSlots": "Aktive Plätze (Ports)",
-    "activeSlotsTip": "Die in OPNEXUS_GUI_SITES festgelegten Ports, soweit sie bei der gewählten Anzahl genutzt werden. Welcher Platz gerade belegt ist, steht im Audit (Art „GUI-Zugriff“).",
+    "activeSlotsTip": "Die auf dem Server für die Firewall-Oberflächen festgelegten Ports, soweit sie bei der gewählten Anzahl genutzt werden. Welcher Platz gerade belegt ist, steht im Audit (Art „GUI-Zugriff“).",
     "noSlots": "keine konfiguriert",
     "lastChange": "Zuletzt geändert von {who} am {when}",
     "saved": "Einstellungen für die Firewall-Oberfläche gespeichert"

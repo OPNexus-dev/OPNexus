@@ -159,9 +159,13 @@ class RedeemRequest(BaseModel):
 class RevalidateRequest(BaseModel):
     gui_session_id: uuid.UUID
     session_hash: str = Field(pattern=_HEX64)
+    # Fingerprint of the target as handed out at redeem time (optional: an older gateway image omits it).
+    target_fp: str | None = Field(default=None, pattern=_HEX64)
 
 
-class EndRequest(RevalidateRequest):
+class EndRequest(BaseModel):
+    gui_session_id: uuid.UUID
+    session_hash: str = Field(pattern=_HEX64)
     reason: Literal["idle", "absolute", "logout", "revoked", "superseded", "shutdown"]
 
 
@@ -176,7 +180,8 @@ async def internal_redeem(payload: RedeemRequest, db: AsyncSession = Depends(get
 
 @internal_router.post("/revalidate", dependencies=[Depends(_gateway_auth)])
 async def internal_revalidate(payload: RevalidateRequest, db: AsyncSession = Depends(get_db)):
-    return await svc.revalidate(db, gui_session_id=payload.gui_session_id, session_hash=payload.session_hash)
+    return await svc.revalidate(db, gui_session_id=payload.gui_session_id, session_hash=payload.session_hash,
+                                 target_fp=payload.target_fp)
 
 
 @internal_router.post("/end", dependencies=[Depends(_gateway_auth)])

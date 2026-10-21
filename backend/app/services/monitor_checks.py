@@ -97,6 +97,7 @@ async def check_gateway_down(db: AsyncSession) -> dict[str, dict]:
     cfg = await notification_settings_service.get_settings(db)
     confirm = max(1, cfg.alert_confirm_samples)
     loss_limit, delay_limit = cfg.gateway_loss_threshold_pct, cfg.gateway_delay_threshold_ms
+    muted = set(cfg.gateway_alert_muted or [])
     open_keys = await _open_keys(db, "gateway_down")
     problems = Problems()
     for host in await _enabled_hosts(db):
@@ -110,6 +111,8 @@ async def check_gateway_down(db: AsyncSession) -> dict[str, dict]:
         ]
         names = {name for p in parsed if p for name in p} | _keys_of_host(open_keys, host)
         for name in sorted(names):
+            if f"{host.id}:{name}" in muted:
+                continue  # alert switched off for this gateway: not judged, an open problem of it resolves
             flags: list[bool | None] = []
             for p in parsed:
                 if p is None:
@@ -128,6 +131,58 @@ async def check_gateway_down(db: AsyncSession) -> dict[str, dict]:
                 "paketverlust_prozent": latest.loss if latest else None,
                 "latenz_ms": latest.delay if latest else None,
             }
+    return problems
+
+
+# ── API rights ──────────────────────────────────────────────────────────────
+
+# What the sampler reads on the side (resource_monitor_service) -> (ACL entry of the OPNsense user/group that
+# grants it, endpoint; the sample's "ok" list proves a reading went through). ACL names: opnsense/core
+# src/opnsense/mvc/app/models/OPNsense/Core/ACL/ACL.xml (page-system-gateways: api/routes/gateway/status;
+# page-status-services: api/core/service/*; page-system-login-logout "Lobby: Dashboard": api/diagnostics/cpu_usage/*
+# and api/diagnostics/system/system_swap).
+API_READS: dict[str, tuple[str, str]] = {
+    "gateways": ("System: Gateways", "/api/routes/gateway/status"),
+    "services": ("Status: Services", "/api/core/service/search"),
+    "swap": ("Lobby: Dashboard", "/api/diagnostics/system/systemSwap"),
+    "cpu": ("Lobby: Dashboard", "/api/diagnostics/cpu_usage/getCPUType"),
+}
+
+
+async def check_api_rights_missing(db: AsyncSession) -> dict[str, dict]:
+    """The API key of a firewall may be refused (403) on the side readings the alerts rely on (gateway state,
+    service state): those alerts can then never fire, and nobody would notice. Only a refusal counts; a timeout
+    or an error stays "unknown"."""
+    cfg = await notification_settings_service.get_settings(db)
+    confirm = max(1, cfg.alert_confirm_samples)
+    open_keys = await _open_keys(db, "api_rights_missing")
+    problems = Problems()
+    for host in await _enabled_hosts(db):
+        samples = await _recent(db, host.id, confirm, "denied", "ok")
+        if not _fresh(samples):
+            problems.preserve_prefixes.add(f"{host.id}:")
+            continue
+        was_open = _keys_of_host(open_keys, host)
+        names = {n for s in samples for n in (s["denied"] or []) if n in API_READS} | (was_open & set(API_READS))
+        for name in sorted(names):
+            acl, path = API_READS[name]
+            flags: list[bool | None] = []
+            for s in samples:
+                if s["denied"] is None:
+                    flags.append(None)  # a sample from before this check existed
+                elif name in s["denied"]:
+                    flags.append(True)
+                else:
+                    # Only a reading that went through proves the right is back; a timeout or a sample from
+                    # before "ok" existed stays unknown (the problem neither opens nor closes on it).
+                    flags.append(False if s["ok"] is not None and name in s["ok"] else None)
+            if verdict(flags, confirm, name in was_open):
+                problems[f"{host.id}:{name}"] = {
+                    "host_id": str(host.id), "host_name": host.name, "lesezugriff": name, "endpunkt": path,
+                    "fehlendes_recht": acl,
+                    "hinweis": f"Dem API-Benutzer fehlt das Recht, {path} zu lesen (OPNsense-Berechtigung \"{acl}\"). "
+                               "Alarme, die darauf beruhen, können nicht auslösen.",
+                }
     return problems
 
 
@@ -183,7 +238,9 @@ async def check_resource_threshold(db: AsyncSession) -> dict[str, dict]:
 
         def simple(key: str, label: str, flags: list, value, threshold, unit: str) -> None:
             if verdict(flags, confirm, key in was_open):
-                problems[f"{host.id}:{key}"] = {**base, "ressource": label, "wert": f"{value}{unit}", "schwelle": f"{threshold}{unit}"}
+                # An open alert stays open while the reading is unavailable: then there is no number to show (never "None %").
+                problems[f"{host.id}:{key}"] = {**base, "ressource": label, "wert": None if value is None else f"{value}{unit}",
+                                                "schwelle": f"{threshold}{unit}"}
 
         latest = samples[0]
         simple("memory", "Arbeitsspeicher", [over(s["mem_used_pct"], cfg.memory_threshold_pct) for s in samples],

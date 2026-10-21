@@ -226,6 +226,12 @@ async def delete_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     draft_certs = (await db.scalars(select(ManagedCertificate.id).where(ManagedCertificate.host_id == host_id))).all()
     draft_accounts = (await db.scalars(select(AcmeAccount.id).where(AcmeAccount.host_id == host_id))).all()
     await db.delete(host)
+    # Gateway alert switches of this host would otherwise stay in the settings forever (and count against the limit).
+    from app.services import notification_settings_service
+    settings_row = await notification_settings_service.get_settings(db)
+    prefix = f"{host_id}:"
+    if any(str(m).startswith(prefix) for m in settings_row.gateway_alert_muted or []):
+        settings_row.gateway_alert_muted = [m for m in settings_row.gateway_alert_muted if not str(m).startswith(prefix)]
     await db.commit()
     opnsense_secret_store.delete_secret(host_id)
     for cert_id in draft_certs:

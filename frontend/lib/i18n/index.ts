@@ -58,6 +58,34 @@ export function translateServerParams(language: Language, params?: Record<string
   return Object.fromEntries(Object.entries(params).map(([key, value]) => [key, typeof value === "string" ? translateServerText(language, value) : value]));
 }
 
+// Errors whose parameter is a comma-separated list of machine codes (the server sends codes, never prose):
+// the parameter and the catalog prefix that holds their texts.
+const CODE_LIST_PARAMS: Record<string, { param: string; prefix: string }> = {
+  OBJECT_NOT_ADOPTABLE: { param: "reasons", prefix: "adopt.reasons" },
+  RULE_NOT_ADOPTABLE: { param: "reasons", prefix: "rules.adopt.reasons" },
+  ADOPT_LINK_TARGET_CHANGED: { param: "fields", prefix: "adopt.link.fields" },
+  GUI_GATEWAY_NOT_CONFIGURED: { param: "reasons", prefix: "guiAccess.reason" },
+  NETWORK_CHANGE_BLOCKED: { param: "reasons", prefix: "network.blocks" },
+  NETWORK_ACK_REQUIRED: { param: "reasons", prefix: "network.risks" },
+};
+
+/** `reasons: "name_exists, proto_set"` -> readable sentences joined by " · "; an unknown code stays as it is.
+ *  `reason_details` (JSON, code -> text) fills {detail}; placeholders nobody can fill are dropped. */
+export function translateReasonParams(language: Language, code: string, params?: Record<string, string>): Record<string, string> | undefined {
+  const spec = CODE_LIST_PARAMS[code];
+  if (!spec || !params || typeof params[spec.param] !== "string") return params;
+  let details: Record<string, string> = {};
+  try { details = JSON.parse(params.reason_details || "{}") as Record<string, string>; } catch { /* plain codes only */ }
+  const items = params[spec.param].split(",").map((r) => r.trim()).filter(Boolean).map((item) => {
+    const key = `${spec.prefix}.${item}`;
+    const text = translate(language, key, details[item] !== undefined ? { detail: details[item] } : {});
+    if (text === key) return item;
+    // A placeholder without a value goes away together with the quotes/colon around it.
+    return text.replace(/\s*[„“"'(]?\{\w+\}[“”"')]?/g, "").replace(/[:\s]+$/, "").replace(/ {2,}/g, " ").trim();
+  });
+  return { ...params, [spec.param]: items.join(" · ") };
+}
+
 // Looks up `${prefix}.${key}`, falling back to the raw key for values the catalog does not know.
 export function labelFor(t: (key: string) => string, prefix: string, key: string): string {
   const full = `${prefix}.${key}`;

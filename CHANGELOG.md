@@ -31,6 +31,56 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.29.0] "Caracara" — 2026-10-22
+
+- **Fehlende API-Rechte werden sichtbar:** Darf der API-Schlüssel einer Firewall den Gateway- oder Dienststatus nicht lesen (OPNsense antwortet
+  mit 403), fiel das bisher niemandem auf, und der standardmäßig aktive Gateway-Alarm konnte nie auslösen. Jetzt zeigen die Host-Seite
+  (Abschnitt „Gateways“) und die Dashboard-Karte „Fleet-/CARP-Gesundheit“ ein Warn-Badge „API-Rechte fehlen: Gateways, Dienste“; der Tooltip nennt die
+  OPNsense-Berechtigung, die beim Benutzer oder bei der Gruppe fehlt (System: Gateways, Status: Services, Lobby: Dashboard). Zusätzlich gibt es
+  den neuen Alarm **API-Rechte fehlen** (standardmäßig an, abschaltbar unter Einstellungen › Benachrichtigungen, gleiche Entprellung wie die
+  anderen Messungs-Alarme) und die Prometheus-Metrik `opnexus_host_api_rights_missing{host,read}`. Nur eine ausdrückliche Ablehnung zählt;
+  Zeitüberschreitungen oder Serverfehler bleiben „unbekannt“.
+- **Gateway-Alarm pro Gateway abschaltbar:** In der Gateway-Liste der Host-Seite schaltet eine Glocke den Alarm für ein einzelnes Gateway aus
+  (z. B. ruhendes Zweit-WAN oder tote IPv6-Gateways); ein „Alarm aus“-Badge zeigt es an. Ein offener Alarm dieses Gateways löst sich dabei
+  auf. Nur Administratoren, die Änderung steht im Audit-Log. Das Dashboard zeigt bei mehr als acht Gateways „+ N weitere“.
+- **Firewall-Oberfläche (GUI-Zugriff) härter:** Ein frei gewordener Platz wird für eine **andere** Firewall erst 5 Minuten nach dem Ende der letzten
+  Sitzung vergeben (Schutz, falls dort noch ein Tab offen ist, der die Cookies des Platzes teilt); dieselbe Firewall bekommt ihn sofort wieder.
+  Sind alle Plätze belegt oder noch in der Abkühlzeit, nennt die Meldung den Grund. Ändern sich Adresse, festgesetztes Zertifikat oder Tunnelweg
+  einer Firewall, während ihre Oberfläche offen ist, endet die Sitzung spätestens nach 20 Sekunden. Das Limit von 64 gleichzeitigen Sitzungen
+  verdrängt keine laufende Sitzung mehr: eine neue wird abgelehnt (mit Meldung), bis eine endet. **Hinweis:** Das GUI-Gateway-Image muss zur
+  Backend-Version passen (wie bisher beim Update beider Container).
+- **Anmeldung (Cookies) härter:** Das alte Sitzungs-Cookie `opnexus-session` wird bei HTTPS **nicht mehr akzeptiert**. **Alle, die sich seit der
+  Umstellung auf 1.27 nicht neu angemeldet haben, müssen sich einmal neu anmelden**; Skripte mit rohem Sitzungs-Cookie brauchen den Namen
+  `__Host-opnexus-session` (API-Tokens sind nicht betroffen, ohne HTTPS bleibt `opnexus-session` der normale Name). Beim Abmelden wird ein altes
+  Cookie weiterhin gelöscht. Das Cookie, das die SSO-Anmeldung an den Browser bindet, heißt bei HTTPS jetzt `__Host-opnexus-oidc-state`; der
+  Rückweg vom Anbieter wird nur noch als Seitenaufruf (Navigation) von einer fremden Seite zugelassen, und ohne dieses Cookie scheitert er immer.
+- **Webhook, Benachrichtigungskanäle und SSO-Anbieter: Schutz vor DNS-Rebinding:** Bisher prüfte OPNexus die Adresse, auf die ein Name zeigt, und
+  der HTTP-Client löste den Namen danach noch einmal auf; ein Server unter Fremdkontrolle konnte beim zweiten Mal eine interne Adresse liefern. Jetzt
+  verbindet OPNexus genau zu der geprüften Adresse (Host-Name, TLS-Zertifikatsprüfung und Anfrage bleiben beim Namen); zeigt eine Antwort auch nur
+  teilweise auf Loopback, Link-Local oder einen Cloud-Metadaten-Dienst (auch AWS-IPv6 und Alibaba), kommt keine Verbindung zustande und die Zustellung meldet „Zieladresse nicht
+  erlaubt“. Private Netze bleiben erlaubt (eigener ntfy, Gotify, Matrix). Proxy-Umgebungsvariablen werden für diese Aufrufe nicht mehr beachtet.
+- **Benachrichtigungen parallel zugestellt:** Webhook, E-Mail und alle Kanäle werden gleichzeitig bedient, jeder mit eigener Zeitgrenze (20 Sekunden),
+  und ein Prüfdurchlauf sendet insgesamt höchstens 90 Sekunden. Ein hängender Kanal verzögert weder die anderen noch die nächsten Prüfungen; im Log
+  steht dann „timed out“ (ohne Adresse oder Token). Wie bisher wird einmal je Ereignis zugestellt, ohne Wiederholung, **außer** der Durchlauf war so voll, dass
+  für ein Ereignis noch gar kein Versuch stattfand: es wird im nächsten Durchlauf zugestellt. Die Zustellung beginnt jetzt nach allen Prüfungen
+  eines Durchlaufs statt mitten darin.
+- **Rollouts: Fingerabdruck, verantwortliche Person, überlappende Termine:** Der Fingerabdruck eines aktivierten Plans umfasst jetzt auch die
+  ausgelassenen und verschobenen Termine seines Fensters: **wer einen Termin auslässt oder verschiebt, muss einen automatischen Plan danach neu
+  aktivieren** (ohne solche Ausnahmen bleiben bestehende Aktivierungen gültig; **Pläne, deren Fenster schon Ausnahmen haben, nach dem Update
+  einmal neu aktivieren**, sonst meldet der Plan „Plan geändert“ und startet nicht automatisch). Die verantwortliche Person (Aktivierende, Startende, Freigebende)
+  wird zusätzlich als Konto-ID gespeichert (Migration 0026, bestehende Einträge werden über den Namen zugeordnet): ein gelöschtes und unter gleichem
+  Namen neu angelegtes Konto gilt nicht mehr als dieselbe Person, der Lauf pausiert bzw. der automatische Start unterbleibt mit „Person darf nicht mehr
+  ausrollen“. Angezeigt wird weiter der Benutzername. Überlappen sich zwei Termine eines Wartungsfensters, zählt der zuletzt begonnene (bisher der
+  früheste), sodass ein älterer, längst abgeschnittener Termin keinen neuen Start mehr blockiert.
+- **Kleinigkeiten:** Ressourcen-Alarme zeigen bei fehlendem Messwert keine Zahl mehr („None %“ entfällt). Der Dialog „Von Firewall übernehmen“ zeigt ohne aktive
+  Firewall einen Hinweis statt dauerhaft „Lädt…“. Fehlermeldungen beim Übernehmen und Verknüpfen nennen die Gründe in Klartext (Deutsch/Englisch) statt
+  roher Codes wie `name_exists`; dasselbe gilt für „GUI-Zugriff nicht eingerichtet“ und blockierte Netzwerkänderungen. Der Test-Knopf der
+  Benachrichtigungskanäle ist für Nicht-Admins ausgeblendet (der Server verweigert den Test ohnehin). Der Tooltip der aktiven Plätze nennt keine
+  Umgebungsvariable mehr. Eine Gateway-Sitzung, die der Gateway-Container nicht mehr bestätigt (Absturz), zählt für die Abkühlzeit der Plätze als
+  beendet.
+- **Grafana-Dashboard erweitert:** neue Felder für Gateways (erreichbar, Paketverlust, Latenz), Swap, gestoppte Dienste, fehlende API-Rechte und
+  Rollouts nach Status; dazu die Metrik `opnexus_rollout_runs{status}`.
+
 ## [1.28.0] "Sparrowhawk" — 2026-10-21
 
 - **Übernehmen: mit vorhandenem zentralem Objekt verknüpfen:** Dieselbe von Hand angelegte Regel, derselbe Alias oder dieselbe NAT-Regel auf mehreren

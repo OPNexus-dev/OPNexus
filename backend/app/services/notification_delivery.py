@@ -40,6 +40,7 @@ _LABELS = {
     "gateway_down": "Gateway gestört",
     "resource_threshold": "Ressourcen-Schwelle überschritten",
     "service_down": "Dienst ausgefallen",
+    "api_rights_missing": "API-Rechte fehlen",
     "rollout_paused": "Rollout angehalten",
     "rollout_start_failed": "Rollout nicht automatisch gestartet",
     "test": "Testbenachrichtigung",
@@ -96,14 +97,14 @@ async def send_webhook(settings_row: NotificationSettings, problem: Notification
         raise NotificationDeliveryError(f"Webhook-Adresse nicht erlaubt: {exc}") from None
     try:
         # follow_redirects stays off: a redirect must not move the request to an address the check above never saw.
-        async with httpx.AsyncClient(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
+        async with url_guard.guarded_client(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
             with url_guard.muted():
                 resp = await client.post(settings_row.webhook_url, content=raw, headers=headers)
                 resp.raise_for_status()
     except httpx.HTTPError as exc:
         # str(exc) names the full URL, which often is the credential itself
         # (token in path/query) — keep it out of messages and logs.
-        reason = f"HTTP {exc.response.status_code}" if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
+        reason = url_guard.failure_reason(exc)
         raise NotificationDeliveryError(f"Webhook-Zustellung fehlgeschlagen ({reason})") from None
 
 

@@ -68,6 +68,10 @@ class NotificationSettings(Base):
     gateway_down_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     resource_threshold_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     service_down_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # An API key that cannot read gateway / service state makes those alerts silently blind (1.29): say so.
+    api_rights_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    # Gateways whose alert is switched off, "<host_id>:<gateway name>" (1.29), e.g. an idle second WAN.
+    gateway_alert_muted: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     # Rollouts (1.25): a run paused (gate, failure, window...) or an automatic start did not happen.
     rollout_problems_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     # Gateway: OPNsense' own verdict (down / loss / delay) decides "offline"; these two add an

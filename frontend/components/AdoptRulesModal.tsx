@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -86,7 +87,8 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
           </select>
         </label>
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        {rules === null && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
+        {enabledHosts.length === 0 && <EmptyState title={t("adopt.noHosts.title")} description={t("adopt.noHosts.description")} />}
+        {enabledHosts.length > 0 && rules === null && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
         {rules !== null && rules.length === 0 && !error && (
           <p className="text-sm text-slate-500">{t("rules.adopt.none")}</p>
         )}

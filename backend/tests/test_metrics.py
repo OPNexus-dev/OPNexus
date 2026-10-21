@@ -102,3 +102,15 @@ async def test_read_token_can_scrape(client):
     async with _bearer(created["token"]) as api:
         resp = await api.get("/api/metrics")
     assert resp.status_code == 200 and "opnexus_info" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_rollout_runs_are_counted_by_status(client):
+    from app.models.rollout import RolloutRun
+    async with SessionLocal() as db:
+        for status in ("paused", "succeeded", "succeeded"):
+            db.add(RolloutRun(plan_name="p", action="update", status=status, started_by="admin", trigger="manual"))
+        await db.commit()
+    values = _parse((await client.get("/api/metrics")).text)
+    assert values['opnexus_rollout_runs{status="succeeded"}'] == 2
+    assert values['opnexus_rollout_runs{status="paused"}'] == 1

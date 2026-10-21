@@ -1,0 +1,303 @@
+[
+ {
+  "name": "S1 cooldown ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "    usable = [s for s in free if s not in cooling]",
+  "new": "    usable = list(free)",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S1 cooldown window zero",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "            | (GuiSession.ended_at > now - SLOT_COOLDOWN)))).all()",
+  "new": "            | (GuiSession.ended_at > now)))).all()",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S1 same firewall blocked too",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "        if h_id == host_id or slot not in free:",
+  "new": "        if slot not in free:",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S1 open sessions of other browser ignored",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "((GuiSession.ended_at.is_(None)) & (GuiSession.started_at > now - absolute))\n            | ",
+  "new": "(GuiSession.ended_at.is_(None) & (GuiSession.started_at > now))\n            | ",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S1 cooldown not per user",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "            GuiSession.user_id == user_id,\n            ((GuiSession",
+  "new": "            ((GuiSession",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 fingerprint not compared",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "and not secrets.compare_digest(target_fp, target_fingerprint(host)):",
+  "new": "and False:",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 fingerprint ignores CA",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "host.tls_ca_pem or \"\", overlay",
+  "new": "\"\", overlay",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 fingerprint ignores overlay",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "overlay_service.proxy_for(host.base_url) or \"\",\n",
+  "new": "\"\",\n",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 fingerprint ignores origin",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "firewall_origin(host.base_url), host.tls_ca_pem",
+  "new": "\"x\", host.tls_ca_pem",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 gateway forgets fingerprint",
+  "file": "app/gui_gateway.py",
+  "old": "\"target_fp\": gs.target_fp})",
+  "new": "\"target_fp\": None})",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 gateway evicts again",
+  "file": "app/gui_gateway.py",
+  "old": "        return len(self.sessions) - replaced < MAX_SESSIONS",
+  "new": "        return True",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 backend cap off",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "if (open_count or 0) >= MAX_GATEWAY_SESSIONS:",
+  "new": "if (open_count or 0) > 10**9:",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S4 cap counts own replaced session",
+  "file": "app/services/gui_ticket_service.py",
+  "old": "        ~((GuiSession.session_hash == session_hash) & (GuiSession.slot == slot))))",
+  "new": "        GuiSession.slot > 0))",
+  "tests": "tests/test_gui_access.py tests/test_gui_gateway.py"
+ },
+ {
+  "name": "S3 plain cookie accepted again on HTTPS",
+  "file": "app/routers/auth.py",
+  "old": "    return request.cookies.get(session_cookie_name(), \"\")",
+  "new": "    return request.cookies.get(session_cookie_name()) or request.cookies.get(COOKIE_NAME, \"\")",
+  "tests": "tests/test_session_hardening.py tests/test_gui_access.py"
+ },
+ {
+  "name": "S3 logout leaves legacy session",
+  "file": "app/routers/auth.py",
+  "old": "    if settings.cookie_secure and legacy and legacy != token:",
+  "new": "    if False:",
+  "tests": "tests/test_session_hardening.py tests/test_gui_access.py"
+ },
+ {
+  "name": "S3 logout does not delete plain cookie",
+  "file": "app/routers/auth.py",
+  "old": "    response.delete_cookie(key=COOKIE_NAME, path=\"/\", secure=settings.cookie_secure, httponly=True, samesite=\"lax\")\n    if settings.cookie_secure:\n        response.delete_cookie(key=SECURE",
+  "new": "    if settings.cookie_secure:\n        response.delete_cookie(key=SECURE",
+  "tests": "tests/test_session_hardening.py tests/test_gui_access.py"
+ },
+ {
+  "name": "S2 plain state cookie name on HTTPS",
+  "file": "app/routers/oidc.py",
+  "old": "    return SECURE_STATE_COOKIE if settings.cookie_secure else STATE_COOKIE",
+  "new": "    return STATE_COOKIE",
+  "tests": "tests/test_oidc.py"
+ },
+ {
+  "name": "S2 state cookie path not /",
+  "file": "app/routers/oidc.py",
+  "old": "    return \"/\" if settings.cookie_secure else STATE_COOKIE_PATH",
+  "new": "    return STATE_COOKIE_PATH",
+  "tests": "tests/test_oidc.py"
+ },
+ {
+  "name": "S2 callback without cookie accepted",
+  "file": "app/routers/oidc.py",
+  "old": "        if not bound or not secrets.compare_digest(bound.encode(), state.encode()):",
+  "new": "        if False:",
+  "tests": "tests/test_oidc.py"
+ },
+ {
+  "name": "S2 sec-fetch exemption for any request",
+  "file": "app/security_middleware.py",
+  "old": "    if path in _SEC_FETCH_EXEMPT and _is_top_level_navigation(request):",
+  "new": "    if path in _SEC_FETCH_EXEMPT:",
+  "tests": "tests/test_oidc.py"
+ },
+ {
+  "name": "S5 no guard in transport",
+  "file": "app/services/url_guard.py",
+  "old": "        pool._network_backend = _GuardedBackend(backend)",
+  "new": "        pass",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 forbidden check skipped at connect",
+  "file": "app/services/url_guard.py",
+  "old": "        if not addresses or _any_forbidden(addresses):",
+  "new": "        if not addresses:",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 only first answer checked",
+  "file": "app/services/url_guard.py",
+  "old": "def _any_forbidden(addresses: list[str]) -> bool:\n    for address in addresses:",
+  "new": "def _any_forbidden(addresses: list[str]) -> bool:\n    for address in addresses[:1]:",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 connects by name again",
+  "file": "app/services/url_guard.py",
+  "old": "                return await self._inner.connect_tcp(address, port,",
+  "new": "                return await self._inner.connect_tcp(host, port,",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 webhook without guarded client",
+  "file": "app/services/notification_delivery.py",
+  "old": "async with url_guard.guarded_client(timeout=settings.opnsense_timeout, follow_redirects=False) as client:\n            with url_guard.muted():",
+  "new": "async with httpx.AsyncClient(timeout=settings.opnsense_timeout, follow_redirects=False) as client:\n            with url_guard.muted():",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 channel without guarded client",
+  "file": "app/services/notification_channels.py",
+  "old": "async with url_guard.guarded_client(",
+  "new": "async with httpx.AsyncClient(",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S5 oidc without guarded client",
+  "file": "app/services/oidc_service.py",
+  "old": "async with url_guard.guarded_client(timeout=10, follow_redirects=False) as client:",
+  "new": "async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:",
+  "tests": "tests/test_url_guard.py"
+ },
+ {
+  "name": "S7 sequential delivery",
+  "file": "app/services/notification_service.py",
+  "old": "        await asyncio.gather(*calls, return_exceptions=True)",
+  "new": "        for call in calls:\n            await call",
+  "tests": "tests/test_notification_parallel.py"
+ },
+ {
+  "name": "S7 no per-target timeout",
+  "file": "app/services/notification_service.py",
+  "old": "            await asyncio.wait_for(make_call(), DELIVERY_TIMEOUT_SECONDS)",
+  "new": "            await make_call()",
+  "tests": "tests/test_notification_parallel.py"
+ },
+ {
+  "name": "S7 no cycle budget",
+  "file": "app/services/notification_service.py",
+  "old": "    done, late = await asyncio.wait(tasks, timeout=DELIVERY_CYCLE_BUDGET_SECONDS)",
+  "new": "    done, late = await asyncio.wait(tasks)",
+  "tests": "tests/test_notification_parallel.py"
+ },
+ {
+  "name": "S7 no parallel limit",
+  "file": "app/services/notification_service.py",
+  "old": "    gate = asyncio.Semaphore(DELIVERY_PARALLEL)",
+  "new": "    gate = asyncio.Semaphore(10**6)",
+  "tests": "tests/test_notification_parallel.py"
+ },
+ {
+  "name": "S7 attempt not recorded when cancelled",
+  "file": "app/services/notification_service.py",
+  "old": "    finally:\n        # \"Attempted\" is what is recorded",
+  "new": "    except ZeroDivisionError:\n        pass\n    else:\n        # \"Attempted\" is what is recorded",
+  "tests": "tests/test_notification_parallel.py"
+ },
+ {
+  "name": "S6 exceptions not in definition",
+  "file": "app/services/window_service.py",
+  "old": "    if window.exceptions:\n        result[",
+  "new": "    if False:\n        result[",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 moved start not in definition",
+  "file": "app/services/window_service.py",
+  "old": "e.moved_start.astimezone(timezone.utc).isoformat() if e.moved_start else None]",
+  "new": "None]",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 current takes earliest again",
+  "file": "app/services/window_service.py",
+  "old": "return max(open_now, key=lambda occ: occ.start) if open_now else None",
+  "new": "return min(open_now, key=lambda occ: occ.start) if open_now else None",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 may_roll_out ignores id",
+  "file": "app/services/rollout_engine.py",
+  "old": "    if user_id is not None:\n        user = await db.get(AdminUser, user_id)",
+  "new": "    if False:\n        user = await db.get(AdminUser, user_id)",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 auto start check ignores id",
+  "file": "app/services/rollout_engine.py",
+  "old": "may_roll_out(db, plan.activated_by or \"\", plan.activated_by_id)",
+  "new": "may_roll_out(db, plan.activated_by or \"\")",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 run does not get id",
+  "file": "app/services/rollout_engine.py",
+  "old": "started_by=plan.activated_by, started_by_id=plan.activated_by_id,",
+  "new": "started_by=plan.activated_by,",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 activation does not store id",
+  "file": "app/routers/rollouts.py",
+  "old": "    plan.activated_by_id = request.state.user.id\n",
+  "new": "",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "S6 migration no backfill of plans",
+  "file": "migrations/versions/0026_rollout_actor_ids.py",
+  "old": "    op.execute(\"UPDATE rollout_plans p SET",
+  "new": "    op.execute(\"SELECT 1 -- UPDATE rollout_plans p SET",
+  "tests": "tests/test_rollout_engine.py tests/test_maintenance_windows.py tests/test_migrations.py"
+ },
+ {
+  "name": "UI None % shown again",
+  "file": "app/services/monitor_checks.py",
+  "old": "\"wert\": None if value is None else f\"{value}{unit}\",",
+  "new": "\"wert\": f\"{value}{unit}\",",
+  "tests": "tests/test_monitoring_alerts.py"
+ },
+ {
+  "name": "UI adopt reason_details dropped",
+  "file": "app/routers/adopt_routes.py",
+  "old": "reason_details=json.dumps(exc.details, ensure_ascii=False)) from exc",
+  "new": "reason_details=\"{}\") from exc",
+  "tests": "tests/test_object_adopt.py"
+ },
+ {
+  "name": "UI channel test open to operators",
+  "file": "app/services/api_token_service.py",
+  "old": "r\"^/api/(users|settings|system|notifications|overlay)(/|$)\"",
+  "new": "r\"^/api/(users|settings|system|overlay)(/|$)\"",
+  "tests": "tests/test_operator_role.py"
+ }
+]

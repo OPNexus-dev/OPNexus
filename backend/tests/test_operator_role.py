@@ -185,3 +185,24 @@ async def test_the_refusal_is_audited_and_covers_operator_tokens(client):
     async with SessionLocal() as db:
         rows = (await db.scalars(select(AuditEvent).where(AuditEvent.status == "denied", AuditEvent.actor.like("dutytok%")))).all()
     assert rows and rows[0].kind == "rule" and "dutytok (API: ci)" in {r.actor for r in rows}
+
+
+@pytest.mark.asyncio
+async def test_channel_test_button_is_admin_only_on_the_server_too(client):
+    """The UI hides "Testen" for non-admins; the server refuses it regardless (a test sends a message to an outside server)."""
+    channel_id = "00000000-0000-0000-0000-000000000001"  # refused before the id is even looked up
+    op = await _operator(client, "chantest-op")
+    ro = None
+    try:
+        assert (await client.post("/api/users", json={"username": "chantest-ro", "password": PW, "role": "read_only"})).status_code == 201
+        ro = await _login("chantest-ro", PW)
+        resp = await op.post(f"/api/notifications/channels/{channel_id}/test")
+        assert resp.status_code == 403 and resp.json()["detail"]["code"] == "ADMIN_REQUIRED"
+        resp = await ro.post(f"/api/notifications/channels/{channel_id}/test")
+        assert resp.status_code == 403 and resp.json()["detail"]["code"] == "READ_ONLY_ACCESS"
+        for who in (op, ro):
+            assert (await who.post("/api/notifications/test", json={"channel": "webhook"})).status_code == 403
+    finally:
+        await op.aclose()
+        if ro is not None:
+            await ro.aclose()

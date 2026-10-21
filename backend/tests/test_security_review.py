@@ -787,6 +787,8 @@ async def test_reader_sees_only_the_webhook_host(client):
 @pytest.mark.asyncio
 async def test_cross_scheme_origin_is_blocked_on_https_deployments(client, monkeypatch):
     monkeypatch.setattr(settings, "cookie_secure", True)
+    # The fixture logged in over plain HTTP; an HTTPS deployment only accepts the __Host- cookie name (1.29).
+    client.cookies.set("__Host-opnexus-session", client.cookies.get("opnexus-session"))
     blocked = await client.put("/api/logs/settings", json={"retention_days": 5}, headers={"Origin": "http://test"})
     assert blocked.status_code == 403
     allowed = await client.put("/api/logs/settings", json={"retention_days": 5}, headers={"Origin": "https://test"})

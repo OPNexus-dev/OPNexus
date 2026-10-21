@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
@@ -178,7 +179,8 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
           </div>
         )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        {items === null && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
+        {enabledHosts.length === 0 && <EmptyState title={t("adopt.noHosts.title")} description={t("adopt.noHosts.description")} />}
+        {enabledHosts.length > 0 && items === null && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
         {items !== null && shown.length === 0 && !error && <p className="text-sm text-slate-500">{t("adopt.none")}</p>}
         {result && (
           <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">

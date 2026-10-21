@@ -1341,6 +1341,9 @@ export const api = {
   deleteNotificationChannel: (id: string) => request<void>(`/notifications/channels/${id}`, { method: "DELETE" }),
   testNotificationChannel: (id: string) => request<{ success: boolean }>(`/notifications/channels/${id}/test`, { method: "POST" }),
   hostGateways: (id: string) => request<GatewayHealth[]>(`/hosts/${id}/gateways`),
+  hostApiRights: (id: string) => request<ApiRightsState>(`/hosts/${id}/gateways/api-rights`),
+  setGatewayAlert: (id: string, name: string, enabled: boolean) =>
+    request<{ name: string; alert_enabled: boolean }>(`/hosts/${id}/gateways/${encodeURIComponent(name)}/alert`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   testNotification: (channel: "webhook" | "email") => request<{ success: boolean }>("/notifications/test", { method: "POST", body: JSON.stringify({ channel }) }),
   notificationProblems: (includeResolved = false) => request<NotificationProblem[]>(`/notifications/problems?include_resolved=${includeResolved}`),
   carpEvents: (clusterName?: string) => request<CarpEvent[]>(`/cluster/carp-events${clusterName ? `?cluster_name=${encodeURIComponent(clusterName)}` : ""}`),
@@ -1788,8 +1791,10 @@ export interface AuditEvent { id: string; created_at: string; correlation_id: st
 export interface AuditPage { total: number; offset: number; limit: number; items: AuditEvent[]; }
 
 export type GatewayState = "online" | "degraded" | "offline" | "forced_down" | "unknown";
-export interface GatewayHealth { name: string; address: string | null; status: string; state: GatewayState; loss: number | null; delay: number | null; stddev: number | null; monitor: string | null; }
-export interface DashboardHost { id: string; name: string; status: HostStatus; carp_status: string | null; cluster_name: string | null; gateways: GatewayHealth[] | null; }
+export interface GatewayHealth { name: string; address: string | null; status: string; state: GatewayState; loss: number | null; delay: number | null; stddev: number | null; monitor: string | null; alert_enabled: boolean; }
+/** Side readings the newest fresh sample could not take because the API key lacks the right; null = unknown. */
+export interface ApiRightsState { missing: string[] | null; }
+export interface DashboardHost { id: string; name: string; status: HostStatus; carp_status: string | null; cluster_name: string | null; gateways: GatewayHealth[] | null; api_rights_missing: string[] | null; }
 export interface PendingAction { kind: string; status: string; entity_name: string; host_name: string; message: string | null; created_at: string; link: string; }
 export interface ActivityItem { id: string; created_at: string; actor: string; kind: string; action: string; status: string; entity_name: string | null; host_name: string | null; message: string | null; }
 export interface DashboardSummary { hosts: DashboardHost[]; pending_actions: PendingAction[]; recent_activity: ActivityItem[]; }
@@ -1931,6 +1936,7 @@ export interface NotificationSettings {
   resource_threshold_enabled: boolean;
   service_down_enabled: boolean;
   rollout_problems_enabled: boolean;
+  api_rights_enabled: boolean;
   gateway_loss_threshold_pct: number;
   gateway_delay_threshold_ms: number;
   disk_threshold_pct: number;
@@ -1988,6 +1994,7 @@ export interface NotificationSettingsUpdate {
   resource_threshold_enabled?: boolean;
   service_down_enabled?: boolean;
   rollout_problems_enabled?: boolean;
+  api_rights_enabled?: boolean;
   gateway_loss_threshold_pct?: number;
   gateway_delay_threshold_ms?: number;
   disk_threshold_pct?: number;
@@ -2024,7 +2031,7 @@ export type ProblemType =
   | "backup_stale"
   | "backup_offsite_failed"
   | "compliance_finding"
-  | "gateway_down" | "resource_threshold" | "service_down"
+  | "gateway_down" | "resource_threshold" | "service_down" | "api_rights_missing"
   | "rollout_paused" | "rollout_start_failed";
 
 export interface CarpEvent {

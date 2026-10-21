@@ -49,7 +49,7 @@ from app.models.wireguard_tunnel import WireguardTunnel
 from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
 from app.schemas.dashboard import ActivityItem, DashboardHost, DashboardSummary, PendingAction
 from app.models.resource_sample import HostResourceSample
-from app.services import gateway_health_service
+from app.services import gateway_health_service, notification_settings_service
 from app.services.host_status_service import get_statuses
 from app.services.monitor_checks import STALE_AFTER
 
@@ -207,34 +207,43 @@ async def collect_pending_actions(db: AsyncSession) -> list[PendingAction]:
     return pending_actions
 
 
-async def _gateways_by_host(db: AsyncSession, hosts) -> dict:
-    """Gateway state from each host's newest resource sample; hosts without a fresh sample are left out."""
-    result: dict = {}
+async def _sample_readings_by_host(db: AsyncSession, hosts, muted: set[str]) -> tuple[dict, dict]:
+    """(gateways, missing API rights) from each host's newest resource sample; hosts without a fresh sample are left out."""
+    gateways: dict = {}
+    denied: dict = {}
     now = datetime.now(timezone.utc)
     for host in hosts:
         row = (
             await db.execute(
-                select(HostResourceSample.sampled_at, HostResourceSample.raw["gateways"].as_json())
+                select(HostResourceSample.sampled_at, HostResourceSample.raw["gateways"].as_json(), HostResourceSample.raw["denied"].as_json())
                 .where(HostResourceSample.host_id == host.id)
                 .order_by(HostResourceSample.sampled_at.desc())
                 .limit(1)
             )
         ).first()
-        if row is not None and row[1] is not None and now - row[0] <= STALE_AFTER:
-            result[host.id] = gateway_health_service.from_compact(row[1])
-    return result
+        if row is None or now - row[0] > STALE_AFTER:
+            continue
+        if row[1] is not None:
+            gateways[host.id] = [
+                g.model_copy(update={"alert_enabled": f"{host.id}:{g.name}" not in muted})
+                for g in gateway_health_service.from_compact(row[1])
+            ]
+        if isinstance(row[2], list):
+            denied[host.id] = [str(x) for x in row[2]]
+    return gateways, denied
 
 
 @router.get("", response_model=DashboardSummary)
 async def summary(db: AsyncSession = Depends(get_db)):
     hosts = (await db.scalars(select(OpnsenseHost).order_by(OpnsenseHost.name))).all()
     statuses = await get_statuses(hosts)
-    gateways = await _gateways_by_host(db, hosts)
+    muted = set((await notification_settings_service.get_settings(db)).gateway_alert_muted or [])
+    gateways, denied = await _sample_readings_by_host(db, hosts, muted)
     host_summaries = [
         DashboardHost(
             id=host.id, name=host.name, status=statuses.get(host.id, {}).get("status", "offline"),
             carp_status=statuses.get(host.id, {}).get("carp_status"), cluster_name=host.cluster_name,
-            gateways=gateways.get(host.id),
+            gateways=gateways.get(host.id), api_rights_missing=denied.get(host.id),
         )
         for host in hosts
     ]

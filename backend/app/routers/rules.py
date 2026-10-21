@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, Body
@@ -112,7 +113,8 @@ async def adopt_rule(payload: AdoptRequest, db: AsyncSession = Depends(get_db)):
     except rule_adopt_service.RuleNotFoundOnHost as exc:
         raise api_error(404, ErrorCode.REGEL_NICHT_GEFUNDEN) from exc
     except rule_adopt_service.NotAdoptable as exc:
-        raise api_error(409, ErrorCode.RULE_NOT_ADOPTABLE, reasons=", ".join(exc.reasons)) from exc
+        raise api_error(409, ErrorCode.RULE_NOT_ADOPTABLE, reasons=", ".join(exc.reasons),
+                        reason_details=json.dumps(exc.details, ensure_ascii=False)) from exc
     except LINK_ERRORS as exc:
         raise link_api_error(exc) from exc
     except OpnsenseAPIError as exc:

@@ -201,3 +201,37 @@ async def test_window_writes_follow_the_deploy_right(client):
     finally:
         await op.aclose()
         await client.put("/api/settings/governance", json={"operators_may_deploy": True})
+
+
+# ── 1.29 (S6): overlapping occurrences, exceptions in the fingerprint definition ──
+
+def test_overlapping_occurrences_the_latest_started_one_counts():
+    # Night window Saturday and Sunday 22:00 (8 h, new starts for 60 min). Saturday's occurrence was moved to Sunday
+    # 20:00, so it overlaps the regular Sunday one (22:00-06:00).
+    w = _w(timezone="UTC", weekdays=[5, 6], start_time=time(22, 0), duration_minutes=8 * 60, start_cutoff_minutes=60,
+           exceptions=[MaintenanceWindowException(occurrence_date=date(2026, 10, 17), kind="move",
+                                                  moved_start=datetime(2026, 10, 18, 20, 0, tzinfo=UTC), reason="x", actor="a")])
+    now = datetime(2026, 10, 18, 22, 30, tzinfo=UTC)
+    open_now = [o for o in ws.occurrences(w, now, 5) if o.start <= now < o.end]
+    assert [o.start for o in open_now] == [datetime(2026, 10, 18, 20, 0, tzinfo=UTC), datetime(2026, 10, 18, 22, 0, tzinfo=UTC)]
+    # Not the earliest (its cut-off at 21:00 is long past) but the one that started last: new work may start.
+    assert ws.current(w, now).start == datetime(2026, 10, 18, 22, 0, tzinfo=UTC)
+    assert ws.startable(w, now) is not None
+    # Before the second one starts, the first is the only open one and past its cut-off.
+    before = datetime(2026, 10, 18, 21, 30, tzinfo=UTC)
+    assert ws.current(w, before).start == datetime(2026, 10, 18, 20, 0, tzinfo=UTC)
+    assert ws.startable(w, before) is None
+
+
+def test_definition_unchanged_without_exceptions_and_changes_with_them():
+    w = _w()
+    assert "exceptions" not in ws.definition(w)
+    skip = MaintenanceWindowException(occurrence_date=date(2026, 10, 25), kind="skip", reason="Feiertag", actor="a")
+    w.exceptions = [skip]
+    with_skip = ws.definition(w)
+    assert with_skip["exceptions"] == [["2026-10-25", "skip", None]]
+    skip.reason, skip.actor = "anderer Grund", "b"
+    assert ws.definition(w) == with_skip  # the explanation is not part of what an activation covered
+    w.exceptions = [MaintenanceWindowException(occurrence_date=date(2026, 10, 25), kind="move",
+                                               moved_start=datetime(2026, 10, 24, 20, 0, tzinfo=UTC), reason="x", actor="a")]
+    assert ws.definition(w)["exceptions"] == [["2026-10-25", "move", "2026-10-24T20:00:00+00:00"]]

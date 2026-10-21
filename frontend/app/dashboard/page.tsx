@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
-import { GatewayStateBadge, gatewayNumbers } from "@/components/GatewayStatus";
+import { ApiRightsBadge, GatewayStateBadge, gatewayNumbers } from "@/components/GatewayStatus";
 import { labelFor, type Language } from "@/lib/i18n";
 
 const PENDING_KIND_LABELS: Record<string, string> = {
@@ -182,7 +182,7 @@ export default function DashboardPage() {
     };
   }, [errorMessage, router]);
 
-  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down"].includes(p.problem_type));
+  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down", "api_rights_missing"].includes(p.problem_type));
   const gatewayOrder: Record<string, number> = { offline: 0, degraded: 1, unknown: 2, forced_down: 3, online: 4 };
   const gatewayRows = (summary?.hosts ?? [])
     .flatMap((host) => (host.gateways ?? []).map((gateway) => ({ host, gateway })))
@@ -241,6 +241,7 @@ export default function DashboardPage() {
                     {host.name}
                   </Link>
                   <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                    {host.api_rights_missing && host.api_rights_missing.length > 0 && <ApiRightsBadge reads={host.api_rights_missing} />}
                     {host.cluster_name && <Badge tone="neutral">{host.cluster_name}</Badge>}
                     {host.carp_status && <Badge tone={host.carp_status === "MASTER" ? "success" : "info"}>{host.carp_status}</Badge>}
                     <StatusDot status={host.status} />
@@ -265,10 +266,14 @@ export default function DashboardPage() {
                   </Link>
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="text-xs text-slate-500">{gatewayNumbers(gateway, t)}</span>
+                    {!gateway.alert_enabled && <Badge tone="neutral">{t("gateway.alert.off")}</Badge>}
                     <GatewayStateBadge state={gateway.state} />
                   </span>
                 </li>
               ))}
+              {gatewayRows.length > 8 && (
+                <li className="py-2 text-xs text-slate-500">{t("dashboard.moreGateways", { count: gatewayRows.length - 8 })}</li>
+              )}
             </ul>
           )}
         </SectionCard>
@@ -339,6 +344,14 @@ export default function DashboardPage() {
                         {String(problem.context.host_name)}: {ts(String(problem.context.gateway ?? problem.context.ressource ?? problem.context.dienst))}
                       </span>
                       <Badge tone="danger" className="shrink-0">{t(`dashboard.alert.${problem.problem_type}`)}</Badge>
+                    </Link>
+                  )}
+                  {problem.problem_type === "api_rights_missing" && (
+                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="flex items-center justify-between gap-3 hover:underline">
+                      <span className="min-w-0 truncate font-medium text-slate-900">
+                        {t("dashboard.apiRightsLine", { name: String(problem.context.host_name), read: t(`gateway.rights.read.${String(problem.context.lesezugriff)}`) })}
+                      </span>
+                      <Badge tone="warning" className="shrink-0">{t("dashboard.alert.api_rights_missing")}</Badge>
                     </Link>
                   )}
                   {problem.problem_type === "cert_expiry" && (

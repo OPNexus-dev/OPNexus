@@ -618,3 +618,96 @@ def test_target_version_comes_from_the_core_package_not_product_latest():
     assert engine.target_of({**status, "all_packages": {}}, "update") == "26.7.7"
     assert engine.target_of({"product": {"product_latest": "26.7.7"}}, "update") == "26.7.7"
     assert engine.target_of({"upgrade_major_version": "27.1"}, "major_update") == "27.1"
+
+
+# ── 1.29 (S6): window exceptions in the fingerprint, stable account id ────────
+
+async def _activate(client, plan):
+    token = (await client.post(f"/api/rollouts/plans/{plan['id']}/preview")).json()["preview_token"]
+    resp = await client.post(f"/api/rollouts/plans/{plan['id']}/activate", json={"preview_token": token})
+    assert resp.status_code == 200, resp.text
+
+
+async def _only_refusal(plan_id):
+    async with SessionLocal() as db:
+        return (await db.get(RolloutPlan, uuid.UUID(plan_id))).auto_start_error
+
+
+@pytest.mark.asyncio
+async def test_a_window_exception_invalidates_the_activation(client, respx_mock, clock):
+    window = await _window_now(client, clock)
+    fleet, _hosts, _groups, plan = await _setup(client, respx_mock, window_id=window["id"], auto_start=True)
+    await _activate(client, plan)
+    # Somebody skips the occurrence two weeks from now: what the activation covered is no longer what will happen.
+    later = (clock.now + timedelta(days=14)).date()
+    resp = await client.post(f"/api/maintenance-windows/{window['id']}/exceptions",
+                             json={"occurrence_date": later.isoformat(), "kind": "skip", "reason": "Feiertag"})
+    assert resp.status_code == 201, resp.text
+    async with SessionLocal() as db:
+        await engine.auto_start(db)
+    async with SessionLocal() as db:
+        assert (await db.scalars(select(RolloutRun))).all() == []
+    assert (await _only_refusal(plan["id"]))["code"] == "plan_changed"
+
+
+@pytest.mark.asyncio
+async def test_activation_survives_a_window_without_exceptions_and_a_reason_edit(client, respx_mock, clock):
+    window = await _window_now(client, clock)
+    _fleet, _hosts, _groups, plan = await _setup(client, respx_mock, window_id=window["id"], auto_start=True)
+    await _activate(client, plan)
+    async with SessionLocal() as db:
+        await engine.auto_start(db)
+    async with SessionLocal() as db:
+        assert len((await db.scalars(select(RolloutRun))).all()) == 1  # unchanged window: starts as before
+
+
+@pytest.mark.asyncio
+async def test_run_and_plan_store_the_account_id(client, respx_mock, clock):
+    window = await _window_now(client, clock)
+    _fleet, _hosts, _groups, plan = await _setup(client, respx_mock, window_id=window["id"], auto_start=True)
+    admin_id = next(u["id"] for u in (await client.get("/api/users")).json() if u["username"] == "admin")
+    await _activate(client, plan)
+    async with SessionLocal() as db:
+        stored = await db.get(RolloutPlan, uuid.UUID(plan["id"]))
+        assert str(stored.activated_by_id) == admin_id and stored.activated_by == "admin"
+        await engine.auto_start(db)
+    async with SessionLocal() as db:
+        (run,) = (await db.scalars(select(RolloutRun))).all()
+        assert str(run.started_by_id) == admin_id and run.started_by == "admin"
+    await client.post(f"/api/rollouts/plans/{plan['id']}/deactivate")
+    async with SessionLocal() as db:
+        stored = await db.get(RolloutPlan, uuid.UUID(plan["id"]), populate_existing=True)
+        assert stored.activated_by is None and stored.activated_by_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_recreated_account_with_the_same_name_is_not_the_activating_person(client, respx_mock, clock):
+    from tests.test_operator_role import PW
+    from tests.test_api_tokens import _login
+    window = await _window_now(client, clock)
+    _fleet, _hosts, _groups, plan = await _setup(client, respx_mock, window_id=window["id"], auto_start=True)
+    made = await client.post("/api/users", json={"username": "second-admin", "password": PW, "role": "admin"})
+    assert made.status_code == 201, made.text
+    second = await _login("second-admin", PW)
+    try:
+        await _activate(second, plan)
+    finally:
+        await second.aclose()
+    assert (await client.delete(f"/api/users/{made.json()['id']}")).status_code in (200, 204)
+    again = await client.post("/api/users", json={"username": "second-admin", "password": PW, "role": "admin"})
+    assert again.status_code == 201 and again.json()["id"] != made.json()["id"]
+    async with SessionLocal() as db:
+        await engine.auto_start(db)
+    async with SessionLocal() as db:
+        assert (await db.scalars(select(RolloutRun))).all() == []  # the name matches, the person does not
+    assert (await _only_refusal(plan["id"]))["code"] == "actor_invalid"
+    await client.delete(f"/api/users/{again.json()['id']}")  # users outlive a test within one session
+
+
+@pytest.mark.asyncio
+async def test_rows_without_an_account_id_still_work_by_name(client, respx_mock, clock):
+    """Rows written before 1.29 (and not matched by the migration) keep being checked by name."""
+    async with SessionLocal() as db:
+        assert await engine.may_roll_out(db, "admin") is True
+        assert await engine.may_roll_out(db, "nobody-here") is False
+        assert await engine.may_roll_out(db, "admin", uuid.uuid4()) is False  # a given id that does not exist is final

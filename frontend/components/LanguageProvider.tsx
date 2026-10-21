@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
-import { Language, translate, translateServerParams, translateServerText, TranslationParams } from "@/lib/i18n";
+import { Language, translate, translateReasonParams, translateServerParams, translateServerText, TranslationParams } from "@/lib/i18n";
 
 interface LanguageContextValue {
   language: Language;
@@ -67,7 +67,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
       const params = "params" in error && error.params && typeof error.params === "object"
         ? error.params as Record<string, string>
         : undefined;
-      return translate(language, `errors.${error.code}`, translateServerParams(language, params) as TranslationParams | undefined);
+      const readable = translateReasonParams(language, error.code, translateServerParams(language, params));
+      return translate(language, `errors.${error.code}`, readable as TranslationParams | undefined);
     }
     return error instanceof Error ? error.message : translate(language, fallbackKey);
   }, [language]);

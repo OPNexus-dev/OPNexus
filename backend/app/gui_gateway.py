@@ -20,7 +20,10 @@ Security model (see the 1.27 design):
 * At most 3 failed GUI logins per firewall in 5 minutes (protects OPNexus' API access from the firewall's
   login lockout, which would see all attempts coming from OPNexus).
 * Idle and absolute limits; every 20 s the backend re-checks the session (OPNexus session, admin role,
-  switch, host). Logs carry method, path (no query), status and duration only.
+  switch, host, and that the firewall's address, pinned certificate and overlay route are still the ones the
+  session started with).
+* At most MAX_SESSIONS sessions at once: expired ones are cleared first, a new session is refused otherwise —
+  a running session is never evicted by a newer one. Logs carry method, path (no query), status and duration only.
 
 OPNsense behaviour this relies on (opnsense/core, src/www/authgui.inc, master as of 2026-10-21):
 * session_auth(): a login is ``isset($_POST['login']) && !empty($_POST['usernamefld']) &&
@@ -131,6 +134,7 @@ class GatewaySession:
     idle_timeout: float
     absolute_deadline: float
     revalidate_every: float
+    target_fp: str | None = None
     last_activity: float = field(default_factory=time.monotonic)
     next_check: float = 0.0
     jar: dict[str, str] = field(default_factory=dict)
@@ -156,7 +160,8 @@ class BackendClient:
 
     async def revalidate(self, gs: GatewaySession) -> dict:
         resp = await self._client.post("/internal/gui/revalidate",
-                                       json={"gui_session_id": gs.gui_session_id, "session_hash": gs.session_hash})
+                                       json={"gui_session_id": gs.gui_session_id, "session_hash": gs.session_hash,
+                                                    "target_fp": gs.target_fp})
         resp.raise_for_status()
         return resp.json()
 
@@ -250,6 +255,8 @@ _LOGIN_LOCKED = _page("OPNexus", "Zu viele fehlgeschlagene Anmeldungen an dieser
                       "Too many failed sign-ins at this firewall. Please wait 5 minutes.")
 _UNAVAILABLE = _page("OPNexus", "Die Firewall oder OPNexus ist gerade nicht erreichbar.",
                      "The firewall or OPNexus is not reachable right now.")
+_TOO_MANY = _page("OPNexus", "Es laufen schon zu viele Firewall-Oberflächen gleichzeitig. Versuche es später erneut.",
+                  "Too many firewall interfaces are open at the same time. Try again later.")
 _REDEEMED = (b"<!doctype html><html><head><meta charset=\"utf-8\"><meta http-equiv=\"refresh\" content=\"0;url=/\">"
              b"<title>OPNexus</title></head><body><a href=\"/\">&rarr;</a></body></html>")
 
@@ -376,6 +383,17 @@ class GuiGateway:
         gs.next_check = self.clock() + gs.revalidate_every
         return True
 
+    async def _clear_expired(self) -> None:
+        for key, gs in list(self.sessions.items()):
+            reason = self._expired(gs)
+            if reason:
+                await self._drop(key, reason)
+
+    def _has_room(self, browser_hash: str, slot: int) -> bool:
+        """Room for one more session; the one this redeem would replace (same browser session and slot) does not count."""
+        replaced = sum(1 for g in self.sessions.values() if g.slot == slot and g.session_hash == browser_hash)
+        return len(self.sessions) - replaced < MAX_SESSIONS
+
     # ── request handling ──────────────────────────────────────────────────
     async def _handle(self, scope, receive, send) -> int:
         method = scope.get("method", "")
@@ -442,6 +460,10 @@ class GuiGateway:
         if not ticket or len(ticket) > 128 or not browser_session:
             return await self._respond(send, 403, _SESSION_GONE)
         client_ip = (headers.get("x-forwarded-for", "").split(",")[0].strip() or None)
+        # Room first, before the ticket is burned: expired sessions go, running ones are never evicted.
+        await self._clear_expired()
+        if not self._has_room(_sha(browser_session), slot):
+            return await self._respond(send, 503, _TOO_MANY)
         try:
             result = await self.backend.redeem(_sha(ticket), _sha(browser_session), slot, client_ip and client_ip[:45])
         except httpx.HTTPError as exc:
@@ -453,16 +475,16 @@ class GuiGateway:
         for old_key, old in list(self.sessions.items()):
             if old.slot == slot and old.session_hash == _sha(browser_session):
                 await self._drop(old_key, "superseded", report=False)
-        if len(self.sessions) >= MAX_SESSIONS:
-            oldest = min(self.sessions, key=lambda k: self.sessions[k].last_activity)
-            await self._drop(oldest, "superseded")
         value = secrets.token_urlsafe(32)
         gs = GatewaySession(
             gui_session_id=result["gui_session_id"], session_hash=_sha(browser_session), slot=slot,
             upstream_origin=result["upstream_origin"], ca_pem=result.get("ca_pem"), proxy_url=result.get("proxy_url"),
             idle_timeout=float(result["idle_timeout_seconds"]), absolute_deadline=float(result["absolute_deadline"]),
-            revalidate_every=float(result.get("revalidate_seconds", 20)),
+            revalidate_every=float(result.get("revalidate_seconds", 20)), target_fp=result.get("target_fp"),
         )
+        if len(self.sessions) >= MAX_SESSIONS:  # filled up while the backend was answering
+            await self.backend.end(gs, "revoked")
+            return await self._respond(send, 503, _TOO_MANY)
         gs.last_activity = self.clock()
         gs.next_check = gs.last_activity + gs.revalidate_every
         self.sessions[_sha(value)] = gs

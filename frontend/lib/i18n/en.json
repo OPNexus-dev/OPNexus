@@ -71,7 +71,8 @@
         "gatewayDown": "Gateway failing (offline, packet loss or latency above the limit)",
         "resourceThreshold": "Resource threshold exceeded (disk, memory, swap, CPU load; off by default)",
         "serviceDown": "Watched service stopped (off by default)",
-        "rolloutProblems": "Rollout paused or not started automatically"
+        "rolloutProblems": "Rollout paused or not started automatically",
+        "apiRights": "API rights missing (gateway or service status not readable)"
       },
       "pollInterval": "Check interval (seconds)",
       "pollHint": "At least 60 seconds, so the firewalls are not queried needlessly.",
@@ -370,8 +371,11 @@
     "alert": {
       "gateway_down": "Gateway",
       "resource_threshold": "Resource",
-      "service_down": "Service"
-    }
+      "service_down": "Service",
+      "api_rights_missing": "API rights"
+    },
+    "moreGateways": "+ {count} more gateways (on the firewall page)",
+    "apiRightsLine": "{name}: API right missing ({read})"
   },
   "hosts": {
     "add": "Add host",
@@ -511,6 +515,10 @@
   },
   "adopt": {
     "button": "Adopt from firewall",
+    "noHosts": {
+      "title": "No active firewall",
+      "description": "There is no active firewall to adopt anything from. Add a firewall under “Hosts” or enable an existing one."
+    },
     "title": {
       "aliases": "Adopt aliases from the firewall",
       "portForward": "Adopt port forwards from the firewall",
@@ -779,6 +787,8 @@
     "GUI_ACCESS_DISABLED": "GUI access is switched off. An admin can switch it on in the settings.",
     "GUI_HOST_NOT_ELIGIBLE": "This firewall cannot be opened through OPNexus: it must be enabled, reachable via https:// and use a verified or pinned certificate.",
     "GUI_NO_FREE_SLOT": "All {slots} slots for firewall interfaces are in use. Close an open interface or wait until it expires.",
+    "GUI_SLOT_COOLING_DOWN": "A slot was just released but is only reassigned to a different firewall after {minutes} min (protection in case a window is still open there). Open the same firewall again or wait a moment.",
+    "GUI_TOO_MANY_SESSIONS": "Too many firewall interfaces are open at the same time (at most {max}). Wait for one to end or close one you no longer need.",
     "TLS_PROBE_FAILED": "The firewall's certificate could not be retrieved",
     "TLS_PEM_INVALID": "Not a valid PEM certificate",
     "TLS_PIN_MISMATCH": "The firewall presents a different certificate than the pinned one",
@@ -854,7 +864,11 @@
     "ANALYSE_FAMILIEN_MISCHUNG": "Source and destination must both be IPv4 or both IPv6.",
     "ANALYSE_INTERFACE_UNBEKANNT": "Interface \"{interface}\" does not exist on this firewall. Available: {known}.",
     "ANALYSE_PARAMETER_UNGUELTIG": "Invalid value for {field}: {value}.",
-    "ANALYSE_FIREWALL_NICHT_LESBAR": "Could not read this firewall's rules. Is it reachable?"
+    "ANALYSE_FIREWALL_NICHT_LESBAR": "Could not read this firewall's rules. Is it reachable?",
+    "API_RIGHTS_MISSING": "The API user lacks the right to read the gateway status",
+    "GATEWAY_NAME_INVALID": "Invalid gateway name",
+    "GATEWAY_UNKNOWN": "OPNexus does not know this gateway on the firewall (check the name and its case)",
+    "GATEWAY_MUTE_LIMIT": "At most {limit} gateways can be muted"
   },
   "workflow": {
     "attention": "Check errors",
@@ -2946,6 +2960,32 @@
       "offline": "Offline",
       "forced_down": "Switched off",
       "unknown": "Unknown"
+    },
+    "alert": {
+      "label": "Alert for gateway {name}",
+      "off": "Alert off",
+      "tooltipOn": "Alert for this gateway: on. Click to switch it off (e.g. an idle second WAN).",
+      "tooltipOff": "Alert for this gateway: off. Click to switch it back on.",
+      "adminOnly": "Only administrators can change the alert for a gateway.",
+      "nowOn": "Alert for {name} switched on",
+      "nowOff": "Alert for {name} switched off",
+      "failed": "Could not change the alert"
+    },
+    "rights": {
+      "badge": "API rights missing: {reads}",
+      "hint": "OPNexus's API user may not read these values, so the alerts based on them cannot fire. In OPNsense, add to the user or group under System > Access:",
+      "read": {
+        "gateways": "Gateways",
+        "services": "Services",
+        "swap": "Swap",
+        "cpu": "CPU"
+      },
+      "acl": {
+        "gateways": "System: Gateways",
+        "services": "Status: Services",
+        "swap": "Lobby: Dashboard",
+        "cpu": "Lobby: Dashboard"
+      }
     }
   },
   "rollouts": {
@@ -3565,7 +3605,7 @@
     "slotCountTip": "How many firewall interfaces can be open at the same time (1 to 4). Each slot has its own port so the open firewalls cannot interfere with each other in the browser.",
     "orderError": "The inactivity limit must not exceed the total duration.",
     "activeSlots": "Active slots (ports)",
-    "activeSlotsTip": "The ports defined in OPNEXUS_GUI_SITES that are used with the chosen count. Which slot is in use right now is shown in the audit (type “GUI access”).",
+    "activeSlotsTip": "The ports set up on the server for the firewall interfaces, as far as the chosen count uses them. Which slot is in use right now is shown in the audit (type “GUI access”).",
     "noSlots": "none configured",
     "lastChange": "Last changed by {who} on {when}",
     "saved": "Firewall interface settings saved"

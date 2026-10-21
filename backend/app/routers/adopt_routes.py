@@ -6,6 +6,7 @@ outbound NAT share (services/object_adopt_service.py has the logic and the evide
   POST <prefix>/adopt-all             take over everything adoptable {host_id}; returns adopted + skipped
 
 Like rule adoption this only creates central records; nothing is written to the firewall."""
+import json
 import uuid
 from typing import Callable
 
@@ -49,7 +50,8 @@ def add_adopt_routes(router: APIRouter, *, kind: str, model, load_options: Calla
         except object_adopt_service.NotFoundOnHost as exc:
             raise api_error(404, ErrorCode.ADOPT_OBJECT_NOT_FOUND) from exc
         except object_adopt_service.NotAdoptable as exc:
-            raise api_error(409, ErrorCode.OBJECT_NOT_ADOPTABLE, reasons=", ".join(exc.reasons)) from exc
+            raise api_error(409, ErrorCode.OBJECT_NOT_ADOPTABLE, reasons=", ".join(exc.reasons),
+                            reason_details=json.dumps(exc.details, ensure_ascii=False)) from exc
         except LINK_ERRORS as exc:
             raise link_api_error(exc) from exc
         except OpnsenseAPIError as exc:

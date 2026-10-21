@@ -256,3 +256,80 @@ async def test_0020_upgrade_keeps_existing_settings_and_downgrade_is_clean(scrat
     await _alembic(scratch, "upgrade", "head")
     assert await _version(scratch) == _head()
     assert await _schema_diff(scratch) == []
+
+
+async def test_0025_adds_api_rights_flag_and_gateway_mute_list_and_is_idempotent(scratch):
+    """1.28 -> 1.29: an existing settings row gets api_rights_enabled = true and an empty mute list; running the
+    statements again (pre-Alembic bridge) changes nothing; a downgrade removes exactly the two columns."""
+    await _alembic(scratch, "upgrade", "0024")
+    async with scratch.begin() as conn:
+        required = (await conn.execute(text(
+            "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'notification_settings' "
+            "AND is_nullable = 'NO' AND column_default IS NULL"
+        ))).all()
+        by_type = {"boolean": "true", "integer": "300", "json": "'[]'", "timestamp with time zone": "now()"}
+        values = {name: by_type.get(kind, "'x'") for name, kind in required}
+        values.update({"id": "1", "webhook_url": "'https://hooks.example/x'"})
+        await conn.execute(text(
+            f"INSERT INTO notification_settings ({', '.join(values)}) VALUES ({', '.join(values.values())})"
+        ))
+    await _alembic(scratch, "upgrade", "head")
+    async with scratch.connect() as conn:
+        row = (await conn.execute(text(
+            "SELECT webhook_url, api_rights_enabled, gateway_alert_muted::text FROM notification_settings"
+        ))).one()
+        assert tuple(row) == ("https://hooks.example/x", True, "[]")
+    assert await _schema_diff(scratch) == []
+
+    await _alembic(scratch, "downgrade", "0024")
+    async with scratch.connect() as conn:
+        columns = set((await conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'notification_settings'"
+        ))).scalars().all())
+        assert "api_rights_enabled" not in columns and "gateway_alert_muted" not in columns
+        assert (await conn.execute(text("SELECT webhook_url FROM notification_settings"))).scalar() == "https://hooks.example/x"
+
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "downgrade", "0024")
+    await _alembic(scratch, "upgrade", "head")  # IF NOT EXISTS / IF EXISTS: repeatable
+    assert await _version(scratch) == _head()
+    assert await _schema_diff(scratch) == []
+
+
+async def test_0026_adds_account_ids_matches_existing_names_and_is_idempotent(scratch):
+    """1.28 -> 1.29: existing plans/runs get the id of the account with that name (if it still exists), the others stay
+    empty; the statements can run twice (pre-Alembic bridge); a downgrade drops exactly the two columns."""
+    await _alembic(scratch, "upgrade", "0025")
+    uid = "11111111-1111-1111-1111-111111111111"
+    async with scratch.begin() as conn:
+        await conn.execute(text("INSERT INTO admin_users (id, username, password_hash) VALUES (:id, 'still-here', 'x')"), {"id": uid})
+        await conn.execute(text(
+            "INSERT INTO rollout_plans (id, name, description, action, auto_start, gate_checks, compliance_mode, activated_by, "
+            "created_by, created_at, updated_at) VALUES "
+            "(gen_random_uuid(), 'p1', '', 'update', true, '{}', 'warn', 'still-here', 'x', now(), now()), "
+            "(gen_random_uuid(), 'p2', '', 'update', true, '{}', 'warn', 'gone', 'x', now(), now()), "
+            "(gen_random_uuid(), 'p3', '', 'update', false, '{}', 'warn', NULL, 'x', now(), now())"))
+        await conn.execute(text(
+            "INSERT INTO rollout_runs (id, plan_name, plan_snapshot, action, status, current_wave, started_by, trigger, "
+            "progress, revision, created_at) VALUES "
+            "(gen_random_uuid(), 'p1', '{}', 'update', 'succeeded', 0, 'still-here', 'manual', '{}', 0, now()), "
+            "(gen_random_uuid(), 'p2', '{}', 'update', 'succeeded', 0, 'gone', 'manual', '{}', 0, now())"))
+    await _alembic(scratch, "upgrade", "head")
+    async with scratch.connect() as conn:
+        plans = dict((await conn.execute(text("SELECT name, activated_by_id::text FROM rollout_plans"))).all())
+        runs = dict((await conn.execute(text("SELECT started_by, started_by_id::text FROM rollout_runs"))).all())
+    assert plans == {"p1": uid, "p2": None, "p3": None} and runs == {"still-here": uid, "gone": None}
+    assert await _schema_diff(scratch) == []
+
+    await _alembic(scratch, "downgrade", "0025")
+    async with scratch.connect() as conn:
+        for table, column in (("rollout_plans", "activated_by_id"), ("rollout_runs", "started_by_id")):
+            names = set((await conn.execute(text(
+                f"SELECT column_name FROM information_schema.columns WHERE table_name = '{table}'"))).scalars().all())
+            assert column not in names
+        assert (await conn.execute(text("SELECT count(*) FROM rollout_plans"))).scalar() == 3
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "downgrade", "0025")
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() == "0026"
+    assert await _schema_diff(scratch) == []

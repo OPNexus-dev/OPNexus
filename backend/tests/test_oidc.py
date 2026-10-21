@@ -390,7 +390,7 @@ async def test_sso_sessions_are_short_and_the_state_cookie_is_httponly(client, a
     _mock_idp(respx_mock)
     start = await anon_client.get("/api/auth/oidc/start", params={"origin": "http://test"})
     cookie = start.headers["set-cookie"].lower()
-    assert "opnexus-oidc-state=" in cookie and "httponly" in cookie and "samesite=lax" in cookie and "path=/api/auth/oidc" in cookie
+    assert cookie.startswith("opnexus-oidc-state=") and "httponly" in cookie and "samesite=lax" in cookie and "path=/api/auth/oidc" in cookie
     query = {k: v[0] for k, v in parse_qs(urlsplit(start.headers["location"]).query).items()}
     resp, _ = await _callback(anon_client, respx_mock, query)
     assert resp.headers["location"] == "/dashboard"
@@ -409,3 +409,70 @@ async def test_error_text_from_the_provider_cannot_forge_log_lines(client, anon_
         await anon_client.get("/api/auth/oidc/callback", params={"error": "x\r\nFAKE LOG LINE\x1b[31m", "state": "s"})
     text = "\n".join(r.getMessage() for r in caplog.records)
     assert "FAKE LOG LINE" in text and "\r" not in text and "\x1b" not in text and "\nFAKE" not in text
+
+
+# ── S2 (1.29): state cookie on HTTPS ──────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_state_cookie_is_host_prefixed_on_https_and_only_that_name_counts(client, respx_mock, monkeypatch):
+    from httpx import ASGITransport, AsyncClient
+    from app.config import settings
+    from app.main import app
+    await _configure(client)
+    monkeypatch.setattr(settings, "cookie_secure", True)
+    _mock_idp(respx_mock)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="https://test") as browser:
+        start = await browser.get("/api/auth/oidc/start", params={"origin": "https://test"})
+        assert start.status_code == 302, start.text
+        raw = start.headers["set-cookie"]
+        low = raw.lower()
+        assert raw.startswith("__Host-opnexus-oidc-state=") and "secure" in low and "httponly" in low
+        assert "path=/;" in low + ";" and "domain" not in low and "samesite=lax" in low
+        query = {k: v[0] for k, v in parse_qs(urlsplit(start.headers["location"]).query).items()}
+        state = browser.cookies.get("__Host-opnexus-oidc-state")
+        assert state == query["state"]
+        respx_mock.post(f"{ISSUER}/token").mock(return_value=httpx.Response(200, json={
+            "id_token": _id_token(_claims(query["nonce"])), "access_token": "at"}))
+        # A plain-name cookie (planted by a sibling page) with the right state value is not accepted ...
+        browser.cookies.delete("__Host-opnexus-oidc-state")
+        browser.cookies.set("opnexus-oidc-state", query["state"])
+        resp = await browser.get("/api/auth/oidc/callback", params={"code": "abc", "state": query["state"]})
+        assert _error(resp) == "state"
+    assert await _users("alice") == {}
+
+
+@pytest.mark.asyncio
+async def test_callback_without_a_valid_state_cookie_always_fails(client, anon_client, respx_mock):
+    await _configure(client)
+    query = await _start(anon_client, respx_mock)
+    from httpx import ASGITransport, AsyncClient
+    from app.main import app
+    respx_mock.post(f"{ISSUER}/token").mock(return_value=httpx.Response(200, json={
+        "id_token": _id_token(_claims(query["nonce"])), "access_token": "at"}))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as stranger:
+        for cookie in (None, "wrong", query["state"] + "x"):  # (more would trip the failed-callback throttle)
+            if cookie is not None:
+                stranger.cookies.set("opnexus-oidc-state", cookie, domain="test", path="/api/auth/oidc")
+            resp = await stranger.get("/api/auth/oidc/callback", params={"code": "abc", "state": query["state"]})
+            assert _error(resp) == "state", cookie
+            assert "set-cookie" not in resp.headers or "opnexus-session" not in resp.headers["set-cookie"]
+    assert await _users("alice") == {}
+    # The attempt itself was not burned by the strangers: the owner can still finish it.
+    resp, _ = await _callback(anon_client, respx_mock, query)
+    assert resp.headers["location"] == "/dashboard"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headers,blocked", [
+    ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, False),  # the IdP's redirect
+    ({"Sec-Fetch-Site": "cross-site"}, False),
+    ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "image"}, True),
+    ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}, True),
+    ({"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "iframe"}, True),
+])
+async def test_sec_fetch_exemption_of_the_callback_is_only_for_top_level_navigation(client, headers, blocked):
+    # `client` carries a session cookie, so the Sec-Fetch check applies; the callback itself answers 302 (login error).
+    resp = await client.get("/api/auth/oidc/callback", params={"code": "a", "state": "b"}, headers=headers)
+    assert (resp.status_code == 403) is blocked, resp.text
+    other = await client.get("/api/hosts", headers={"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"})
+    assert other.status_code == 403  # no other endpoint is exempt

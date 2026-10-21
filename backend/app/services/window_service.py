@@ -113,13 +113,15 @@ def occurrences(window: MaintenanceWindow, after: datetime, n: int = 10, *, with
 
 
 def current(window: MaintenanceWindow, now: datetime) -> Occurrence | None:
-    """The occurrence open at ``now`` (start <= now < end), if any."""
+    """The occurrence open at ``now`` (start <= now < end), if any.
+
+    Occurrences can overlap (a moved one reaching into the next regular one, a 24 h window on a 25 h day). Then the
+    one that started LAST counts: its start cut-off lies latest, so "may a new host action start now" is not
+    decided by an older occurrence whose cut-off has long passed (1.29; before, the earliest one was taken)."""
     if not window.enabled:
         return None
-    for occ in occurrences(window, now, 3):
-        if occ.start <= now < occ.end:
-            return occ
-    return None
+    open_now = [occ for occ in occurrences(window, now, 5) if occ.start <= now < occ.end]
+    return max(open_now, key=lambda occ: occ.start) if open_now else None
 
 
 def startable(window: MaintenanceWindow | None, now: datetime) -> Occurrence | None:
@@ -137,11 +139,18 @@ def is_occurrence_date(window: MaintenanceWindow, day: date) -> bool:
 
 
 def definition(window: MaintenanceWindow) -> dict:
-    """What a rollout plan's fingerprint covers: changing any of this re-requires activation."""
-    return {
+    """What a rollout plan's fingerprint covers: changing any of this re-requires activation. Skipped and moved
+    occurrences count too (1.29; keyed by the occurrence's local date, the reason text and the actor do not matter).
+    Without any exception the result is the same as before 1.29, so existing activations stay valid."""
+    result = {
         "id": str(window.id), "timezone": window.timezone, "recurrence": window.recurrence,
         "weekdays": sorted(window.weekdays or []), "month_mode": window.month_mode, "month_nth": window.month_nth,
         "month_weekday": window.month_weekday, "month_day": window.month_day,
         "start_time": window.start_time.strftime("%H:%M"), "duration_minutes": window.duration_minutes,
         "start_cutoff_minutes": window.start_cutoff_minutes, "enabled": window.enabled,
     }
+    if window.exceptions:
+        result["exceptions"] = sorted(
+            [e.occurrence_date.isoformat(), e.kind, e.moved_start.astimezone(timezone.utc).isoformat() if e.moved_start else None]
+            for e in window.exceptions)
+    return result

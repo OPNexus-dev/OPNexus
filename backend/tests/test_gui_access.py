@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from app.config import settings
 from app.database import SessionLocal
@@ -181,11 +181,11 @@ async def test_ticket_refused_without_secure_cookie(admin, monkeypatch):
         resp = await plain.post(f"/api/hosts/{host_id}/gui-ticket")
     assert resp.status_code == 409 and resp.json()["detail"]["code"] in ("GUI_REQUIRES_HTTPS", "GUI_GATEWAY_NOT_CONFIGURED")
     monkeypatch.setattr(settings, "cookie_secure", True)
-    # A legacy plain-name cookie (pre-migration) is not enough either.
+    # A legacy plain-name cookie is not a session on an HTTPS deployment any more (1.29): not authenticated at all.
     async with AsyncClient(transport=ASGITransport(app=app), base_url="https://opnexus.example") as legacy:
         legacy.cookies.set("opnexus-session", admin.cookies.get(SECURE_COOKIE_NAME))
         resp = await legacy.post(f"/api/hosts/{host_id}/gui-ticket")
-    assert resp.status_code == 409 and resp.json()["detail"]["code"] == "GUI_REQUIRES_HTTPS"
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -328,3 +328,166 @@ async def test_revalidate_enforces_absolute_limit_and_end(admin):
     assert (await _internal("end", {**ref2, "reason": "idle"})).json() == {"ok": True}
     assert (await _internal("revalidate", ref2)).json() == {"ok": False, "reason": "idle"}
     assert (await _internal("end", {**ref2, "session_hash": sha("x"), "reason": "idle"})).json() == {"ok": False}
+
+
+# ── S1: slot cooldown ─────────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_slot_cooldown_for_another_firewall_but_not_for_the_same(admin):
+    a, b = await _host("fw-cool-a"), await _host("fw-cool-b", "https://fw-cool-b.test")
+    await _enable(admin, slot_count=1)
+    ref = await _open(admin, a)
+    # Session of firewall A still open (any browser session of the user): B must not get the slot.
+    other_browser = await _https_login(settings.admin_username, settings.admin_password)
+    blocked = await other_browser.post(f"/api/hosts/{b}/gui-ticket")
+    assert blocked.status_code == 409 and blocked.json()["detail"]["code"] == "GUI_SLOT_COOLING_DOWN"
+    # Just ended: still cooling down for B, free again at once for A.
+    assert (await _internal("end", {**ref, "reason": "logout"})).json() == {"ok": True}
+    blocked = await admin.post(f"/api/hosts/{b}/gui-ticket")
+    assert blocked.status_code == 409 and blocked.json()["detail"] == {
+        "code": "GUI_SLOT_COOLING_DOWN", "params": {"minutes": "5"}}
+    assert (await admin.post(f"/api/hosts/{a}/gui-ticket")).status_code == 200
+    # After the cooldown B takes the slot (the pending ticket for A is gone).
+    async with SessionLocal() as db:
+        await db.execute(delete(GuiTicket))
+        await db.execute(update(GuiSession).values(ended_at=datetime.now(timezone.utc) - timedelta(minutes=4)))
+        await db.commit()
+    still = await admin.post(f"/api/hosts/{b}/gui-ticket")
+    assert still.status_code == 409 and still.json()["detail"] == {
+        "code": "GUI_SLOT_COOLING_DOWN", "params": {"minutes": "1"}}
+    async with SessionLocal() as db:
+        await db.execute(update(GuiSession).values(ended_at=datetime.now(timezone.utc) - timedelta(minutes=5, seconds=5)))
+        await db.commit()
+    assert (await admin.post(f"/api/hosts/{b}/gui-ticket")).status_code == 200
+    await other_browser.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cooling_slot_skipped_when_another_slot_is_free(admin):
+    a, b = await _host("fw-cool-a"), await _host("fw-cool-b", "https://fw-cool-b.test")
+    await _enable(admin, slot_count=2)
+    ref = await _open(admin, a)
+    slot_a = (await admin.post(f"/api/hosts/{a}/gui-ticket")).json()["slot"]
+    await _internal("end", {**ref, "reason": "logout"})
+    slot_b = (await admin.post(f"/api/hosts/{b}/gui-ticket")).json()["slot"]
+    assert slot_b != slot_a  # A's slot cools down although it is the least recently used
+
+
+@pytest.mark.asyncio
+async def test_cooldown_is_per_user(admin):
+    a, b = await _host("fw-cool-a"), await _host("fw-cool-b", "https://fw-cool-b.test")
+    await _enable(admin, slot_count=1)
+    ref = await _open(admin, a)
+    await _internal("end", {**ref, "reason": "logout"})
+    second = await _user(admin, "gui-cool-admin-2", "admin")  # another person, another browser
+    assert (await second.post(f"/api/hosts/{b}/gui-ticket")).status_code == 200
+
+
+# ── S4: target change, session cap ────────────────────────────────────────
+
+async def _open_with_fp(admin: AsyncClient, host_id) -> dict:
+    url = (await admin.post(f"/api/hosts/{host_id}/gui-ticket")).json()["url"]
+    data = (await _redeem(admin, url)).json()
+    assert len(data["target_fp"]) == 64
+    return {"gui_session_id": data["gui_session_id"], "session_hash": sha(admin.cookies.get(SECURE_COOKIE_NAME)),
+            "target_fp": data["target_fp"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("base_url", "https://fw-moved.test"),
+    ("tls_ca_pem", "-----BEGIN CERTIFICATE-----\nOTHER\n-----END CERTIFICATE-----\n"),
+])
+async def test_session_ends_when_target_changes(admin, field, value):
+    host_id = await _host()
+    await _enable(admin)
+    ref = await _open_with_fp(admin, host_id)
+    assert (await _internal("revalidate", ref)).json()["ok"] is True
+    async with SessionLocal() as db:
+        await db.execute(update(OpnsenseHost).where(OpnsenseHost.id == host_id).values(**{field: value}))
+        await db.commit()
+    assert (await _internal("revalidate", ref)).json() == {"ok": False, "reason": "target"}
+    async with SessionLocal() as db:
+        assert (await db.scalars(select(GuiSession.end_reason))).one() == "target"
+
+
+@pytest.mark.asyncio
+async def test_session_ends_when_overlay_route_changes(admin, monkeypatch):
+    from app.services import overlay_service
+    host_id = await _host()
+    await _enable(admin)
+    ref = await _open_with_fp(admin, host_id)
+    monkeypatch.setattr(overlay_service, "proxy_for", lambda base_url: "http://wg-hub:8888")
+    assert (await _internal("revalidate", ref)).json() == {"ok": False, "reason": "target"}
+
+
+@pytest.mark.asyncio
+async def test_revalidate_without_fingerprint_still_works(admin):
+    host_id = await _host()
+    await _enable(admin)
+    ref = await _open_with_fp(admin, host_id)
+    ref.pop("target_fp")  # older gateway image
+    assert (await _internal("revalidate", ref)).json()["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_session_cap_rejects_new_ticket_and_keeps_running_ones(admin, monkeypatch):
+    from app.services import gui_ticket_service
+    monkeypatch.setattr(gui_ticket_service, "MAX_GATEWAY_SESSIONS", 2)
+    a, b, c = await _host("fw-a"), await _host("fw-b", "https://fw-b.test"), await _host("fw-c", "https://fw-c.test")
+    await _enable(admin)
+    ref_a, ref_b = await _open(admin, a), await _open(admin, b)
+    full = await admin.post(f"/api/hosts/{c}/gui-ticket")
+    assert full.status_code == 409 and full.json()["detail"]["code"] == "GUI_TOO_MANY_SESSIONS"
+    assert full.json()["detail"]["params"] == {"max": "2"}
+    # The same firewall again replaces its own session and does not count twice.
+    assert (await admin.post(f"/api/hosts/{a}/gui-ticket")).status_code == 200
+    assert (await _internal("revalidate", ref_a)).json()["ok"] and (await _internal("revalidate", ref_b)).json()["ok"]
+    # Ended sessions free room again.
+    await _internal("end", {**ref_b, "reason": "logout"})
+    assert (await admin.post(f"/api/hosts/{c}/gui-ticket")).status_code == 200
+
+
+def test_session_cap_equal_in_gateway_and_backend():
+    from app import gui_gateway
+    from app.services import gui_ticket_service
+    assert gui_gateway.MAX_SESSIONS == gui_ticket_service.MAX_GATEWAY_SESSIONS
+
+
+# ── Review findings 1.29 (S1 follow-up) ───────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_redeem_refuses_to_take_over_a_slot_that_holds_another_firewall(admin):
+    """Two quick tickets both saw the slot free: the second redeem must not supersede A's session for B."""
+    a, b = await _host("fw-race-a"), await _host("fw-race-b", "https://fw-race-b.test")
+    await _enable(admin, slot_count=1)
+    ref = await _open(admin, a)
+    async with SessionLocal() as db:
+        gs = await db.get(GuiSession, uuid.UUID(ref["gui_session_id"]))
+        slot, user_id = gs.slot, gs.user_id
+        now = datetime.now(timezone.utc)
+        db.add(GuiTicket(ticket_hash=sha("race-ticket"), session_hash=ref["session_hash"], user_id=user_id, host_id=b,
+                         slot=slot, created_at=now, expires_at=now + timedelta(seconds=30)))
+        await db.commit()
+    denied = await _internal("redeem", {"ticket_hash": sha("race-ticket"), "slot": slot, "session_hash": ref["session_hash"],
+                                        "client_ip": "192.0.2.10"})
+    assert denied.status_code != 200 and "slot" in str(denied.json())  # the same refusal as a slot conflict at redeem
+    assert (await _internal("revalidate", ref)).json()["ok"] is True  # A's session was left alone
+
+
+@pytest.mark.asyncio
+async def test_session_nobody_re_checked_counts_as_ended_for_the_cooldown(admin):
+    a, b = await _host("fw-zombie-a"), await _host("fw-zombie-b", "https://fw-zombie-b.test")
+    await _enable(admin, slot_count=1)
+    await _open(admin, a)
+    other_browser = await _https_login(settings.admin_username, settings.admin_password)  # another browser of the same user
+    async with SessionLocal() as db:  # the gateway died: no /end, no re-check for 2 minutes
+        await db.execute(update(GuiSession).values(last_checked_at=datetime.now(timezone.utc) - timedelta(minutes=2)))
+        await db.commit()
+    blocked = await other_browser.post(f"/api/hosts/{b}/gui-ticket")
+    assert blocked.status_code == 409 and blocked.json()["detail"] == {"code": "GUI_SLOT_COOLING_DOWN", "params": {"minutes": "3"}}
+    async with SessionLocal() as db:  # silent for longer than the cooldown: free again, also past the absolute limit
+        await db.execute(update(GuiSession).values(last_checked_at=datetime.now(timezone.utc) - timedelta(minutes=6)))
+        await db.commit()
+    assert (await other_browser.post(f"/api/hosts/{b}/gui-ticket")).status_code == 200
+    await other_browser.aclose()

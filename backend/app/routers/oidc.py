@@ -22,6 +22,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["oidc"])
 CALLBACK_PATH = "/api/auth/oidc/callback"
 STATE_COOKIE = "opnexus-oidc-state"
+# HTTPS deployments (1.29): __Host- (Secure, no Domain, Path=/) so that no sibling SUBDOMAIN or plain-HTTP page can
+# plant a state cookie of its own (login CSRF with the attacker's own authorisation). Known limit: cookies are not
+# separated by PORT, so script in a firewall GUI shown on a gateway slot port of the same host could still set it
+# (BACKLOG S8, accepted: needs a compromised firewall GUI and a mapped IdP account; the real fix is one hostname
+# per slot). The browser only accepts the prefix with Path=/, so the cookie travels with every request for its
+# 10 minutes; plain-HTTP labs keep the narrow path.
+SECURE_STATE_COOKIE = "__Host-opnexus-oidc-state"
+STATE_COOKIE_PATH = "/api/auth/oidc"
+
+
+def state_cookie_name() -> str:
+    return SECURE_STATE_COOKIE if settings.cookie_secure else STATE_COOKIE
+
+
+def _state_cookie_path() -> str:
+    return "/" if settings.cookie_secure else STATE_COOKIE_PATH
+
+
+def _clear_state_cookie(response) -> None:
+    response.delete_cookie(state_cookie_name(), path=_state_cookie_path(), secure=settings.cookie_secure, httponly=True, samesite="lax")
+    if settings.cookie_secure:  # a plain-name cookie of an earlier version
+        response.delete_cookie(STATE_COOKIE, path=STATE_COOKIE_PATH, secure=True, httponly=True, samesite="lax")
 # SSO sessions are short: the provider's group membership is only re-checked at login, so a removed person
 # must not keep a 30-day session.
 SSO_SESSION_SECONDS = 12 * 3600
@@ -29,7 +51,7 @@ SSO_SESSION_SECONDS = 12 * 3600
 
 def _login_error(code: str) -> RedirectResponse:
     response = RedirectResponse(f"/login?sso_error={code}", status_code=302)
-    response.delete_cookie(STATE_COOKIE, path="/api/auth/oidc")
+    _clear_state_cookie(response)
     return response
 
 
@@ -63,7 +85,8 @@ async def start(request: Request, origin: str, db: AsyncSession = Depends(get_db
     response = RedirectResponse(url, status_code=302)
     # Binds the attempt to THIS browser: a callback URL handed to somebody else (login CSRF) or a captured
     # code+state pair is useless without the cookie.
-    response.set_cookie(STATE_COOKIE, state, max_age=600, httponly=True, samesite="lax", secure=settings.cookie_secure, path="/api/auth/oidc")
+    response.set_cookie(state_cookie_name(), state, max_age=600, httponly=True, samesite="lax", secure=settings.cookie_secure,
+                        path=_state_cookie_path())
     return response
 
 
@@ -78,7 +101,9 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
     try:
         if error or not code or not state:
             raise oidc_service.OidcError("provider", "Anbieter meldet " + (_printable(error) if error else "keinen Code"))
-        if not secrets.compare_digest(request.cookies.get(STATE_COOKIE, ""), state):
+        # Only the cookie name of this deployment counts (on HTTPS never the plain one); no cookie never matches.
+        bound = request.cookies.get(state_cookie_name(), "")
+        if not bound or not secrets.compare_digest(bound.encode(), state.encode()):
             raise oidc_service.OidcError("state", "Der Anmeldeversuch gehört nicht zu diesem Browser")
         user = await oidc_service.complete(db, cfg, code, state)
     except oidc_service.OidcError as exc:
@@ -92,7 +117,7 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
     )
     response = RedirectResponse("/dashboard", status_code=302)
     _set_session_cookie(response, token, max_age=SSO_SESSION_SECONDS)
-    response.delete_cookie(STATE_COOKIE, path="/api/auth/oidc")
+    _clear_state_cookie(response)
     logger.info("SSO-Anmeldung von '%s' (%s) aus %s", user.username, user.role, ip)
     return response
 

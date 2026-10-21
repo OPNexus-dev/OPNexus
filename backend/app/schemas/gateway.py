@@ -17,3 +17,17 @@ class GatewayHealth(BaseModel):
     delay: float | None = None   # milliseconds
     stddev: float | None = None  # milliseconds
     monitor: str | None = None   # the monitored address
+    alert_enabled: bool = True   # False: the gateway alert is switched off for this gateway (Settings, 1.29)
+
+
+class GatewayAlertUpdate(BaseModel):
+    enabled: bool
+
+
+class GatewayAlertState(BaseModel):
+    name: str
+    alert_enabled: bool
+
+
+class ApiRightsState(BaseModel):
+    missing: list[str] | None = None  # names of the refused readings (gateways, services, swap, cpu); None = unknown

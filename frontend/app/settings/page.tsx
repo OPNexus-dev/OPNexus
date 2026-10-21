@@ -72,6 +72,7 @@ function NotificationsSection() {
   const [resourceThreshold, setResourceThreshold] = useState(false);
   const [serviceDown, setServiceDown] = useState(false);
   const [rolloutProblems, setRolloutProblems] = useState(true);
+  const [apiRights, setApiRights] = useState(true);
   const [gatewayLoss, setGatewayLoss] = useState(20);
   const [gatewayDelay, setGatewayDelay] = useState(500);
   const [diskLimit, setDiskLimit] = useState(90);
@@ -110,6 +111,7 @@ function NotificationsSection() {
     setResourceThreshold(data.resource_threshold_enabled);
     setServiceDown(data.service_down_enabled);
     setRolloutProblems(data.rollout_problems_enabled ?? true);
+    setApiRights(data.api_rights_enabled ?? true);
     setGatewayLoss(data.gateway_loss_threshold_pct);
     setGatewayDelay(data.gateway_delay_threshold_ms);
     setDiskLimit(data.disk_threshold_pct);
@@ -166,6 +168,7 @@ function NotificationsSection() {
         resource_threshold_enabled: resourceThreshold,
         service_down_enabled: serviceDown,
         rollout_problems_enabled: rolloutProblems,
+        api_rights_enabled: apiRights,
         gateway_loss_threshold_pct: gatewayLoss,
         gateway_delay_threshold_ms: gatewayDelay,
         disk_threshold_pct: diskLimit,
@@ -313,6 +316,7 @@ function NotificationsSection() {
             [t("settings.notify.event.resourceThreshold"), resourceThreshold, setResourceThreshold],
             [t("settings.notify.event.serviceDown"), serviceDown, setServiceDown],
             [t("settings.notify.event.rolloutProblems"), rolloutProblems, setRolloutProblems],
+            [t("settings.notify.event.apiRights"), apiRights, setApiRights],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />

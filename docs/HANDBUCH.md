@@ -272,7 +272,7 @@ und Nur-Lesen bekommen. „Anbieter testen“ prüft Discovery und Signaturschl�
 - **Lokale Konten bleiben:** Die Anmeldung mit Benutzername und Passwort funktioniert weiter, etwa für den
   Notfall, wenn der Anbieter ausfällt.
 - **Geprüft** werden Signatur (nur asymmetrische Verfahren, nie `none` oder HMAC), Aussteller, Zielgruppe, Ablauf
-  und Nonce des ID-Tokens; jeder Anmeldeversuch (State) gilt genau einmal und 10 Minuten. Gruppen kommen aus dem
+  und Nonce des ID-Tokens; jeder Anmeldeversuch (State) gilt genau einmal und 10 Minuten und ist über ein Cookie (bei HTTPS `__Host-opnexus-oidc-state`) an den Browser gebunden, der ihn gestartet hat; ein Aufruf ohne dieses Cookie scheitert immer. Gruppen kommen aus dem
   ID-Token, ersatzweise aus dem Userinfo-Endpunkt. Aussteller und Endpunkte müssen `https://` sein. Das ist
   gegen einen nachgebauten Anbieter getestet (inklusive gefälschter Token) und gegen echte Server von Keycloak 26 und
   Authelia 4.39 (Anmeldung, Rollen aus Gruppen, Rollenentzug, abgefangener Callback); andere Anbieter: melde, was bei deinem nicht klappt.
@@ -472,15 +472,26 @@ Protection) in die Whitelist ein, bevor du die Funktion benutzt.
 
 - **Kein WebSocket** (Funktionen, die einen brauchen, gehen nicht) und **keine automatische Anmeldung**.
 - **Höchstens 4 Plätze gleichzeitig.** Ein Platz bleibt pro OPNexus-Sitzung bei derselben Firewall; sind alle
-  belegt, schließe eine Oberfläche oder warte, bis sie abläuft. Ein noch offener Tab einer alten Sitzung auf
-  einem wiederverwendeten Platz bleibt ein theoretisches Restrisiko; schließe Tabs nach der Arbeit.
+  belegt, schließe eine Oberfläche oder warte, bis sie abläuft.
+- **Abkühlzeit:** Ein frei gewordener Platz geht an eine **andere** Firewall erst **5 Minuten** nach dem Ende der
+  letzten Sitzung dort (derselbe Benutzer; eine noch offene Sitzung zählt als belegt). Dieselbe Firewall bekommt
+  ihn sofort wieder. Grund: Ein Tab der alten Firewall-Oberfläche kann noch offen sein und teilt sich mit dem
+  Platz die Cookies. Sind alle Plätze belegt oder noch in der Abkühlzeit, nennt OPNexus den Grund; schließe die
+  alten Tabs nach der Arbeit.
+- **Änderung der Firewall-Adresse:** Ändern sich Adresse, festgesetztes Zertifikat oder Tunnelweg einer Firewall,
+  während ihre Oberfläche offen ist, endet die Sitzung spätestens bei der nächsten Prüfung (20 Sekunden).
+- **Höchstens 64 Sitzungen** laufen gleichzeitig. Eine laufende Sitzung wird nie von einer neuen verdrängt; ist die
+  Grenze erreicht, wird die neue abgelehnt, bis eine endet.
 - Nach einem **Neustart des wg-hub** braucht der Management-Tunnel 2 bis 4 Minuten, bis die Firewalls
   sich wieder verbunden haben; bis dahin lässt sich die Oberfläche nicht öffnen.
 - Mit `COOKIE_SECURE=false` ist die Funktion nicht verfügbar.
 
 **Hinweis für Betreiber mit eigenen Skripten:** Seit dieser Funktion heißt das Sitzungs-Cookie bei HTTPS
-`__Host-opnexus-session` (bestehende Sitzungen werden beim nächsten Seitenaufruf übernommen, niemand wird abgemeldet), und Anfragen an `/api` mit Cookie
-und `Sec-Fetch-Site: same-site` oder `cross-site` werden abgelehnt. Skripte mit API-Token (`Authorization: Bearer`)
+`__Host-opnexus-session`, und Anfragen an `/api` mit Cookie
+und `Sec-Fetch-Site: same-site` oder `cross-site` werden abgelehnt. Seit 1.29 wird das alte Cookie `opnexus-session`
+bei HTTPS **nicht mehr akzeptiert**: wer sich seit der Umstellung nicht neu angemeldet hat, muss das einmal tun
+(Skripte mit einem rohen Sitzungs-Cookie müssen den neuen Namen verwenden; ohne HTTPS bleibt `opnexus-session` der
+normale Name). Skripte mit API-Token (`Authorization: Bearer`)
 sind nicht betroffen.
 
 **Alternative ohne diese Funktion:** Du richtest dir einen eigenen WireGuard-Zugang in das Netz der Firewalls ein
@@ -1025,10 +1036,15 @@ auslassen oder verschieben. Ein Fenster, das ein Plan nutzt, lässt sich nicht l
 
 **Automatischer Start:** Ein Plan mit Fenster und stabilem Update kann zu jedem Termin von
 selbst starten. Dazu muss ihn jemand mit Ausroll-Recht nach der Vorschau **aktivieren**.
-OPNexus merkt sich dabei einen Fingerabdruck von Plan, aufgelösten Hosts und Fenster; ändert
-sich davon etwas (auch die Mitglieder einer Gruppe), startet nichts, und es kommt „Rollout
-nicht automatisch gestartet“. Jede Bearbeitung des Plans deaktiviert ihn. So kann niemand
-die Ziele eines aktivierten Plans unbemerkt ändern.
+OPNexus merkt sich dabei einen Fingerabdruck von Plan, aufgelösten Hosts und Fenster
+(**einschließlich der ausgelassenen oder verschobenen Termine**); ändert sich davon etwas
+(auch die Mitglieder einer Gruppe), startet nichts, und es kommt „Rollout nicht
+automatisch gestartet“. Jede Bearbeitung des Plans deaktiviert ihn. So kann niemand
+die Ziele eines aktivierten Plans unbemerkt ändern. Wer einen Termin auslässt oder
+verschiebt, muss einen automatischen Plan danach neu aktivieren. Die aktivierende Person
+wird zusätzlich über ihre Konto-ID erkannt: wird ihr Konto gelöscht und ein neues mit
+gleichem Namen angelegt, startet der Plan nicht mehr. Überlappen sich zwei Termine eines
+Fensters (z. B. ein verschobener mit dem regulären), zählt der zuletzt begonnene.
 
 Das **Update Center** zeigt den laufenden Rollout als Banner; Hosts, die er noch bearbeitet,
 sind dort für manuelle Firmware-Aktionen gesperrt. Ein Neustart oder Update von OPNexus
@@ -1173,15 +1189,20 @@ Einstellungen › **Benachrichtigungen**. Kanäle:
   Datenbank, werden nie wieder angezeigt (nur „gesetzt“) und stehen nicht in Fehlermeldungen oder Logs.
   Weil bei Telegram und Teams die Adresse selbst das Geheimnis ist, wird sie wie ein Token behandelt.
   Ziele müssen `http(s)` sein, ohne Zugangsdaten in der Adresse; lokale Adressen (`localhost`, Loopback,
-  Link-Local, Metadaten-Dienst) werden abgelehnt, Ziele im eigenen Netz sind erlaubt. Weiterleitungen werden
-  nicht verfolgt. Ein ausgefallener Kanal hält die anderen nicht auf; zugestellt wird einmal je Ereignis.
+  Link-Local, Metadaten-Dienst) werden abgelehnt, Ziele im eigenen Netz sind erlaubt. Die Prüfung gilt auch
+  beim Verbindungsaufbau: OPNexus verbindet genau zu der Adresse, die es geprüft hat (Schutz vor DNS-Rebinding,
+  Meldung „Zieladresse nicht erlaubt“); dasselbe gilt für die Adressen des SSO-Anbieters. Weiterleitungen werden
+  nicht verfolgt. Webhook, E-Mail und alle Kanäle werden **gleichzeitig** bedient, jeweils mit eigener
+  Zeitgrenze (20 Sekunden) und insgesamt höchstens 90 Sekunden je Prüfdurchlauf: ein ausgefallener oder
+  hängender Kanal hält weder die anderen noch die Prüfung auf (im Log steht „timed out“). Zugestellt wird
+  einmal je Ereignis, ohne Wiederholung.
 
 Ereignisse (jeweils einzeln schaltbar): Host nicht erreichbar, Zertifikat läuft ab,
 Regel-Drift im Cluster, NAT-Drift im Cluster, Netzwerk-Abweichung im Cluster,
 fehlgeschlagener Rollback, Wartungsergebnis unklar, CARP-Zustand kritisch
 (Split-Brain/kein Master), CARP-Auto-Revert fehlgeschlagen, geplante Wartung nicht
-ausgeführt, Gateway gestört, Ressourcen-Schwelle überschritten, Dienst ausgefallen
-(die letzten drei sind unten beschrieben). Geprüft wird im eingestellten Intervall (Standard 300 s). Ein Problem
+ausgeführt, Gateway gestört, Ressourcen-Schwelle überschritten, Dienst ausgefallen,
+API-Rechte fehlen (die letzten vier sind unten beschrieben). Geprüft wird im eingestellten Intervall (Standard 300 s). Ein Problem
 meldet sich einmal und löst sich selbst auf, sobald es behoben ist; die
 Dashboard-Karte „Warnungen“ zeigt die offenen. Ausnahme „geplante Wartung nicht
 ausgeführt“: Sie bleibt drei Tage nach dem geplanten Zeitpunkt offen und schließt dann
@@ -1202,6 +1223,17 @@ beurteilt OPNexus sie nicht (das meldet „Host nicht erreichbar“) und lässt 
   OPNsense selbst entscheidet über „down“ nach den Grenzen im Gateway (Einstellung „Gateway-Überwachung“). Von Hand abgeschaltete
   Gateways („Gateway deaktivieren/erzwungen aus“) und Gateways ohne Überwachung (kein Monitor-IP, Werte „~“) melden nichts.
   Der Status steht auch auf der Host-Seite (Abschnitt „Gateways“, live gelesen), als Kachel auf dem Dashboard und in Prometheus.
+  **Einzelne Gateways abschalten:** Ein ruhendes Zweit-WAN oder ein totes IPv6-Gateway melden dauerhaft „offline“. Auf der Host-Seite schaltet die
+  Glocke hinter dem Gateway den Alarm nur für dieses Gateway aus (Tooltip „Alarm für dieses Gateway“); das Gateway trägt dann das Badge „Alarm aus“,
+  ein offener Alarm löst sich auf, und ein Klick auf die Glocke schaltet ihn wieder ein. Das dürfen nur Administratoren (wie die übrigen
+  Benachrichtigungs-Einstellungen), die Änderung steht im Audit-Log. Höchstens 200 Gateways lassen sich abschalten.
+- **API-Rechte fehlen** – **standardmäßig an**. Der API-Benutzer von OPNexus braucht in OPNsense Leserechte für die Messwerte, auf denen die Alarme
+  beruhen: *System: Gateways* (Gateway-Status), *Status: Services* (Dienste) und *Lobby: Dashboard* (CPU, Swap; dieselbe Berechtigung wie die
+  Basiswerte). Verweigert die Firewall einen dieser Zugriffe ausdrücklich (HTTP 403), würde der zugehörige Alarm nie auslösen. Dann zeigt die
+  Host-Seite und das Dashboard das Warn-Badge „API-Rechte fehlen: …“ (Tooltip nennt die fehlende Berechtigung), es gibt einen Alarm je Firewall und
+  Zugriff, und er löst sich auf, sobald der Zugriff wieder klappt. Zeitüberschreitungen und Serverfehler gelten nur als „unbekannt“ und lösen weder
+  etwas aus noch schließen sie den Alarm. Abhilfe: in OPNsense unter System › Zugang beim Benutzer oder der Gruppe des API-Schlüssels die genannte
+  Berechtigung ergänzen. Prometheus: `opnexus_host_api_rights_missing{host,read}` (1, nur solange es fehlt).
 - **Ressourcen-Schwelle** – standardmäßig **aus**: Auf einer bestehenden Flotte würde das Einschalten sonst gleich alles melden, was schon länger voll
   ist. Schwellen: Festplatte ab 90 % (je ZFS-Pool bzw. UFS-Gerät ein Alarm), Arbeitsspeicher ab 95 %, Swap ab 50 %, CPU-Last ab 2,0 je Thread
   (1-Minuten-Last geteilt durch die Zahl der CPU-Threads). Jede Schwelle lässt sich mit 0 abschalten.
@@ -1326,15 +1358,18 @@ scrape_configs:
 | `opnexus_host_swap_used_percent` | Swap-Belegung der letzten Messung (fehlt ohne Swap) |
 | `opnexus_host_gateway_up{gateway}` | 1, solange OPNsense das Gateway nicht als down führt |
 | `opnexus_host_gateway_loss_percent`, `…_delay_seconds`, `…_stddev_seconds` `{gateway}` | Paketverlust, Laufzeit und Abweichung zum Monitor (fehlen ohne Messung) |
+| `opnexus_host_api_rights_missing{read}` | 1, solange die Firewall den Lesezugriff `read` (gateways, services, swap, cpu) wegen fehlender API-Rechte verweigert; sonst fehlt die Zeile |
 | `opnexus_host_service_running{service,instance}` | 1 = läuft, nur für Dienste aus der Überwachungsliste |
 | `opnexus_host_compliance_score`, `opnexus_host_compliance_findings{severity}` | Sicherheitslage |
 | `opnexus_pending_actions{kind,status}` | Offene Aktionen wie auf dem Dashboard |
 | `opnexus_problems_open{type}` | Offene Probleme der Benachrichtigungen |
 | `opnexus_scheduled_maintenance_pending` | Noch nicht gelaufene geplante Wartungen |
+| `opnexus_rollout_runs{status}` | Flotten-Rollouts nach Status (wartend, laufend, pausiert, erfolgreich, …) |
 
 Ein fertiges **Grafana-Dashboard** liegt unter [`docs/grafana-opnexus.json`](grafana-opnexus.json)
 (Grafana › Dashboards › Importieren, Prometheus-Datenquelle wählen): erreichbare Firewalls, offene Aktionen
-und Probleme, Sicherheitswert und Befunde, Last, Speicher, Platte und CARP-Rolle.
+und Probleme, Sicherheitswert und Befunde, Last, Speicher, Swap, Platte und CARP-Rolle sowie Gateways (erreichbar, Paketverlust, Latenz),
+gestoppte Dienste, fehlende API-Rechte und Rollouts nach Status.
 
 ### KI-Assistenten (MCP)
 

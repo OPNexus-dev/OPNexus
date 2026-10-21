@@ -106,7 +106,7 @@ async def _apply(db: AsyncSession, plan: RolloutPlan, payload: PlanIn) -> None:
         for i, w in enumerate(payload.waves)
     ]
     # Any edit disarms the automatic start: an operator cannot quietly change what an admin activated.
-    plan.activated_at = plan.activated_by = plan.activated_fingerprint = None
+    plan.activated_at = plan.activated_by = plan.activated_by_id = plan.activated_fingerprint = None
     plan.auto_start_error = None
 
 
@@ -180,6 +180,7 @@ async def activate_plan(plan_id: uuid.UUID, payload: TokenIn, request: Request, 
         raise api_error(422, ErrorCode.ROLLOUT_INVALID, field="auto_start")
     _resolved, current = await _checked_token(db, plan, payload.preview_token)
     plan.activated_by, plan.activated_at, plan.activated_fingerprint = request.state.user.username, datetime.now(timezone.utc), current
+    plan.activated_by_id = request.state.user.id
     plan.auto_start_error = None
     await db.commit()
     await audit_service.persist(kind="rollout", action="activate", status="completed", entity_id=str(plan.id),
@@ -191,7 +192,7 @@ async def activate_plan(plan_id: uuid.UUID, payload: TokenIn, request: Request, 
 async def deactivate_plan(plan_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     await policy_lock(db)
     plan = await _plan_or_404(db, plan_id)
-    plan.activated_by = plan.activated_at = plan.activated_fingerprint = None
+    plan.activated_by = plan.activated_by_id = plan.activated_at = plan.activated_fingerprint = None
     await db.commit()
     await audit_service.persist(kind="rollout", action="deactivate", status="completed", entity_id=str(plan.id), entity_name=plan.name)
     return await read_plan(db, await _plan_or_404(db, plan_id))
@@ -306,7 +307,8 @@ async def start_plan(plan_id: uuid.UUID, payload: StartIn, request: Request, db:
     if (other := await rollout_engine.active_run(db)) is not None:
         # One run at a time: two runs could otherwise touch the same cluster at once.
         raise api_error(409, ErrorCode.ROLLOUT_ALREADY_ACTIVE, plan=other.plan_name)
-    run = await rollout_engine.create_run(db, plan, resolved, started_by=request.state.user.username, trigger="manual")
+    run = await rollout_engine.create_run(db, plan, resolved, started_by=request.state.user.username,
+                                          started_by_id=request.state.user.id, trigger="manual")
     await db.commit()
     await audit_service.persist(kind="rollout", action="start", status="started", entity_id=str(run.id), entity_name=plan.name,
                                 details={"trigger": "manual", "hosts": sum(len(w["hosts"]) for w in resolved["waves"]),
@@ -363,7 +365,7 @@ async def resume_run(run_id: uuid.UUID, request: Request, db: AsyncSession = Dep
         raise api_error(409, ErrorCode.ROLLOUT_HOST_FAILED, hosts=", ".join(failed))
     previous = run.started_by
     # Whoever resumes takes over the responsibility (and the permission check) from here on.
-    run.started_by = request.state.user.username
+    run.started_by, run.started_by_id = request.state.user.username, request.state.user.id
     run.status = "resuming"
     run.pause_reason = run.pause_detail = None
     run.progress = {**(run.progress or {}), "resume_attempts": 0, "resume_recheck_at": None, "paused_at": None}
@@ -378,7 +380,7 @@ async def approve_wave(run_id: uuid.UUID, request: Request, db: AsyncSession = D
         raise _not_now(run)
     wave = rollout_engine.wave_row(run, run.current_wave)
     wave.approved_by, wave.status = request.state.user.username, "preflight"
-    run.started_by = request.state.user.username
+    run.started_by, run.started_by_id = request.state.user.username, request.state.user.id
     run.status = "preflight"
     run.progress = {**(run.progress or {}), "preflight_started": None, "preflight_requested_at": None}
     return await _done(db, run, "approve", "approved", request, wave_label=wave.label)

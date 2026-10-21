@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-# Plain name: used on HTTP-only (lab) deployments and accepted for a while on
-# HTTPS deployments so that sessions issued before 1.27 survive the upgrade.
+# Plain name: the session cookie of HTTP-only (lab) deployments. On HTTPS deployments it is NOT accepted any
+# more (1.29): it is only still deleted (login, logout) so that a pre-1.27 cookie does not linger.
 COOKIE_NAME = "opnexus-session"
 # HTTPS deployments: the __Host- prefix makes the browser refuse any cookie of
 # this name that is not Secure, has a Domain attribute or a Path other than
@@ -31,16 +31,11 @@ def session_cookie_name() -> str:
 
 
 def session_token(request: Request) -> str:
-    """The session token the browser sent. On HTTPS the __Host- cookie always
-    wins; the plain name is only a migration fallback when the browser has no
-    __Host- cookie yet (it is replaced on the next /api/auth/me)."""
-    if settings.cookie_secure:
-        return request.cookies.get(SECURE_COOKIE_NAME) or request.cookies.get(COOKIE_NAME, "")
-    return request.cookies.get(COOKIE_NAME, "")
-
-
-def uses_legacy_cookie(request: Request) -> bool:
-    return settings.cookie_secure and not request.cookies.get(SECURE_COOKIE_NAME) and bool(request.cookies.get(COOKIE_NAME))
+    """The session token the browser sent: the __Host- cookie on HTTPS deployments, the plain one otherwise.
+    Never the other name (1.29): a plain-name cookie can be planted by any plain-HTTP or sibling-subdomain page and
+    must not be able to carry a session on an HTTPS deployment (the __Host- prefix does not separate PORTS, see
+    BACKLOG S8)."""
+    return request.cookies.get(session_cookie_name(), "")
 
 
 def has_session_cookie(request: Request) -> bool:
@@ -70,7 +65,7 @@ def _set_session_cookie(response: Response, token: str, max_age: int | None = No
         path="/",
     )
     if settings.cookie_secure:
-        # Migration: a pre-1.27 plain-name cookie must not linger next to the new one.
+        # A pre-1.27 plain-name cookie must not linger next to the new one.
         response.delete_cookie(key=COOKIE_NAME, path="/", secure=True, httponly=True, samesite="lax")
 
 
@@ -298,6 +293,9 @@ async def totp_disable(
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     token = session_token(request)
     await auth_service.revoke_session(db, token)
+    legacy = request.cookies.get(COOKIE_NAME, "")
+    if settings.cookie_secure and legacy and legacy != token:
+        await auth_service.revoke_session(db, legacy)  # an old plain-name cookie ends with the logout too
     _clear_session_cookie(response)
     return {"authenticated": False}
 
@@ -316,10 +314,6 @@ async def me(request: Request, response: Response, db: AsyncSession = Depends(ge
     user = await auth_service.resolve_session(db, token)
     if user is None:
         return {"authenticated": False}
-    if uses_legacy_cookie(request):
-        # Soft migration (1.27): the same server-side session moves to the
-        # __Host- cookie and the plain-name cookie is deleted — nobody is logged out.
-        _set_session_cookie(response, token)
     return {"authenticated": True, "username": user.username, "role": user.role}
 
 

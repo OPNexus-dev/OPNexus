@@ -1,4 +1,4 @@
-"""1.27 prerequisite hardening: __Host- session cookie (with soft migration) and
+"""1.27 prerequisite hardening: __Host- session cookie (the plain name is not accepted on HTTPS since 1.29) and
 the Sec-Fetch-Site check for cookie-authenticated /api requests."""
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -46,21 +46,51 @@ async def test_plain_name_cookie_without_https():
         assert not any(c.startswith(SECURE_COOKIE_NAME) for c in _set_cookies(resp))
 
 
-@pytest.mark.asyncio
-async def test_legacy_cookie_is_migrated_not_logged_out(monkeypatch):
-    # A session issued before the upgrade (plain cookie name) ...
+async def _issue_plain_session() -> str:
+    """A session as issued before 1.27 / by an HTTP-only deployment (plain cookie name)."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         await _login(ac)
         legacy = ac.cookies.get(COOKIE_NAME)
     assert legacy
+    return legacy
+
+
+@pytest.mark.asyncio
+async def test_plain_cookie_not_accepted_on_https_deployments(monkeypatch):
+    legacy = await _issue_plain_session()
     monkeypatch.setattr(settings, "cookie_secure", True)
     async with _https_client() as ac:
         ac.cookies.set(COOKIE_NAME, legacy)
-        assert (await ac.get("/api/hosts")).status_code == 200  # still accepted
+        assert (await ac.get("/api/hosts")).status_code == 401  # 1.29: no fallback any more
         me = await ac.get("/api/auth/me")
-        assert me.json()["authenticated"] is True
-        moved = [c for c in _set_cookies(me) if c.startswith(f"{SECURE_COOKIE_NAME}={legacy}")]
-        assert moved and "Secure" in moved[0]
+        assert me.json() == {"authenticated": False}
+        assert not [c for c in _set_cookies(me) if c.startswith(SECURE_COOKIE_NAME)]  # and no silent migration
+        # Logging in again works and replaces the old cookie.
+        login = await ac.post("/api/auth/login", json={"username": settings.admin_username, "password": settings.admin_password})
+        assert login.status_code == 200
+        assert (await ac.get("/api/hosts")).status_code == 200
+    # The very same token still works where the plain name is the normal one (HTTP-only deployment).
+    monkeypatch.setattr(settings, "cookie_secure", False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        ac.cookies.set(COOKIE_NAME, legacy)
+        assert (await ac.get("/api/hosts")).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_logout_still_deletes_and_revokes_the_old_cookie(monkeypatch):
+    legacy = await _issue_plain_session()
+    monkeypatch.setattr(settings, "cookie_secure", True)
+    async with _https_client() as ac:
+        await _login(ac)
+        ac.cookies.set(COOKIE_NAME, legacy)
+        out = await ac.post("/api/auth/logout")
+        assert out.status_code == 200
+        deleted = [c for c in _set_cookies(out) if c.startswith(f"{COOKIE_NAME}=")]
+        assert deleted and "Max-Age=0" in deleted[0]
+    monkeypatch.setattr(settings, "cookie_secure", False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        ac.cookies.set(COOKIE_NAME, legacy)
+        assert (await ac.get("/api/hosts")).status_code == 401  # the old session is gone server-side as well
 
 
 @pytest.mark.asyncio

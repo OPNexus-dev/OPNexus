@@ -224,14 +224,14 @@ async def send(channel: NotificationChannel, problem: NotificationProblem, trans
         except ValueError as exc:
             raise NotificationDeliveryError(f"{label}: {exc}") from None
         try:
-            async with httpx.AsyncClient(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
+            async with url_guard.guarded_client(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
                 resp = await client.request(method, url, json=payload, headers=headers)
                 resp.raise_for_status()
                 if ok_key and not (resp.json() or {}).get(ok_key):
                     raise NotificationDeliveryError(f"{label}: Zustellung abgelehnt")
         except httpx.HTTPError as exc:
             # str(exc) names the full URL, which for Telegram/Teams is the credential itself.
-            reason = f"HTTP {exc.response.status_code}" if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
+            reason = url_guard.failure_reason(exc)
             raise NotificationDeliveryError(f"{label}: Zustellung fehlgeschlagen ({reason})") from None
         except ValueError:
             raise NotificationDeliveryError(f"{label}: Antwort nicht lesbar") from None

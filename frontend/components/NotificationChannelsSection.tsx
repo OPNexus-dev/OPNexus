@@ -206,9 +206,9 @@ export function NotificationChannelsSection() {
                 {!c.enabled && <Badge tone="neutral">{t("settings.channels.disabled")}</Badge>}
               </span>
               <span className="flex flex-wrap items-center gap-1">
-                <Button type="button" variant="ghost" disabled={busy === c.id} onClick={() => test(c)}>{t("settings.channels.test")}</Button>
                 {!readOnly && (
                   <>
+                    <Button type="button" variant="ghost" disabled={busy === c.id} onClick={() => test(c)}>{t("settings.channels.test")}</Button>
                     <Button type="button" variant="ghost" disabled={busy === c.id} onClick={() => toggle(c)}>{c.enabled ? t("settings.channels.disable") : t("settings.channels.enable")}</Button>
                     <Button type="button" variant="ghost" disabled={busy === c.id} onClick={() => setEditing(c)}>{t("settings.channels.editAction")}</Button>
                     <Button type="button" variant="ghost" disabled={busy === c.id} onClick={() => remove(c)}>{t("settings.channels.deleteAction")}</Button>

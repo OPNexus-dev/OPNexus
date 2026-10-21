@@ -159,7 +159,7 @@ _ALL_FLAGS = [
     "host_offline_enabled", "cert_expiring_enabled", "rule_drift_enabled", "revert_failed_enabled", "maintenance_unknown_enabled",
     "carp_health_enabled", "nat_drift_enabled", "network_drift_enabled", "carp_auto_revert_failed_enabled",
     "scheduled_maintenance_failed_enabled", "backup_failed_enabled", "compliance_alerts_enabled",
-    "gateway_down_enabled", "resource_threshold_enabled", "service_down_enabled",
+    "gateway_down_enabled", "resource_threshold_enabled", "service_down_enabled", "api_rights_enabled",
 ]
 
 
@@ -345,6 +345,31 @@ async def test_swap_and_cpu_per_thread(client):
     # unknown thread count: the load cannot be judged, so it is not reported
     await _add_samples(hid, [{"disk": DISK_OK, "mem": 10, "load": 50.0, "swap_used_pct": None, "cpu_threads": None}] * 5)
     assert dict(await _resource_problems()) == {}
+
+
+@pytest.mark.asyncio
+async def test_open_resource_alert_without_a_current_reading_shows_no_number(client):
+    """An open alert stays open while the value is unreadable (verdict: unreadable is no evidence either way); the
+    message must then not say "None %"."""
+    from app.services import notification_dedup
+    from app.services.notification_delivery import render_message
+    from app.models.notification import NotificationProblem
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    hid = uuid.UUID(host["id"])
+    await _add_samples(hid, [{"disk": DISK_OK, "mem": 10, "load": 0.1, "swap_used_pct": 70.0, "cpu_threads": 2}] * 5)
+    async with SessionLocal() as db:
+        opened, _ = await notification_dedup.diff_and_update(db, "resource_threshold", await monitor_checks.check_resource_threshold(db))
+        await db.commit()
+    assert [o.dedup_key for o in opened] == [f"{hid}:swap"] and opened[0].context["wert"] == "70.0 %"
+    async with SessionLocal() as db:
+        await db.execute(HostResourceSample.__table__.delete())
+        await db.commit()
+    await _add_samples(hid, [{"disk": DISK_OK, "mem": 10, "load": 0.1, "swap_used_pct": None, "cpu_threads": 2}] * 5)
+    problems = await _resource_problems()
+    context = problems[f"{hid}:swap"]
+    assert context["wert"] is None and context["schwelle"].endswith(" %")
+    _subject, body = render_message(NotificationProblem(problem_type="resource_threshold", dedup_key="k", context=context), "opened")
+    assert "None" not in body and "schwelle:" in body and "wert:" not in body
 
 
 # ── Services ─────────────────────────────────────────────────────────────────────

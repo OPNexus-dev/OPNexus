@@ -139,9 +139,14 @@ def pause(run: RolloutRun, reason: str, **detail) -> None:
     _progress(run, paused_at=_iso(_now()))
 
 
-async def may_roll_out(db: AsyncSession, username: str) -> bool:
-    """Does this account (still) have the right to roll out? Same rule as AuthMiddleware's is_rollout."""
-    user = await db.scalar(select(AdminUser).where(AdminUser.username == username))
+async def may_roll_out(db: AsyncSession, username: str, user_id=None) -> bool:
+    """Does this account (still) have the right to roll out? Same rule as AuthMiddleware's is_rollout.
+    With the stable account id (1.29) the id decides: a deleted account that was re-created under the same name is
+    someone else. Rows from before the id existed (and still without one) are matched by name as before."""
+    if user_id is not None:
+        user = await db.get(AdminUser, user_id)
+    else:
+        user = await db.scalar(select(AdminUser).where(AdminUser.username == username))
     if user is None:
         return False
     if user.role == "admin":
@@ -184,7 +189,7 @@ async def active_run(db: AsyncSession) -> RolloutRun | None:
 
 
 async def create_run(db: AsyncSession, plan: RolloutPlan, resolved: dict, *, started_by: str, trigger: str,
-                     occurrence: datetime | None = None) -> RolloutRun:
+                     occurrence: datetime | None = None, started_by_id=None) -> RolloutRun:
     """Freeze the plan and its resolved hosts. The caller holds policy_lock and has checked the token."""
     now = _now()
     snapshot = {
@@ -194,7 +199,7 @@ async def create_run(db: AsyncSession, plan: RolloutPlan, resolved: dict, *, sta
         "waves": [{k: w[k] for k in ("label", "soak_minutes", "carp_handover", "require_approval", "groups")} for w in resolved["waves"]],
     }
     run = RolloutRun(plan_id=plan.id, plan_name=plan.name, plan_snapshot=snapshot, action=plan.action, status="preflight",
-                     current_wave=0, started_by=started_by, trigger=trigger, window_occurrence=occurrence,
+                     current_wave=0, started_by=started_by, started_by_id=started_by_id, trigger=trigger, window_occurrence=occurrence,
                      progress={}, created_at=now, step_at=now, revision=0)
     run.waves = [RolloutRunWave(index=w["index"], label=w["label"], status="preflight" if w["index"] == 0 else "pending")
                  for w in resolved["waves"]]
@@ -329,7 +334,7 @@ async def _sync_hosts(db: AsyncSession, run: RolloutRun) -> bool:
 # ── handlers: one per run status; each returns an apply-function or None ──────
 
 async def _actor_problem(db: AsyncSession, run: RolloutRun) -> Decision | None:
-    if await may_roll_out(db, run.started_by):
+    if await may_roll_out(db, run.started_by, run.started_by_id):
         return None
 
     async def apply(db, run):
@@ -769,7 +774,7 @@ async def auto_start(db: AsyncSession) -> int:
             problem = _note("auto_start_update_only")
         elif plan.activated_fingerprint != rollout_service.fingerprint(plan, resolved):
             problem = _note("plan_changed")  # someone changed the plan, its groups or its window since activation
-        elif not await may_roll_out(db, plan.activated_by or ""):
+        elif not await may_roll_out(db, plan.activated_by or "", plan.activated_by_id):
             problem = _note("actor_invalid", user=plan.activated_by)
         elif resolved["errors"]:
             problem = _note("plan_invalid", reason=resolved["errors"][0]["code"])
@@ -786,7 +791,8 @@ async def auto_start(db: AsyncSession) -> int:
                 audit_service.context.reset(token)
             continue
         try:
-            run = await create_run(db, plan, resolved, started_by=plan.activated_by, trigger="window", occurrence=occ.start)
+            run = await create_run(db, plan, resolved, started_by=plan.activated_by, started_by_id=plan.activated_by_id,
+                               trigger="window", occurrence=occ.start)
             plan.auto_start_error = None
             await db.commit()
         except IntegrityError:
