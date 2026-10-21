@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.27.1] "Buzzard" — 2026-10-21
+
+- **Fix (1.27.1): Proxy startete mit der neuen Compose-Datei nicht.** Mit der `docker-compose.yml` aus 1.27.0 gab Compose die Variable
+  `OPNEXUS_GUI_SITES` als leeren Text an den Proxy weiter; Caddy nutzt seinen Standardwert aber nur bei *nicht gesetzter* Variable und
+  brach mit „server block without any key“ ab, OPNexus war dann nicht mehr erreichbar. Die Compose-Datei setzt jetzt einen gültigen
+  Platzhalter als Standard. Betroffen waren nur Installationen, die die neue Compose-Datei aus 1.27.0 übernommen hatten (ohne
+  `OPNEXUS_GUI_SITES` in der `.env`); wer nur die Images aktualisiert hatte, war nicht betroffen. Sofort-Abhilfe ohne Update:
+  `OPNEXUS_GUI_SITES=https://localhost:9441` in die `.env` eintragen und `docker compose up -d proxy` ausführen.
+
 ## [1.27.0] "Buzzard" — 2026-10-21
 
 Vorgesehen als MINOR-Release **1.27.0** „Firewall-Oberfläche über OPNexus“.

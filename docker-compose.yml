@@ -201,7 +201,7 @@ services:
     environment:
       OPNEXUS_SITES: ${OPNEXUS_SITES:-localhost}
       OPNEXUS_DEFAULT_SNI: ${OPNEXUS_DEFAULT_SNI:-localhost}
-      OPNEXUS_GUI_SITES: ${OPNEXUS_GUI_SITES:-}
+      OPNEXUS_GUI_SITES: ${OPNEXUS_GUI_SITES:-https://localhost:9441}
     ports:
       - "${PROXY_BIND_ADDRESS:-0.0.0.0}:${PROXY_HTTPS_PORT:-443}:443"
       - "${PROXY_BIND_ADDRESS:-0.0.0.0}:${PROXY_HTTP_PORT:-80}:80"
