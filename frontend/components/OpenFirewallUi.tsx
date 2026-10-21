@@ -38,7 +38,11 @@ export function OpenFirewallUi({ host }: { host: Host }) {
 
   let reason: string | null = null;
   if (!cfg) reason = null;
-  else if (!cfg.available) reason = t(`guiAccess.reason.${cfg.unavailable_reasons[0]}`);
+  else if (!cfg.available) {
+    // Plain-language explanation of the first missing prerequisite (with the next step); hint at the rest.
+    reason = t(`guiOpen.reason.unavailable.${cfg.unavailable_reasons[0]}`);
+    if (cfg.unavailable_reasons.length > 1) reason += ` ${t("guiOpen.reason.more")}`;
+  }
   else if (!cfg.enabled) reason = t("guiOpen.reason.off");
   else {
     const r = hostReason(host);

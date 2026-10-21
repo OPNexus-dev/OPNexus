@@ -99,10 +99,10 @@ export function NetworkObjectSection({ hostId, kind, title, reloadKey, readOnly,
                           </Button>
                         ) : (
                           <>
-                            <Button variant="ghost" aria-label={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid: row.uuid })}>
+                            <Button variant="ghost" aria-label={t("network.rowEdit")} title={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid: row.uuid })}>
                               <Pencil size={14} />
                             </Button>
-                            <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid: row.uuid })}>
+                            <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid: row.uuid })}>
                               <Trash2 size={14} />
                             </Button>
                           </>

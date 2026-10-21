@@ -231,10 +231,10 @@ function RowActions({ kind, uuid, onChange }: { kind: NetworkKind; uuid: string;
   const { t } = useLanguage();
   return (
     <div className="flex justify-end gap-1">
-      <Button variant="ghost" aria-label={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid })}>
+      <Button variant="ghost" aria-label={t("network.rowEdit")} title={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid })}>
         <Pencil size={14} />
       </Button>
-      <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid })}>
+      <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid })}>
         <Trash2 size={14} />
       </Button>
     </div>

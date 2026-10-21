@@ -62,7 +62,7 @@ export function LoginInfoBanner() {
           )}
           {sessionExpires && <p className="text-xs opacity-80">{t("loginBanner.sessionUntil", { time: sessionExpires })}</p>}
         </div>
-        <button onClick={() => setInfo(null)} aria-label={t("common.close")} className="shrink-0 rounded p-0.5 hover:bg-black/5">
+        <button onClick={() => setInfo(null)} aria-label={t("common.close")} title={t("common.close")} className="shrink-0 rounded p-0.5 hover:bg-black/5">
           <X size={16} />
         </button>
       </div>

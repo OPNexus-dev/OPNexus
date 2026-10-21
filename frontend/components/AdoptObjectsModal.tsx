@@ -6,6 +6,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
+import { AdoptLinkChoice } from "@/components/AdoptLinkChoice";
 import { AdoptAllResult, AdoptKind, api, Host, UnmanagedObject } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 
@@ -52,6 +53,7 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<AdoptAllResult | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   function load(id: string) {
     setItems(null);
@@ -68,6 +70,7 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
   useEffect(() => {
     if (hostId) {
       setResult(null);
+      setConfirming(false);
       load(hostId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +81,10 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
     [items]
   );
   const systemCount = (items ?? []).filter(isSystem).length;
-  const bulkCount = shown.filter((i) => i.bulk_adoptable).length;
+  const linkCount = shown.filter((i) => i.bulk_action === "link").length;
+  const newCount = shown.filter((i) => i.bulk_action === "new").length;
+  const leftCount = shown.length - linkCount - newCount;
+  const bulkCount = linkCount + newCount;
 
   function reasonText(code: string, details: Record<string, string>): string {
     return t(`adopt.reasons.${code}`, { detail: details[code] ?? "" });
@@ -98,11 +104,11 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
     }
   }
 
-  async function adopt(item: UnmanagedObject) {
+  async function adopt(item: UnmanagedObject, linkTo?: string) {
     setBusy(item.uuid);
     try {
-      await api.adoptObject(kind, hostId, item.uuid);
-      toast.show(t("adopt.adopted", { name: item.title }), "success");
+      await api.adoptObject(kind, hostId, item.uuid, linkTo);
+      toast.show(t(linkTo ? "adopt.linked" : "adopt.adopted", { name: item.title }), "success");
       onAdopted();
       load(hostId);
     } catch (e) {
@@ -114,10 +120,11 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
 
   async function adoptAll() {
     setBusy("all");
+    setConfirming(false);
     try {
-      const done = await api.adoptAllObjects(kind, hostId);
+      const done = await api.adoptAllObjects(kind, hostId, true);
       setResult(done);
-      toast.show(t("adopt.allDone", { count: done.adopted.length, skipped: done.skipped.length }), done.adopted.length ? "success" : "info");
+      toast.show(allDoneText(done), done.adopted.length ? "success" : "info");
       onAdopted();
       load(hostId);
     } catch (e) {
@@ -125,6 +132,14 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
     } finally {
       setBusy(null);
     }
+  }
+
+  function allDoneText(done: AdoptAllResult): string {
+    return t("adopt.allDoneLinked", {
+      count: done.adopted.length,
+      linked: done.adopted.filter((a) => a.linked).length,
+      skipped: done.skipped.length,
+    });
   }
 
   return (
@@ -143,17 +158,31 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
             </Select>
           </label>
           {bulkCount > 0 && (
-            <Button onClick={adoptAll} disabled={busy !== null} loading={busy === "all"}>
+            <Button onClick={() => setConfirming(true)} disabled={busy !== null || confirming} loading={busy === "all"}>
               {t("adopt.all", { count: bulkCount })}
             </Button>
           )}
         </div>
+        {confirming && (
+          <div role="alertdialog" aria-label={t("adopt.confirm.title")} className="space-y-2 rounded-lg border border-slate-300 bg-slate-50 p-3 text-sm text-slate-700">
+            <p className="font-medium">{t("adopt.confirm.summary", { link: linkCount, created: newCount, left: leftCount })}</p>
+            <p className="text-xs text-slate-500">{t("adopt.confirm.note")}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={adoptAll} disabled={busy !== null} loading={busy === "all"}>
+                {t("adopt.confirm.go")}
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirming(false)}>
+                {t("common.cancel")}
+              </Button>
+            </div>
+          </div>
+        )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         {items === null && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
         {items !== null && shown.length === 0 && !error && <p className="text-sm text-slate-500">{t("adopt.none")}</p>}
         {result && (
           <div role="status" className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-            <p className="font-medium">{t("adopt.allDone", { count: result.adopted.length, skipped: result.skipped.length })}</p>
+            <p className="font-medium">{allDoneText(result)}</p>
             {result.skipped.length > 0 && (
               <ul className="mt-2 space-y-1 text-xs text-slate-500">
                 {result.skipped.map((s) => (
@@ -180,7 +209,9 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
                   )}
                   {kind === "aliases" && item.info.description && <p className="mt-1 text-xs text-slate-500">{item.info.description}</p>}
                 </div>
-                {item.adoptable ? (
+                {item.linkable ? (
+                  <Badge tone="info">{t("adopt.link.badge")}</Badge>
+                ) : item.adoptable ? (
                   <Button variant="outline" onClick={() => adopt(item)} disabled={busy !== null} loading={busy === item.uuid}>
                     {t("adopt.action")}
                   </Button>
@@ -190,7 +221,17 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
                   </Badge>
                 )}
               </div>
-              {!item.adoptable && (
+              <AdoptLinkChoice
+                linkable={item.linkable}
+                matches={item.matches}
+                similar={item.similar}
+                canAdoptNew={item.adoptable}
+                busy={busy === item.uuid}
+                anyBusy={busy !== null}
+                onLink={(objectId) => adopt(item, objectId)}
+                onAdoptNew={() => adopt(item)}
+              />
+              {!item.adoptable && !item.linkable && (
                 <p className="mt-2 text-xs text-slate-500">{item.reasons.map((code) => reasonText(code, item.reason_details)).join(" · ")}</p>
               )}
               {item.kept.length > 0 && (

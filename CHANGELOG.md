@@ -31,6 +31,23 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.28.0] "Sparrowhawk" — 2026-10-21
+
+- **Übernehmen: mit vorhandenem zentralem Objekt verknüpfen:** Dieselbe von Hand angelegte Regel, derselbe Alias oder dieselbe NAT-Regel auf mehreren
+  Firewalls (z. B. beide HA-Knoten) wird nicht mehr als zweites Objekt übernommen. Im Dialog „Von Firewall übernehmen“ erscheint bei exakter
+  Übereinstimmung (nach Einsetzen der Host-Variablen, bei Aliasen inkl. Verweisen) die Aktion **Verknüpfen**: die Firewall wird weiteres Ziel des
+  vorhandenen Objekts, die Vorschau zeigt „keine Änderung“, und der nächste Rollout aktualisiert alle Firewalls an einem Objekt. Auf der Firewall wird
+  dabei nichts geändert. Unterscheidet sich ein gleichnamiges Objekt, zeigt der Dialog die abweichenden Felder; verknüpft wird dann nie. „Alle
+  übernehmbaren“ fragt vorher nach („3 verknüpfen, 2 neu übernehmen, 1 nicht übernehmbar“). Aliase, die bisher wegen „Name existiert“ abgelehnt wurden,
+  lassen sich so übernehmen.
+  Wartet das vorhandene Objekt gerade auf eine Bestätigung, wird nicht verknüpft; „Alle übernehmbaren“ lässt den Eintrag dann aus. Verknüpfen
+  macht ein gerade geöffnetes Bearbeiten-Formular des Objekts ungültig, damit die neue Firewall nicht versehentlich wieder aus den Zielen fällt.
+
+- **Tooltips überarbeitet:** Der deaktivierte Button „Oberfläche öffnen“ nennt jetzt den Grund im Klartext samt nächstem Schritt (statt nur einer
+  Variablen wie `GUI_GATEWAY_TOKEN`); dasselbe gilt für ausgeschaltete Funktion, deaktivierte Firewall, Nicht-HTTPS-Adresse und ausgeschaltete
+  Zertifikatsprüfung. Texte durchgehend in Du-Form, kürzere VPN-Einleitungen, verständlichere Hinweise bei gesperrten Buttons (Zertifikate, Benutzer,
+  Dienste). Icon-Buttons (Bearbeiten, Löschen, Schließen, Reihenfolge) zeigen beim Darüberfahren ihren Namen.
+
 ## [1.27.2] "Buzzard" — 2026-10-21
 
 - **`opnexus update` prüft den Proxy vor dem Wechsel:** Nach dem Ziehen der Images validiert das Werkzeug die Caddy-Konfiguration des neuen

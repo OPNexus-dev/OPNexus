@@ -79,7 +79,7 @@ export function UpdateBanner() {
             )}
           </p>
         </div>
-        <button onClick={dismiss} aria-label={t("updateBanner.dismiss")} className="shrink-0 rounded p-0.5 hover:bg-black/5">
+        <button onClick={dismiss} aria-label={t("updateBanner.dismiss")} title={t("updateBanner.dismiss")} className="shrink-0 rounded p-0.5 hover:bg-black/5">
           <X size={16} />
         </button>
       </div>

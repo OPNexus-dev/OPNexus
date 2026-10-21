@@ -80,7 +80,7 @@ export function HostVariables({ host }: { host: Host }) {
                   <Input value={values[name] ?? ""} onChange={(e) => setValues({ ...values, [name]: e.target.value })} placeholder={info?.missing ? t("variables.required") : ""} aria-label={name} />
                   {info && info.used_by.length > 0 && <p className="mt-1 text-xs text-slate-500">{t("variables.usedBy", { list: info.used_by.map((u) => u.label).slice(0, 4).join(", ") })}</p>}
                 </div>
-                <Button type="button" variant="ghost" onClick={() => { setValues({ ...values, [name]: "" }); setAdded(added.filter((n) => n !== name)); }} aria-label={t("rules.delete")}>
+                <Button type="button" variant="ghost" onClick={() => { setValues({ ...values, [name]: "" }); setAdded(added.filter((n) => n !== name)); }} aria-label={t("rules.delete")} title={t("rules.delete")}>
                   <Trash2 size={14} />
                 </Button>
               </div>

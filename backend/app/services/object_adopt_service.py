@@ -10,6 +10,10 @@ the deployment's last_payload. So the preview directly afterwards says "unchange
 updates the same object via setItem/setRule (no duplicate), and the normal preview → push →
 confirm/auto-revert flow applies from the first change on.
 
+An object that already exists centrally for another firewall is LINKED instead of adopted a second time
+(adopt_link_service.py: exact match after resolving the host's variables, never automatic for a mere
+resemblance).
+
 Only objects OPNexus can describe without distortion are adopted. Anything the model cannot express
 is refused with machine-readable reasons (the UI translates them) instead of being imported in a way
 that would silently change its meaning on the next edit. Fields OPNexus does not manage (log flag of a
@@ -72,6 +76,7 @@ from app.services import alias_deploy_service, alias_policy_service
 from app.services import one_to_one_deploy_service, one_to_one_policy_service
 from app.services import opnsense_client, outbound_nat_deploy_service, outbound_nat_policy_service
 from app.services import port_forward_deploy_service, port_forward_policy_service
+from app.services import adopt_link_service
 from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, on
 from app.services.nat_live_service import split_rows
 from app.services.outbound_nat_mode import host_mode
@@ -85,6 +90,7 @@ ALIAS_CONTENT_MAX = 8000  # schemas/alias.py AliasCreate.content
 # OPNsense's own aliases that are not user objects (Firewall/Alias.php: bogons & co. are `external`
 # rows created by the system, __<if>_network are `internal`).
 SYSTEM_ALIAS_NAMES = frozenset({"bogons", "bogonsv6", "sshlockout", "virusprot"})
+LINK_TOLERATED = frozenset({"name_exists", "references_unmanaged_alias"})
 
 
 @dataclass
@@ -93,6 +99,19 @@ class Entry:
     reasons: list[str] = field(default_factory=list)
     details: dict[str, str] = field(default_factory=dict)
     bulk: bool = False  # not adoptable alone yet, but adoptable in the same run (its references come first)
+    matches: list = field(default_factory=list)  # central objects equal to the live object (link candidates)
+    similar: list = field(default_factory=list)  # same name/description but different content (hint only)
+
+    @property
+    def linkable(self) -> bool:
+        """An exact central twin exists and nothing but "the name is taken" / "its references are not
+        managed here yet" speaks against it (both are moot when the twin is linked, its content is equal)."""
+        return any(not m.busy for m in self.matches) and set(self.reasons) <= LINK_TOLERATED
+
+    @property
+    def busy_twin(self) -> bool:
+        """The one exact twin waits for a confirmation: \"adopt all\" leaves this entry alone (neither link nor duplicate)."""
+        return len(self.matches) == 1 and self.matches[0].busy
 
     @property
     def uuid(self) -> str:
@@ -117,6 +136,14 @@ class Kind:
     context: Callable[[AsyncSession, list[dict]], Awaitable[dict]] | None = None
     refs: Callable[[dict], set[str]] | None = None
     name: Callable[[dict], str] | None = None
+    identity: str = "description"  # attribute that names the object (the alias name for aliases)
+
+    @property
+    def link_spec(self) -> adopt_link_service.LinkSpec:
+        return adopt_link_service.LinkSpec(
+            model=self.model, deployment=self.deployment, fk=self.fk, uuid_attr=self.uuid_attr,
+            identity=self.identity, payload=self.payload, revision=self.revision,
+        )
 
 
 # ── shared helpers ───────────────────────────────────────────────────────
@@ -388,7 +415,7 @@ KINDS: dict[str, Kind] = {
         uuid_attr="opnsense_alias_uuid", fetch=_fetch_aliases, check=_alias_check,
         title=lambda row: clean(row.get("name")), info=_alias_info, build=_alias_build,
         payload=alias_deploy_service._build_payload, revision=alias_policy_service.revision,
-        context=_alias_context, refs=_alias_refs, name=lambda row: clean(row.get("name")),
+        context=_alias_context, refs=_alias_refs, name=lambda row: clean(row.get("name")), identity="name",
     ),
     "port_forward": Kind(
         key="port_forward", model=PortForwardRule, deployment=PortForwardDeployment, fk="port_forward_id",
@@ -462,12 +489,16 @@ async def _plan(db: AsyncSession, kind: Kind, host: OpnsenseHost) -> tuple[list[
     rows = await kind.fetch(host)
     managed = await _managed_uuids(db, kind, host)
     ctx = await kind.context(db, rows) if kind.context else {}
+    central = await adopt_link_service.load_central(db, kind.link_spec)
     entries = []
     for row in rows:
         if clean(row.get("uuid")) in managed:
             continue
         reasons, details = kind.check(row, ctx)
-        entries.append(Entry(row, list(reasons), dict(details)))
+        entry = Entry(row, list(reasons), dict(details))
+        if reasons != ["system"]:
+            entry.matches, entry.similar = adopt_link_service.find(central, kind.link_spec, host, kind.build(row))
+        entries.append(entry)
     if kind.refs:
         order = _resolve_references(kind, entries, rows, managed, ctx)
     else:
@@ -475,8 +506,31 @@ async def _plan(db: AsyncSession, kind: Kind, host: OpnsenseHost) -> tuple[list[
     return entries, order
 
 
-def _describe(kind: Kind, entry: Entry) -> dict:
+def _bulk_actions(entries: list[Entry], order: list[Entry], link_existing: bool) -> dict[str, tuple[str, Any]]:
+    """What "adopt all" does with each entry: ("link", central object) when exactly one central twin exists
+    (and no other entry of this run took it), ("new", None), or nothing. One function for the dialog's
+    summary and for the real run, so they cannot disagree. Several twins are never guessed between."""
+    actions: dict[str, tuple[str, Any]] = {}
+    taken: set = set()
+    if link_existing:
+        for entry in entries:
+            if entry.linkable and len(entry.matches) == 1 and entry.matches[0].obj.id not in taken:
+                actions[entry.uuid] = ("link", entry.matches[0].obj)
+                taken.add(entry.matches[0].obj.id)
+    for entry in order:
+        if link_existing and entry.busy_twin:
+            continue
+        actions.setdefault(entry.uuid, ("new", None))
+    return actions
+
+
+def _describe(kind: Kind, entry: Entry, action: str | None = None) -> dict:
+    spec = kind.link_spec
     return {
+        "matches": [adopt_link_service.describe(spec, m) for m in entry.matches],
+        "similar": [adopt_link_service.describe(spec, m) for m in entry.similar],
+        "linkable": entry.linkable,
+        "bulk_action": action,
         "uuid": entry.uuid,
         "title": kind.title(entry.row),
         "enabled": on(entry.row.get("enabled")) if "disabled" not in entry.row else not on(entry.row.get("disabled")),
@@ -491,8 +545,9 @@ def _describe(kind: Kind, entry: Entry) -> dict:
 
 async def list_unmanaged(db: AsyncSession, kind_key: str, host: OpnsenseHost) -> list[dict]:
     kind = KINDS[kind_key]
-    entries, _ = await _plan(db, kind, host)
-    return [_describe(kind, e) for e in entries]
+    entries, order = await _plan(db, kind, host)
+    actions = _bulk_actions(entries, order, True)
+    return [_describe(kind, e, actions.get(e.uuid, ("skip", None))[0]) for e in entries]
 
 
 def _create(db: AsyncSession, kind: Kind, host: OpnsenseHost, entry: Entry):
@@ -511,8 +566,17 @@ async def _record(db: AsyncSession, kind: Kind, host: OpnsenseHost, obj, remote_
     await db.flush()
 
 
-async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid: str):
+async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid: str, link_to=None):
+    """Takes over one object as a NEW central object, or - with `link_to` - links it to that existing
+    central object (adopt_link_service). Either way the live state is read fresh here."""
     kind = KINDS[kind_key]
+    if link_to is not None:
+        existing = await db.scalar(select(kind.deployment).where(
+            kind.deployment.host_id == host.id, getattr(kind.deployment, kind.uuid_attr) == remote_uuid))
+        if existing is not None:
+            if getattr(existing, kind.fk) == link_to:
+                return await db.get(kind.model, link_to)  # second click: already linked, nothing to do
+            raise NotAdoptable(["already_managed"])
     entries, _ = await _plan(db, kind, host)
     entry = next((e for e in entries if e.uuid == remote_uuid), None)
     if entry is None:
@@ -520,6 +584,11 @@ async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid
         if remote_uuid in await _managed_uuids(db, kind, host):
             raise NotAdoptable(["already_managed"])
         raise NotFoundOnHost(remote_uuid)
+    if link_to is not None:
+        if not set(entry.reasons) <= LINK_TOLERATED:
+            raise NotAdoptable(entry.reasons, entry.details)
+        obj = await adopt_link_service.link(db, kind.link_spec, host, link_to, remote_uuid, kind.build(entry.row))
+        return obj
     if entry.reasons:
         raise NotAdoptable(entry.reasons, entry.details)
     obj = _create(db, kind, host, entry)
@@ -527,19 +596,32 @@ async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid
     return obj
 
 
-async def adopt_all(db: AsyncSession, kind_key: str, host: OpnsenseHost) -> dict:
+async def adopt_all(db: AsyncSession, kind_key: str, host: OpnsenseHost, link_existing: bool = False) -> dict:
     """Adopts everything adoptable in one transaction (the caller commits), nested aliases in
-    dependency order. System objects are not reported; everything else that stays behind is, with reasons."""
+    dependency order. With `link_existing`, entries with exactly one exact central twin are linked to it
+    instead (see _bulk_actions). System objects are not reported; everything else that stays behind is,
+    with reasons."""
     kind = KINDS[kind_key]
     entries, order = await _plan(db, kind, host)
+    actions = _bulk_actions(entries, order, link_existing)
     adopted = []
+    done: set[str] = set()
+    for entry in entries:  # linked first: their names are central already, so nested aliases can refer to them
+        action, target = actions.get(entry.uuid, ("skip", None))
+        if action == "link":
+            obj = await adopt_link_service.link(db, kind.link_spec, host, target.id, entry.uuid, kind.build(entry.row))
+            adopted.append({"uuid": entry.uuid, "title": kind.title(entry.row), "id": obj.id, "linked": True})
+            done.add(entry.uuid)
     for entry in order:
+        if actions.get(entry.uuid, ("skip", None))[0] != "new":
+            continue
         obj = _create(db, kind, host, entry)
         await _record(db, kind, host, obj, entry.uuid)
-        adopted.append({"uuid": entry.uuid, "title": kind.title(entry.row), "id": obj.id})
-    done = {e.uuid for e in order}
+        adopted.append({"uuid": entry.uuid, "title": kind.title(entry.row), "id": obj.id, "linked": False})
+        done.add(entry.uuid)
     skipped = [
-        {"uuid": e.uuid, "title": kind.title(e.row), "reasons": e.reasons, "reason_details": e.details}
+        {"uuid": e.uuid, "title": kind.title(e.row),
+         "reasons": e.reasons + (["twin_busy"] if link_existing and e.busy_twin else []), "reason_details": e.details}
         for e in entries if e.uuid not in done and e.reasons != ["system"]
     ]
     return {"adopted": adopted, "skipped": skipped}

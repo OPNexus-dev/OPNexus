@@ -638,8 +638,8 @@ function RuleTable({
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                   <span className="cursor-grab text-slate-400" title={t("ph.dragTitle")} aria-hidden="true"><GripVertical size={16} /></span>
-                  <Button variant="ghost" disabled={i === 0} onClick={() => onMove(rule, "up")} aria-label={t("ph.moveUp")}><ArrowUp size={14} /></Button>
-                  <Button variant="ghost" disabled={i === rules.length - 1} onClick={() => onMove(rule, "down")} aria-label={t("ph.moveDown")}><ArrowDown size={14} /></Button>
+                  <Button variant="ghost" disabled={i === 0} onClick={() => onMove(rule, "up")} aria-label={t("ph.moveUp")} title={t("ph.moveUp")}><ArrowUp size={14} /></Button>
+                  <Button variant="ghost" disabled={i === rules.length - 1} onClick={() => onMove(rule, "down")} aria-label={t("ph.moveDown")} title={t("ph.moveDown")}><ArrowDown size={14} /></Button>
                   <Button variant="outline" onClick={() => onEdit(rule)} disabled={rule.deployments.some((d) => ["pending", "revert_failed"].includes(d.status))}><Pencil size={14} /></Button>
                   <Button onClick={() => onReview(rule, "preview")}><Rocket size={14} />{t("rules.reviewPush")}</Button>
                   <Button variant="ghost" onClick={() => onReview(rule, "history")} title={t("rules.history")}><History size={14} /></Button>

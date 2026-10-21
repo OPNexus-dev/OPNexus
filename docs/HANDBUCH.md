@@ -596,6 +596,40 @@ OPNexus verweist dann darauf und ändert den Modus nicht.
 Einstellungen, die OPNexus nicht verwaltet (Protokollierung und Pool-Optionen beim Port Forward, Tags, Kategorien, statischer
 NAT-Port), werden nie überschrieben und im Dialog als „Bleibt auf der Firewall unverändert“ angezeigt.
 
+#### Gleiches Objekt auf mehreren Firewalls: verknüpfen statt doppelt übernehmen
+
+Gibt es dieselbe Regel, denselben Alias oder dieselbe NAT-Regel auf mehreren Firewalls (typisch: beide Knoten eines
+HA-Clusters, mehrere Standorte mit gleicher Vorgabe), übernimmst du sie **einmal** und **verknüpfst** sie auf den anderen
+Firewalls mit dem zentralen Objekt. Das gilt für Regeln, Aliase, Port Forward, 1:1-NAT und Outbound-NAT.
+
+1. Auf der ersten Firewall normal **übernehmen**.
+2. Im Dialog die zweite Firewall wählen. Bei jedem Eintrag, der einem zentralen Objekt **exakt** entspricht, steht
+   „Gibt es schon zentral“ und die Aktion **Verknüpfen** (daneben **Als eigenes Objekt übernehmen**). Verknüpfen trägt die
+   Firewall als weiteres Ziel in das Objekt ein und merkt sich die UUID dort. Auf der Firewall wird nichts geändert.
+3. Die Vorschau zeigt danach für diese Firewall „keine Änderung“. Eine spätere Änderung am Objekt rollst du wie gewohnt für
+   alle Ziele gemeinsam aus; es entsteht kein Duplikat.
+
+**Was „exakt“ heißt:** Alle von OPNexus verwalteten Felder sind gleich, nachdem die `{{VARIABLEN}}` des zentralen Objekts mit
+den Werten **dieser** Firewall ersetzt wurden (ein Alias `{{LAN_NET}}` passt also zu `192.168.2.0/24`, wenn das die Variable
+dieser Firewall ist). Bei Aliasen müssen Name, Typ, Inhalt einschließlich der Verweise auf andere Aliase, Beschreibung und
+Aktiv-Status stimmen. Fehlt der Firewall ein Variablenwert, passt das Objekt nicht, der Dialog nennt die Variable.
+
+**Abweichungen:** Gibt es ein Objekt mit gleichem Namen (Alias) bzw. gleicher Beschreibung (Regeln, NAT), das sich im Inhalt
+unterscheidet, zeigt der Dialog „Ähnlich“ mit den abweichenden Feldern (zentral gegenüber Firewall). Verknüpft wird dann **nie**,
+auch nicht automatisch. Gleiche entweder die Firewall oder das zentrale Objekt an, oder übernimm das Objekt getrennt (bei Aliasen
+geht das nur nach einer Umbenennung, der Name ist zentral eindeutig).
+
+**Alle übernehmbaren:** Der Dialog zeigt vorher, was passiert („3 verknüpfen, 2 neu übernehmen, 1 nicht übernehmbar“), und du
+bestätigst. Verknüpft wird nur, wenn genau **ein** zentrales Objekt exakt passt; gibt es mehrere identische (Altlast aus früheren
+Einzelübernahmen), entscheidest du bei dem Eintrag selbst, und „Alle“ übernimmt ihn als neues Objekt. Ein zentrales Objekt wird in
+einem Lauf höchstens einmal verknüpft.
+
+**Sicherheit:** Die Firewall wird beim Verknüpfen frisch gelesen und noch einmal exakt verglichen; hat sich zwischen Anzeige und Klick
+etwas geändert, wird nichts verknüpft und die Meldung nennt die Felder. Ein zweiter Klick ändert nichts. Die Aktion steht im
+Audit-Log und in den Revisionen des Objekts („Mit <Firewall> verknüpft“). Rollen wie beim Übernehmen: Operatoren dürfen, Nur-Lese-Benutzer
+nicht. Hat das zentrale Objekt eine offene Bestätigung oder einen offenen Rollback, wird erst nach deren Klärung verknüpft.
+„Alle übernehmbaren“ lässt solche Einträge dann aus (Hinweis im Ergebnis). **Wichtig:** Ein verknüpftes Objekt wird wie jedes verwaltete Objekt behandelt: Wird das zentrale Objekt gelöscht oder die Firewall aus dessen Zielen entfernt, löscht der nächste Rollout das Objekt auch auf dieser Firewall.
+
 ---
 
 ## Gerätegruppen und hierarchische Policies

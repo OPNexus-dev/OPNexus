@@ -77,7 +77,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               <p className="flex-1">{item.message}</p>
               <button
                 onClick={() => dismiss(item.id)}
-                aria-label={t("common.close")}
+                aria-label={t("common.close")} title={t("common.close")}
                 className="shrink-0 opacity-70 hover:opacity-100"
               >
                 <X size={16} />

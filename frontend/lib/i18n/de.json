@@ -74,7 +74,7 @@
         "rolloutProblems": "Rollout angehalten oder nicht automatisch gestartet"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
-      "pollHint": "Mindestens 60s, um die Firewalls nicht unnötig zu belasten.",
+      "pollHint": "Mindestens 60 Sekunden, um die Firewalls nicht unnötig zu belasten.",
       "monitoring": "Schwellen und Entprellung",
       "monitoringHint": "Alarme für Gateways, Ressourcen und Dienste stützen sich auf die Messungen, die OPNexus jede Minute aufzeichnet. Ein Alarm entsteht erst, wenn die letzten Messungen alle schlecht sind, und endet erst, wenn die letzten Messungen alle wieder gut sind – Einzelspitzen und flackernde Verbindungen lösen keine Meldungen aus. 0 schaltet eine einzelne Schwelle ab.",
       "limit": {
@@ -524,6 +524,55 @@
     "all": "Alle übernehmbaren übernehmen ({count})",
     "adopted": "„{name}“ übernommen.",
     "allDone": "{count} übernommen, {skipped} übersprungen.",
+    "linked": "„{name}“ mit vorhandenem Objekt verknüpft.",
+    "allDoneLinked": "{count} übernommen (davon {linked} verknüpft), {skipped} übersprungen.",
+    "confirm": {
+      "title": "Alle übernehmbaren übernehmen",
+      "summary": "{link} verknüpfen, {created} neu übernehmen, {left} nicht übernehmbar.",
+      "note": "Verknüpft wird nur, was exakt einem vorhandenen zentralen Objekt entspricht. Auf der Firewall wird nichts geändert.",
+      "go": "Bestätigen und übernehmen"
+    },
+    "link": {
+      "badge": "Gibt es schon zentral",
+      "found": "Entspricht dem vorhandenen Objekt „{name}“ (Firewalls: {hosts}). Verknüpfen trägt diese Firewall dort als weiteres Ziel ein, statt ein zweites Objekt anzulegen.",
+      "choose": "Verknüpfen mit",
+      "action": "Verknüpfen",
+      "linkTip": "Trägt diese Firewall als weiteres Ziel des vorhandenen Objekts ein. Auf der Firewall wird nichts geändert; spätere Änderungen rollst du für alle Firewalls gemeinsam aus.",
+      "adoptNew": "Als eigenes Objekt übernehmen",
+      "newTip": "Legt ein zweites, unabhängiges Objekt an. Nur sinnvoll, wenn diese Firewall dauerhaft eigene Werte haben soll.",
+      "newBlockedTip": "Ein Objekt mit diesem Namen gibt es schon, deshalb geht nur Verknüpfen. Willst du es getrennt führen, benenne es zuerst auf der Firewall um.",
+      "similar": "Ähnlich: „{name}“ (Firewalls: {hosts}) unterscheidet sich und wird deshalb nicht verknüpft.",
+      "similarNext": "Gleiche das Objekt auf der Firewall oder das zentrale Objekt an, dann lässt es sich verknüpfen. Oder übernimm es getrennt.",
+      "diffValues": "zentral „{central}“, auf der Firewall „{live}“",
+      "variableMissing": "Für diese Firewall fehlt der Wert der Variable {names}. Trage ihn bei den Host-Variablen ein.",
+      "yes": "Ja",
+      "no": "Nein",
+      "fields": {
+        "name": "Name",
+        "type": "Typ",
+        "content": "Inhalt",
+        "description": "Beschreibung",
+        "enabled": "Aktiv",
+        "interface": "Schnittstelle",
+        "direction": "Richtung",
+        "ipprotocol": "IP-Version",
+        "protocol": "Protokoll",
+        "action": "Aktion",
+        "source_net": "Quelle",
+        "source_port": "Quellport",
+        "destination_net": "Ziel",
+        "destination_port": "Zielport",
+        "log": "Protokollieren",
+        "target": "Ziel-IP",
+        "local_port": "Ziel-Port",
+        "target_port": "Ziel-Port (NAT)",
+        "natreflection": "NAT-Reflection",
+        "external": "Externe Adresse",
+        "source_not": "Quelle invertiert",
+        "destination_not": "Ziel invertiert",
+        "variables": "Variablen"
+      }
+    },
     "failed": "Übernahme fehlgeschlagen",
     "loadFailed": "Objekte konnten nicht geladen werden.",
     "notPossible": "Nicht übernehmbar",
@@ -550,6 +599,7 @@
       "unsupported_type": "Typ „{detail}“ unterstützt OPNexus nicht",
       "name_invalid": "Der Name enthält Zeichen, die OPNexus nicht zulässt (nur Buchstaben, Ziffern, _)",
       "name_exists": "In OPNexus gibt es schon einen Alias mit diesem Namen",
+      "twin_busy": "Das gleiche zentrale Objekt wartet noch auf eine Bestätigung. Danach erneut versuchen",
       "content_too_large": "Inhalt zu groß (über 8000 Zeichen)",
       "proto_set": "Hat eine IPv4/IPv6-Einschränkung, die OPNexus nicht abbildet",
       "value_too_long": "Ein Wert ist länger, als OPNexus speichert",
@@ -740,6 +790,10 @@
     "RULE_NOT_ADOPTABLE": "Diese Regel kann nicht übernommen werden ({reasons})",
     "OBJECT_NOT_ADOPTABLE": "Dieses Objekt kann nicht übernommen werden ({reasons})",
     "ADOPT_OBJECT_NOT_FOUND": "Das Objekt wurde auf der Firewall nicht gefunden. Liste neu laden.",
+    "ADOPT_LINK_TARGET_NOT_FOUND": "Das zentrale Objekt gibt es nicht mehr. Liste neu laden.",
+    "ADOPT_LINK_TARGET_CHANGED": "Das zentrale Objekt und die Firewall unterscheiden sich inzwischen ({fields}). Liste neu laden und prüfen.",
+    "ADOPT_LINK_HOST_HAS_OBJECT": "Diese Firewall verwaltet dieses Objekt schon unter einer anderen UUID. Liste neu laden.",
+    "ADOPT_LINK_BUSY": "Das Objekt hat eine offene Bestätigung oder einen offenen Rollback. Erst bestätigen oder klären, dann verknüpfen.",
     "OUTBOUND_MODE_BLOCKS_ADOPT": "{host}: Im Outbound-NAT-Modus „{mode}“ zeigt OPNsense keine manuellen Regeln an. Modus in OPNsense selbst auf Hybrid/Manuell umstellen, dann lassen sie sich übernehmen. OPNexus ändert diesen Modus nicht.",
     "NETWORK_ACK_REQUIRED": "Diese Änderung kann die Verbindung zur Firewall trennen und muss ausdrücklich bestätigt werden ({reasons})",
     "NETWORK_APPLY_UNCERTAIN": "Die Änderung wurde geschrieben, das Anwenden auf „{host}“ ist aber fehlgeschlagen oder unklar. Stand auf der Firewall prüfen; Backup: {backup_id}",
@@ -810,7 +864,7 @@
     "disabled": "Ziel-Hosts deaktiviert",
     "draft": "Änderungen ausstehend",
     "synced": "Ausgerollt",
-    "tooltip": "Stand der von OPNexus gespeicherten Deployments; kein Live-Abgleich"
+    "tooltip": "Zeigt, was OPNexus zuletzt ausgerollt hat. Die Firewall wird dafür nicht live abgefragt."
   },
   "certStatus": {
     "expired": "Abgelaufen",
@@ -885,7 +939,7 @@
     "status": "Status",
     "running": "läuft",
     "stopped": "gestoppt",
-    "locked": "Von OPNsense gesperrt",
+    "locked": "Dieser Dienst ist in OPNsense gesperrt und lässt sich hier nicht steuern.",
     "startTitle": "Starten",
     "stopTitle": "Stoppen",
     "restartTitle": "Neustarten"
@@ -1431,9 +1485,9 @@
     "reasserting": "Reassert läuft…",
     "reassert": "Reihenfolge neu herstellen",
     "preRules": "Pre-Regeln",
-    "preHint": "Ausgewertet, bevor die Post-Regeln greifen. Über mehrere Ebenen: root-most Gruppe zuerst.",
+    "preHint": "Wird vor den Post-Regeln ausgewertet. Bei mehreren Ebenen zuerst die oberste Gruppe.",
     "postRules": "Post-Regeln",
-    "postHint": "Ausgewertet nach den Pre-Regeln. Über mehrere Ebenen: leaf-most (spezifischste) Gruppe zuerst.",
+    "postHint": "Wird nach den Pre-Regeln ausgewertet. Bei mehreren Ebenen zuerst die unterste (spezifischste) Gruppe.",
     "editGroup": "Gruppe bearbeiten",
     "parentGroup": "Übergeordnete Gruppe (optional)",
     "rootGroup": "(keine — Wurzelgruppe)",
@@ -1503,7 +1557,7 @@
     "registration": "Registrierung: {state}",
     "registrationOk": "erfolgreich",
     "registrationFailed": "fehlgeschlagen",
-    "pushFirst": "Zuerst pushen",
+    "pushFirst": "Noch nicht auf der Firewall angelegt: Übertrage es zuerst mit „Push“.",
     "register": "Registrieren",
     "requests": "ACME-Zertifikatsanfragen",
     "newRequest": "Neue Anfrage",
@@ -1540,7 +1594,7 @@
     "deleted": "Tunnel „{name}“ gelöscht",
     "title": "IPsec-VPN (Site-to-Site)",
     "new": "Neuer Tunnel",
-    "intro": "Site-to-Site-Tunnel mit Pre-Shared-Key-Authentifizierung, zentral gepflegt und auf Ziel-Hosts oder Gerätegruppen ausgerollt — analog zu den Firewall-Regeln, aber ohne deren automatisches Rollback-Sicherheitsnetz: ein fehlgeschlagener Dienst-Reload kann genau die Verbindung kappen, über die OPNexus den Host erreicht. v1 unterstützt nur PSK-Auth, ein Phase-2 (Child) pro Tunnel und einfache 1:1-Netz-zu-Netz-Tunnel — kein OpenVPN/WireGuard, keine Zertifikate/EAP, keine Pools.",
+    "intro": "Site-to-Site-Tunnel mit Pre-Shared Key, zentral gepflegt und auf Firewalls oder Gerätegruppen ausgerollt. Anders als bei Firewall-Regeln gibt es hier kein automatisches Rollback: Ein fehlgeschlagener Dienst-Reload kann die Verbindung kappen, über die OPNexus die Firewall erreicht. Unterstützt werden ein Phase-2 pro Tunnel und einfache Netz-zu-Netz-Tunnel (keine Zertifikate/EAP, keine Pools).",
     "showAll": "Alle Tunnel anzeigen",
     "none": "Noch keine IPsec-Tunnel angelegt.",
     "createFirst": "Ersten Tunnel anlegen",
@@ -1582,7 +1636,7 @@
     "deleted": "Instanz „{name}“ gelöscht",
     "title": "OpenVPN-Instanzen",
     "new": "Neue Instanz",
-    "intro": "OpenVPN-Instanzen (Server- oder Client-Rolle), zentral gepflegt und auf Ziel-Hosts oder Gerätegruppen ausgerollt — analog zum IPsec-Feature, aber ohne dessen automatisches Rollback-Sicherheitsnetz: ein fehlgeschlagener Dienst-Reload kann genau die Verbindung kappen, über die OPNexus den Host erreicht. v1 benötigt ein bereits auf jedem Ziel-Host vorhandenes Zertifikat/CA — auswählbar per Picker aus dem jeweiligen Host-Trust-Store, da eine Zertifikat-UUID host-lokal ist —, unterstützt optionales TLS-Hardening (tls-auth/tls-crypt) über ein Static-Key, aber keine zertifikatsfreie „Shared-Key“-Instanz (im modernen OPNsense-Modell nicht vorgesehen).",
+    "intro": "OpenVPN-Instanzen (Server oder Client), zentral gepflegt und auf Firewalls oder Gerätegruppen ausgerollt. Wie bei IPsec gibt es kein automatisches Rollback: Ein fehlgeschlagener Dienst-Reload kann die Verbindung kappen, über die OPNexus die Firewall erreicht. Auf jeder Ziel-Firewall muss bereits ein Zertifikat samt CA vorhanden sein (Auswahl aus deren Zertifikatsspeicher); optional gibt es TLS-Absicherung (tls-auth/tls-crypt) per Static Key, aber keine Instanzen mit „Shared Key“ ohne Zertifikat.",
     "showAll": "Alle Instanzen anzeigen",
     "none": "Noch keine OpenVPN-Instanzen angelegt.",
     "createFirst": "Erste Instanz anlegen",
@@ -1622,7 +1676,7 @@
     "created": "Tunnel „{name}“ angelegt",
     "deleteConfirm": "Diesen WireGuard-Tunnel wirklich löschen? Er wird auch von allen Ziel-Hosts entfernt (Peer, dann Server) und der WireGuard-Dienst neu geladen.",
     "title": "WireGuard-Tunnel",
-    "intro": "WireGuard-Interconnects (ein Server-Interface + genau ein Peer pro Tunnel), zentral gepflegt und auf Ziel-Hosts oder Gerätegruppen ausgerollt — analog zu IPsec/OpenVPN, ohne deren automatisches Rollback-Sicherheitsnetz: ein fehlgeschlagener Dienst-Reload kann genau die Verbindung kappen, über die OPNexus den Host erreicht. v1 verlangt Server-Privatschlüssel UND -Public-Key sowie den Peer-Public-Key manuell vom Betreiber (kein Schlüsselpaar-Generator), unterstützt optional WireGuards eigenen Pre-Shared-Key pro Peer, und bildet genau eine Server↔Peer-Verbindung ab (kein Multi-Peer-Hub).",
+    "intro": "WireGuard-Verbindungen (ein Server-Interface und genau ein Peer pro Tunnel), zentral gepflegt und auf Firewalls oder Gerätegruppen ausgerollt. Wie bei IPsec gibt es kein automatisches Rollback: Ein fehlgeschlagener Dienst-Reload kann die Verbindung kappen, über die OPNexus die Firewall erreicht. Die Schlüssel erzeugst und trägst du selbst ein; ein Pre-Shared Key pro Peer ist optional.",
     "none": "Noch keine WireGuard-Tunnel angelegt.",
     "noPrivateKey": "Kein Privatschlüssel hinterlegt",
     "pskMissing": "PSK aktiviert, aber nicht hinterlegt",
@@ -1717,7 +1771,7 @@
   },
   "overlay": {
     "title": "Management-Tunnel",
-    "intro": "Lässt OPNexus Firewalls verwalten, die keine öffentliche Adresse haben (hinter NAT, CGNAT, Mobilfunk). Jede Firewall wählt sich per WireGuard NACH AUSSEN bei einem Hub auf diesem Server ein; OPNexus erreicht ihre API dann durch den Tunnel. An der Firewall muss nichts aus dem Internet erreichbar sein. Braucht den Hub-Container (COMPOSE_PROFILES=overlay) und einen aus dem Internet erreichbaren UDP-Port.",
+    "intro": "Lässt OPNexus Firewalls verwalten, die keine öffentliche Adresse haben (hinter NAT, CGNAT, Mobilfunk). Jede Firewall wählt sich per WireGuard nach außen bei einem Hub auf diesem Server ein; OPNexus erreicht ihre API dann durch den Tunnel. An der Firewall muss nichts aus dem Internet erreichbar sein. Auf dem Server nötig: der Hub-Container (COMPOSE_PROFILES=overlay) und ein aus dem Internet erreichbarer UDP-Port.",
     "loadFailed": "Der Management-Tunnel konnte nicht geladen werden",
     "saved": "Gespeichert",
     "enable": "Management-Tunnel einschalten",
@@ -2013,7 +2067,7 @@
     "colCreated": "Angelegt",
     "colLastLogin": "Letzte Anmeldung",
     "you": "(du)",
-    "cannotDeleteSelf": "Der eigene Account kann nicht gelöscht werden",
+    "cannotDeleteSelf": "Du kannst dein eigenes Konto nicht löschen – das muss ein anderer Admin tun.",
     "created": "Benutzer angelegt",
     "updated": "Benutzer „{name}“ aktualisiert",
     "createFailed": "Benutzer konnte nicht angelegt werden",
@@ -2242,19 +2296,19 @@
       },
       "noUpdate": {
         "title": "Kein installierbares Update",
-        "text": "Die letzte Prüfung meldet kein stabiles Paketupdate."
+        "text": "Die letzte Prüfung meldet kein stabiles Paketupdate. Starte bei Bedarf eine neue Prüfung."
       },
       "noMajor": {
         "title": "Kein installierbares Major-Upgrade",
-        "text": "Die letzte Prüfung meldet kein verfügbares Major-Upgrade."
+        "text": "Die letzte Prüfung meldet kein verfügbares Major-Upgrade. Starte bei Bedarf eine neue Prüfung."
       },
       "pending": {
         "title": "Wartung noch offen",
-        "text": "Eine frühere Wartung muss nach der technischen Prüfung zuerst abgeschlossen werden."
+        "text": "Eine frühere Wartung muss zuerst abgeschlossen werden: Prüfe das Ergebnis und schließe sie auf der Host-Seite ab."
       },
       "change": {
         "title": "Änderung noch offen",
-        "text": "Ein Deployment oder Rollback im Cluster ist noch nicht abgeschlossen."
+        "text": "Ein Deployment oder Rollback im Cluster läuft noch. Warte, bis es abgeschlossen ist."
       },
       "locked": "Update gesperrt"
     },
@@ -2288,7 +2342,7 @@
     "intro": "Beim Öffnen wird automatisch auf allen geeigneten Hosts nach Updates gesucht. Major-Upgrades und HA-Rollenwechsel bleiben bewusste manuelle Schritte.",
     "checkAgain": "Erneut nach Updates suchen",
     "refreshView": "Anzeige aktualisieren",
-    "readOnlyNote": "Nur-Lese-Zugriff: Status, Paketänderungen und Protokolle sind sichtbar; Prüfungen und Updates sind gesperrt.",
+    "readOnlyNote": "Mit deiner Rolle (Nur-Lesen) kannst du Status, Paketänderungen und Protokolle ansehen, aber keine Prüfungen oder Updates starten.",
     "sumHosts": "Verwaltete Hosts",
     "sumStable": "Stabile Updates",
     "sumMajor": "Major-Upgrades",
@@ -2355,10 +2409,10 @@
     "tipCheckAll": "Fragt alle geeigneten Firewalls nach neuen Updates. Es wird nichts installiert.",
     "tipRefreshView": "Lädt den zuletzt bekannten Status aller Hosts neu, ohne die Firewalls zu fragen.",
     "tipCheck": "Fragt diese Firewall nach verfügbaren Updates. Es wird nichts installiert.",
-    "tipPrepare": "Zeigt zuerst eine Vorschau. Installiert wird erst nach Ihrer ausdrücklichen Bestätigung.",
+    "tipPrepare": "Zeigt zuerst eine Vorschau. Installiert wird erst, nachdem du ausdrücklich bestätigst.",
     "tipPrepareMajor": "Wechsel auf eine neue Hauptversion: dauert länger und ist riskanter. Zuerst folgt eine Vorschau.",
     "tipView": "Status dieses Hosts neu laden",
-    "tipFinish": "Prüfen Sie das Ergebnis auf der Firewall und dokumentieren Sie den Abschluss.",
+    "tipFinish": "Prüfe das Ergebnis auf der Firewall und dokumentiere den Abschluss.",
     "tipCancel": "Schließt einen hängenden Vorgang, ohne einen Erfolg zu bestätigen. Nur wenn der erwartete Zustand nie eingetreten ist.",
     "tipPackages": "Pakete, die beim nächsten Update geändert werden",
     "tipLog": "Zeigt das Protokoll der letzten Update-Aktion auf der Firewall",
@@ -2368,15 +2422,15 @@
     "tipRebootRequired": "Nach dem Update ist ein Neustart der Firewall nötig. Dabei ist sie kurz nicht erreichbar.",
     "tipCarpWarn": "CARP-Wartungsmodus",
     "majorWarnShort": "Wechsel auf eine neue Hauptversion",
-    "majorWarnTip": "Länger dauernd und riskanter als ein Paketupdate, ggf. mit Verhaltensänderungen an Diensten und Konfiguration. Halten Sie ein frisches Backup und Konsolenzugang bereit.",
+    "majorWarnTip": "Dauert länger und ist riskanter als ein Paketupdate; Dienste und Konfiguration können sich ändern. Halte ein frisches Backup und Konsolenzugang bereit.",
     "downtimeShort": "Der Host ist während der Installation zeitweise nicht erreichbar",
     "downtimeTip": "Verbindungen können abbrechen. Es gibt keinen automatischen Rollback.",
     "tipConfirmName": "Die Eingabe des Hostnamens verhindert, dass versehentlich der falsche Host aktualisiert wird.",
-    "confirmRunDisabledName": "Hostnamen exakt eingeben, um fortzufahren",
-    "confirmRunDisabledAck": "Bestätigen Sie zuerst das Wartungsfenster",
+    "confirmRunDisabledName": "Gib den Hostnamen exakt ein, um fortzufahren.",
+    "confirmRunDisabledAck": "Bestätige zuerst das Wartungsfenster (Häkchen im Dialog).",
     "cancelWarnShort": "Bestätigt keinen erfolgreichen Abschluss",
     "cancelWarnTip": "Der Vorgang wird nur geschlossen, damit Host oder Cluster nicht gesperrt bleiben. Nur nutzen, wenn der erwartete Zustand nachweislich nie eingetreten ist (z. B. hängender CARP-Rollenwechsel).",
-    "finishNoteTip": "Diese Bestätigung dokumentiert Ihre Prüfung und löst keine Firewall-Aktion aus.",
+    "finishNoteTip": "Diese Bestätigung dokumentiert deine Prüfung und löst keine Aktion auf der Firewall aus.",
     "reasonMinHint": "Mindestens 3 Zeichen",
     "validUntilShort": "Vorschau gültig bis {time}"
   },
@@ -2403,8 +2457,8 @@
     "skipVerifyHelp": "Die Verbindung bleibt verschlüsselt, aber OPNexus kann nicht erkennen, ob wirklich die Firewall antwortet. Nur für Tests.",
     "probeFailed": "Zertifikat konnte nicht abgerufen werden",
     "pinnedTip": "Zertifikat festgesetzt · SHA-256 {fp}…",
-    "systemTip": "Standard-Zertifikatsprüfung. Für selbstsignierte Firewalls das Zertifikat festsetzen.",
-    "insecureTip": "Zertifikat wird nicht geprüft. Im Host bearbeiten festsetzen."
+    "systemTip": "Das Zertifikat wird mit den Standard-Zertifizierungsstellen geprüft. Bei einem selbstsignierten Zertifikat: unter Bearbeiten festsetzen.",
+    "insecureTip": "Das Zertifikat wird nicht geprüft. Setze es unter Bearbeiten fest, um die Verbindung abzusichern."
   },
   "twofa": {
     "title": "Zwei-Faktor-Anmeldung",
@@ -2423,7 +2477,7 @@
     "enterCode": "6-stelliger Code",
     "activate": "Aktivieren",
     "codesTitle": "Wiederherstellungscodes – jetzt sichern",
-    "codesHelp": "Jeder Code funktioniert genau einmal, falls du dein Gerät verlierst. Sie werden nur jetzt angezeigt.",
+    "codesHelp": "Jeder Code funktioniert genau einmal, falls du dein Gerät verlierst. Die Codes werden nur jetzt angezeigt.",
     "copy": "Kopieren",
     "download": "Als Datei speichern",
     "savedAck": "Ich habe die Codes an einem sicheren Ort gespeichert.",
@@ -3288,7 +3342,7 @@
       "egressIface": "Ausgangs-Interface",
       "run": "Analysieren",
       "refresh": "Neu von der Firewall lesen",
-      "refreshHint": "Ohne dies werden die Regeln bis zu 60 Sekunden zwischengespeichert.",
+      "refreshHint": "Liest die Regeln frisch von der Firewall, statt bis zu 60 Sekunden alte Daten aus dem Zwischenspeicher zu nutzen.",
       "missing": "Quell- und Ziel-IP sind Pflicht.",
       "noHostsSelected": "Wähle mindestens einen Host.",
       "noGroupSelected": "Wähle eine Gerätegruppe."
@@ -3307,7 +3361,7 @@
       "decisive": "Entscheidende Regel",
       "decisiveIfKnown": "Wahrscheinlichste Regel, falls die offenen Punkte nicht greifen",
       "noRule": "Keine Regel trifft",
-      "noRuleHint": "Kein Regeleintrag passt; pf lässt das Paket dann durch.",
+      "noRuleHint": "Kein Regeleintrag passt; der Paketfilter (pf) lässt das Paket dann durch.",
       "unresolved": "Kein Interface bestimmbar",
       "unresolvedHint": "Die Quell-IP gehört zu keinem Interface-Netz. Wähle das Eingangs-Interface von Hand.",
       "undecided": "Nicht sicher bestimmbar",
@@ -3327,7 +3381,7 @@
       "ruleGateway": "Gateway",
       "ruleSchedule": "Zeitplan",
       "quick": "quick",
-      "quickHint": "quick: die erste Übereinstimmung entscheidet sofort.",
+      "quickHint": "quick: Diese Regel entscheidet sofort, weitere Regeln werden nicht mehr geprüft.",
       "pfNumber": "pf-Regel @{number}",
       "automatic": "automatisch",
       "legacy": "älteres Format",
@@ -3363,7 +3417,7 @@
     },
     "trace": {
       "title": "Warum?",
-      "hint": "Alle Regeln in der Reihenfolge, in der pf sie prüft. Der letzte Treffer gewinnt, außer eine quick-Regel greift vorher.",
+      "hint": "Alle Regeln in der Reihenfolge, in der der Paketfilter (pf) sie prüft. Der letzte Treffer gewinnt, außer eine quick-Regel greift vorher.",
       "leg": "Prüfprotokoll {direction} auf {interface}",
       "dirIn": "ein",
       "dirOut": "aus",
@@ -3434,7 +3488,7 @@
       "RATE_LIMIT": "Ratenbegrenzung",
       "RATE_LIMIT_hint": "Die Regel begrenzt Verbindungen; bei Überschreitung kann sie anders wirken.",
       "PF_DEFAULT_PASS": "Standard: durchlassen",
-      "PF_DEFAULT_PASS_hint": "Keine Regel trifft; pf lässt das Paket dann durch.",
+      "PF_DEFAULT_PASS_hint": "Keine Regel trifft; der Paketfilter (pf) lässt das Paket dann durch.",
       "QUICK_UNKNOWN": "quick unklar",
       "QUICK_UNKNOWN_hint": "Bei einer Regel ist unklar, ob sie sofort entscheidet.",
       "GROUPS_UNAVAILABLE": "Interface-Gruppen nicht lesbar",
@@ -3492,14 +3546,14 @@
   "guiAccess": {
     "title": "Firewall-Oberfläche über OPNexus",
     "intro": "Öffnet die Weboberfläche einer verwalteten Firewall in einem eigenen Browser-Tab über OPNexus, auch wenn die Firewall nur über den Management-Tunnel erreichbar ist. Nur Admins; die Anmeldung an der Firewall erfolgt wie gewohnt dort. Das Ticket gilt einmalig 30 Sekunden, jede Sitzung hat Zeitlimits und wird im Audit protokolliert. Einzelheiten: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“.",
-    "defaultOff": "Standardmäßig aus. Zum Einrichten braucht der Server das Compose-Profil „gui“, OPNEXUS_GUI_SITES und GUI_GATEWAY_TOKEN (siehe Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“).",
+    "defaultOff": "Standardmäßig aus. Eingerichtet wird es auf dem Server (Compose-Profil „gui“, OPNEXUS_GUI_SITES, GUI_GATEWAY_TOKEN) – siehe Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“.",
     "on": "An",
     "off": "Aus",
     "notReady": "Noch nicht eingerichtet. Es fehlt:",
     "reason": {
-      "cookie_secure": "HTTPS-Anmeldung (COOKIE_SECURE=true)",
-      "gateway_token": "GUI_GATEWAY_TOKEN (mindestens 32 Zeichen)",
-      "gui_sites": "OPNEXUS_GUI_SITES mit den Slot-Adressen (und Compose-Profil „gui“)"
+      "cookie_secure": "Sichere Anmeldung über HTTPS (Einstellung COOKIE_SECURE=true)",
+      "gateway_token": "Zugangs-Token für den GUI-Gateway-Dienst (GUI_GATEWAY_TOKEN, mindestens 32 Zeichen)",
+      "gui_sites": "Ports für die Firewall-Oberflächen (OPNEXUS_GUI_SITES) und das Compose-Profil „gui“"
     },
     "enabled": "Öffnen der Firewall-Oberfläche erlauben",
     "enabledTip": "Schaltet die Funktion für alle Admins ein. Beim Ausschalten werden offene Sitzungen beendet (binnen etwa 20 Sekunden).",
@@ -3508,10 +3562,10 @@
     "absolute": "Gesamtdauer (Minuten)",
     "absoluteTip": "Spätestens nach dieser Zeit endet jede Sitzung, auch bei Aktivität (5 bis 720).",
     "slotCount": "Gleichzeitige Plätze",
-    "slotCountTip": "Wie viele Firewall-Oberflächen gleichzeitig offen sein können (1 bis 4). Jeder Platz hat einen eigenen Port und damit einen eigenen Browser-Ursprung.",
+    "slotCountTip": "Wie viele Firewall-Oberflächen gleichzeitig offen sein können (1 bis 4). Jeder Platz hat einen eigenen Port, damit sich die offenen Firewalls im Browser nicht gegenseitig stören.",
     "orderError": "Das Inaktivitätslimit darf nicht größer sein als die Gesamtdauer.",
     "activeSlots": "Aktive Plätze (Ports)",
-    "activeSlotsTip": "Die konfigurierten Slot-Ports aus OPNEXUS_GUI_SITES, soweit sie bei der gewählten Anzahl genutzt werden. Welcher Platz gerade belegt ist, steht im Audit (Art „GUI-Zugriff“).",
+    "activeSlotsTip": "Die in OPNEXUS_GUI_SITES festgelegten Ports, soweit sie bei der gewählten Anzahl genutzt werden. Welcher Platz gerade belegt ist, steht im Audit (Art „GUI-Zugriff“).",
     "noSlots": "keine konfiguriert",
     "lastChange": "Zuletzt geändert von {who} am {when}",
     "saved": "Einstellungen für die Firewall-Oberfläche gespeichert"
@@ -3522,10 +3576,16 @@
     "opened": "Oberfläche wird in einem neuen Tab geöffnet (Platz {slot}). Falls nichts passiert, Pop-ups für diese Seite erlauben.",
     "failed": "Oberfläche konnte nicht geöffnet werden",
     "reason": {
-      "off": "Ausgeschaltet. Ein Admin kann die Funktion unter Einstellungen einschalten.",
-      "host_disabled": "Diese Firewall ist deaktiviert.",
-      "host_https": "Nur Firewalls mit https://-Adresse lassen sich öffnen.",
-      "host_tls": "Nur mit geprüftem oder gepinntem Zertifikat möglich (TLS-Prüfung ist bei dieser Firewall aus)."
+      "off": "Ausgeschaltet. Einschalten unter Einstellungen › Firewall-Oberfläche über OPNexus.",
+      "host_disabled": "Diese Firewall ist deaktiviert. Aktiviere sie unter Hosts › Bearbeiten (Häkchen „Aktiv“).",
+      "host_https": "Die Adresse dieser Firewall beginnt nicht mit https://. Ändere sie unter Hosts › Bearbeiten.",
+      "host_tls": "Die Zertifikatsprüfung ist für diese Firewall ausgeschaltet. Schalte sie unter Hosts › Bearbeiten ein oder setze das Zertifikat fest.",
+      "unavailable": {
+        "cookie_secure": "Nicht eingerichtet: Die sichere HTTPS-Anmeldung ist auf dem Server nicht aktiv (Einstellung COOKIE_SECURE). Das muss ein Server-Admin ändern – Anleitung: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“.",
+        "gateway_token": "Nicht eingerichtet: Es fehlt das Zugangs-Token für den GUI-Gateway-Dienst (GUI_GATEWAY_TOKEN, mindestens 32 Zeichen). Das muss ein Server-Admin eintragen – Anleitung: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“.",
+        "gui_sites": "Nicht eingerichtet: Es sind keine Ports für die Firewall-Oberflächen festgelegt (OPNEXUS_GUI_SITES, Compose-Profil „gui“). Das muss ein Server-Admin eintragen – Anleitung: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“."
+      },
+      "more": "Weitere fehlende Punkte: Einstellungen › Firewall-Oberfläche über OPNexus."
     }
   }
 }

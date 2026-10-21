@@ -18,6 +18,7 @@ from app.errors import ErrorCode, api_error
 from app.models.host import OpnsenseHost
 from app.schemas.adopt import AdoptAllRequest, AdoptAllResult, AdoptObjectRequest, UnmanagedObject
 from app.services import object_adopt_service
+from app.services.adopt_common import LINK_ERRORS, link_api_error
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets
 from app.services.policy_service import policy_lock
@@ -44,11 +45,13 @@ def add_adopt_routes(router: APIRouter, *, kind: str, model, load_options: Calla
         await policy_lock(db)
         host = await _host(db, payload.host_id)
         try:
-            created = await object_adopt_service.adopt(db, kind, host, payload.uuid)
+            created = await object_adopt_service.adopt(db, kind, host, payload.uuid, link_to=payload.link_to)
         except object_adopt_service.NotFoundOnHost as exc:
             raise api_error(404, ErrorCode.ADOPT_OBJECT_NOT_FOUND) from exc
         except object_adopt_service.NotAdoptable as exc:
             raise api_error(409, ErrorCode.OBJECT_NOT_ADOPTABLE, reasons=", ".join(exc.reasons)) from exc
+        except LINK_ERRORS as exc:
+            raise link_api_error(exc) from exc
         except OpnsenseAPIError as exc:
             raise api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name) from exc
         await db.commit()
@@ -65,7 +68,9 @@ def add_adopt_routes(router: APIRouter, *, kind: str, model, load_options: Calla
         await policy_lock(db)
         host = await _host(db, payload.host_id)
         try:
-            result = await object_adopt_service.adopt_all(db, kind, host)
+            result = await object_adopt_service.adopt_all(db, kind, host, link_existing=payload.link_existing)
+        except LINK_ERRORS as exc:
+            raise link_api_error(exc) from exc
         except OpnsenseAPIError as exc:
             raise api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name) from exc
         await db.commit()

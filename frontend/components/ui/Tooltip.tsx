@@ -104,7 +104,7 @@ export function Tooltip({
             id={id}
             role="tooltip"
             style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
-            className="pointer-events-none fixed z-[60] max-w-xs rounded-lg border border-[#3f3f46] bg-[#18181b] px-3 py-2 text-xs font-normal normal-case leading-snug tracking-normal text-[#f8fafc] shadow-lg"
+            className="pointer-events-none fixed z-[60] max-w-xs [overflow-wrap:anywhere] rounded-lg border border-[#3f3f46] bg-[#18181b] px-3 py-2 text-xs font-normal normal-case leading-snug tracking-normal text-[#f8fafc] shadow-lg"
           >
             {content}
           </span>,

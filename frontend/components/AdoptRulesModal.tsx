@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
+import { AdoptLinkChoice } from "@/components/AdoptLinkChoice";
 import { api, Host, UnmanagedRule } from "@/lib/api";
 import { useEffect, useState } from "react";
 
@@ -52,11 +53,11 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostId]);
 
-  async function adopt(rule: UnmanagedRule) {
+  async function adopt(rule: UnmanagedRule, linkTo?: string) {
     setBusy(rule.uuid);
     try {
-      await api.adoptRule(hostId, rule.uuid);
-      toast.show(t("rules.adopt.adopted", { name: rule.description }), "success");
+      await api.adoptRule(hostId, rule.uuid, linkTo);
+      toast.show(t(linkTo ? "adopt.linked" : "rules.adopt.adopted", { name: rule.description }), "success");
       onAdopted();
       load(hostId);
     } catch (e) {
@@ -101,7 +102,9 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
                     {rule.log ? ` · ${t("rules.logPackets")}` : ""}
                   </p>
                 </div>
-                {rule.adoptable ? (
+                {rule.linkable ? (
+                  <Badge tone="info">{t("adopt.link.badge")}</Badge>
+                ) : rule.adoptable ? (
                   <Button variant="outline" onClick={() => adopt(rule)} disabled={busy !== null} loading={busy === rule.uuid}>
                     {t("rules.adopt.action")}
                   </Button>
@@ -109,7 +112,17 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
                   <Badge tone="neutral">{t("rules.adopt.notPossible")}</Badge>
                 )}
               </div>
-              {!rule.adoptable && (
+              <AdoptLinkChoice
+                linkable={rule.linkable}
+                matches={rule.matches}
+                similar={rule.similar}
+                canAdoptNew={rule.adoptable}
+                busy={busy === rule.uuid}
+                anyBusy={busy !== null}
+                onLink={(objectId) => adopt(rule, objectId)}
+                onAdoptNew={() => adopt(rule)}
+              />
+              {!rule.adoptable && !rule.linkable && (
                 <p className="mt-2 text-xs text-slate-500">
                   {rule.reasons.map((code) => t(`rules.adopt.reasons.${code}`)).join(" · ")}
                 </p>

@@ -96,9 +96,9 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
                   </FieldGroup>
                 </div>
                 <div className="mb-0.5 flex gap-1">
-                  <Button variant="ghost" aria-label={t("rollouts.plan.moveUp")} disabled={i === 0} onClick={() => moveWave(i, -1)}><ArrowUp size={14} /></Button>
-                  <Button variant="ghost" aria-label={t("rollouts.plan.moveDown")} disabled={i === form.waves.length - 1} onClick={() => moveWave(i, 1)}><ArrowDown size={14} /></Button>
-                  <Button variant="dangerSubtle" aria-label={t("rollouts.plan.removeWave")} disabled={form.waves.length === 1}
+                  <Button variant="ghost" aria-label={t("rollouts.plan.moveUp")} title={t("rollouts.plan.moveUp")} disabled={i === 0} onClick={() => moveWave(i, -1)}><ArrowUp size={14} /></Button>
+                  <Button variant="ghost" aria-label={t("rollouts.plan.moveDown")} title={t("rollouts.plan.moveDown")} disabled={i === form.waves.length - 1} onClick={() => moveWave(i, 1)}><ArrowDown size={14} /></Button>
+                  <Button variant="dangerSubtle" aria-label={t("rollouts.plan.removeWave")} title={t("rollouts.plan.removeWave")} disabled={form.waves.length === 1}
                     onClick={() => set({ waves: form.waves.filter((_, j) => j !== i) })}><Trash2 size={14} /></Button>
                 </div>
               </div>

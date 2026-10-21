@@ -18,6 +18,7 @@ from app.services.interface_service import check_interface_consistency
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.rule_deploy_service import confirm_rule, deploy_rule, undeploy_rule, revert_deployment
 from app.services import rule_adopt_service
+from app.services.adopt_common import LINK_ERRORS, link_api_error
 from app.schemas.rule import AdoptRequest, UnmanagedRule
 
 router = APIRouter(prefix="/rules", tags=["rules"])
@@ -107,11 +108,13 @@ async def adopt_rule(payload: AdoptRequest, db: AsyncSession = Depends(get_db)):
     if not host:
         raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
     try:
-        rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid)
+        rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid, link_to=payload.link_to)
     except rule_adopt_service.RuleNotFoundOnHost as exc:
         raise api_error(404, ErrorCode.REGEL_NICHT_GEFUNDEN) from exc
     except rule_adopt_service.NotAdoptable as exc:
         raise api_error(409, ErrorCode.RULE_NOT_ADOPTABLE, reasons=", ".join(exc.reasons)) from exc
+    except LINK_ERRORS as exc:
+        raise link_api_error(exc) from exc
     except OpnsenseAPIError as exc:
         raise api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name) from exc
     await db.commit()

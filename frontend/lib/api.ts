@@ -599,6 +599,26 @@ export interface UnmanagedRule {
   log: boolean;
   adoptable: boolean;
   reasons: string[];
+  /** Existing central rules equal to this one (resolved for the host); first = preferred. */
+  matches: LinkTarget[];
+  /** Same description, different content: shown as a hint with the differing fields, never linked. */
+  similar: LinkTarget[];
+  linkable: boolean;
+}
+
+export interface LinkDiff {
+  /** Model field or "variables" (a {{VARIABLE}} of the central object has no value on this host). */
+  field: string;
+  central: string;
+  live: string;
+}
+
+/** An existing central object a live object could be linked to (exact match) or resembles (diff). */
+export interface LinkTarget {
+  id: string;
+  name: string;
+  targets: string[];
+  diff: LinkDiff[];
 }
 
 export type AdoptKind = "aliases" | "port-forward" | "one-to-one" | "outbound-nat";
@@ -616,10 +636,15 @@ export interface UnmanagedObject {
   /** Settings OPNexus does not manage that stay untouched on the firewall. */
   kept: string[];
   info: Record<string, string>;
+  matches: LinkTarget[];
+  similar: LinkTarget[];
+  linkable: boolean;
+  /** What "adopt all with linking" does with it: link to its twin, adopt as new, or leave it. */
+  bulk_action: "link" | "new" | "skip" | null;
 }
 
 export interface AdoptAllResult {
-  adopted: { uuid: string; title: string; id: string }[];
+  adopted: { uuid: string; title: string; id: string; linked: boolean }[];
   skipped: { uuid: string; title: string; reasons: string[]; reason_details: Record<string, string> }[];
 }
 
@@ -1473,9 +1498,9 @@ export const api = {
   createRule: (data: RuleCreate) => request<Rule>("/rules", { method: "POST", body: JSON.stringify(data) }),
   listUnmanagedRules: (hostId: string) => request<UnmanagedRule[]>(`/rules/unmanaged?host_id=${hostId}`),
   listUnmanagedObjects: (kind: AdoptKind, hostId: string) => request<UnmanagedObject[]>(`/${kind}/unmanaged?host_id=${hostId}`),
-  adoptObject: (kind: AdoptKind, hostId: string, uuid: string) => request<{ id: string }>(`/${kind}/adopt`, { method: "POST", body: JSON.stringify({ host_id: hostId, uuid }) }),
-  adoptAllObjects: (kind: AdoptKind, hostId: string) => request<AdoptAllResult>(`/${kind}/adopt-all`, { method: "POST", body: JSON.stringify({ host_id: hostId }) }),
-  adoptRule: (hostId: string, ruleUuid: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid }) }),
+  adoptObject: (kind: AdoptKind, hostId: string, uuid: string, linkTo?: string) => request<{ id: string }>(`/${kind}/adopt`, { method: "POST", body: JSON.stringify({ host_id: hostId, uuid, link_to: linkTo ?? null }) }),
+  adoptAllObjects: (kind: AdoptKind, hostId: string, linkExisting = true) => request<AdoptAllResult>(`/${kind}/adopt-all`, { method: "POST", body: JSON.stringify({ host_id: hostId, link_existing: linkExisting }) }),
+  adoptRule: (hostId: string, ruleUuid: string, linkTo?: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid, link_to: linkTo ?? null }) }),
   updateRule: (id: string, data: RuleCreate, expectedUpdatedAt: string) => request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
   ruleRevisions: (id: string) => request<RuleRevision[]>(`/rules/${id}/revisions`),

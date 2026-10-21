@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.host import OpnsenseHost
 from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
-from app.services import opnsense_client
+from app.services import adopt_link_service, opnsense_client
 from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, on  # noqa: F401  (NotAdoptable is re-exported for routers/rules.py)
 from app.services.policy_service import revision
 from app.services.rule_deploy_service import _build_payload
@@ -64,6 +64,30 @@ def reasons_not_adoptable(row: dict, managed_uuids: set[str]) -> list[str]:
     return reasons
 
 
+def _values(row: dict) -> dict:
+    """The fields OPNexus manages, normalised exactly as adopting stores them (also what a link compares)."""
+    return {
+        "description": _clean(row.get("description")),
+        "interface": _clean(row.get("interface")),
+        "direction": _clean(row.get("direction")),
+        "ipprotocol": _clean(row.get("ipprotocol")),
+        "protocol": _clean(row.get("protocol")) or "any",
+        "action": _clean(row.get("action")),
+        "source_net": _clean(row.get("source_net")) or "any",
+        "source_port": _clean(row.get("source_port")) or None,
+        "destination_net": _clean(row.get("destination_net")) or "any",
+        "destination_port": _clean(row.get("destination_port")) or None,
+        "enabled": _on(row.get("enabled")),
+        "log": _on(row.get("log")),
+    }
+
+
+LINK_SPEC = adopt_link_service.LinkSpec(
+    model=FirewallRule, deployment=RuleDeployment, fk="rule_id", uuid_attr="opnsense_rule_uuid",
+    identity="description", payload=_build_payload, revision=revision,
+)
+
+
 async def _managed_uuids(db: AsyncSession, host: OpnsenseHost) -> set[str]:
     rows = await db.scalars(
         select(RuleDeployment.opnsense_rule_uuid).where(
@@ -81,6 +105,7 @@ async def _live_rows(host: OpnsenseHost) -> list[dict]:
 
 async def list_unmanaged(db: AsyncSession, host: OpnsenseHost) -> list[dict]:
     managed = await _managed_uuids(db, host)
+    central = await adopt_link_service.load_central(db, LINK_SPEC)
     result = []
     for row in await _live_rows(host):
         if row.get("is_automatic"):
@@ -88,7 +113,11 @@ async def list_unmanaged(db: AsyncSession, host: OpnsenseHost) -> list[dict]:
         reasons = reasons_not_adoptable(row, managed)
         if "already_managed" in reasons:
             continue
+        matches, similar = adopt_link_service.find(central, LINK_SPEC, host, _values(row))
         result.append({
+            "matches": [adopt_link_service.describe(LINK_SPEC, m) for m in matches],
+            "similar": [adopt_link_service.describe(LINK_SPEC, m) for m in similar],
+            "linkable": any(not m.busy for m in matches) and not reasons,
             "uuid": _clean(row.get("uuid")),
             "description": _clean(row.get("description")),
             "interface": _clean(row.get("interface")),
@@ -108,7 +137,15 @@ async def list_unmanaged(db: AsyncSession, host: OpnsenseHost) -> list[dict]:
     return result
 
 
-async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str) -> FirewallRule:
+async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str, link_to=None) -> FirewallRule:
+    """Takes the rule over as a new central rule, or - with `link_to` - links it to that existing rule."""
+    if link_to is not None:
+        existing = await db.scalar(select(RuleDeployment).where(
+            RuleDeployment.host_id == host.id, RuleDeployment.opnsense_rule_uuid == rule_uuid))
+        if existing is not None:
+            if existing.rule_id == link_to:
+                return await db.get(FirewallRule, link_to)  # second click: already linked
+            raise NotAdoptable(["already_managed"])
     managed = await _managed_uuids(db, host)
     row = next((r for r in await _live_rows(host) if _clean(r.get("uuid")) == rule_uuid), None)
     if row is None:
@@ -116,23 +153,10 @@ async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str) -> Firewal
     reasons = reasons_not_adoptable(row, managed)
     if reasons:
         raise NotAdoptable(reasons)
+    if link_to is not None:
+        return await adopt_link_service.link(db, LINK_SPEC, host, link_to, rule_uuid, _values(row))
 
-    rule = FirewallRule(
-        description=_clean(row.get("description")),
-        interface=_clean(row.get("interface")),
-        direction=_clean(row.get("direction")),
-        ipprotocol=_clean(row.get("ipprotocol")),
-        protocol=_clean(row.get("protocol")) or "any",
-        action=_clean(row.get("action")),
-        source_net=_clean(row.get("source_net")) or "any",
-        source_port=_clean(row.get("source_port")) or None,
-        destination_net=_clean(row.get("destination_net")) or "any",
-        destination_port=_clean(row.get("destination_port")) or None,
-        enabled=_on(row.get("enabled")),
-        log=_on(row.get("log")),
-        targets=[host],
-        groups=[],
-    )
+    rule = FirewallRule(**_values(row), targets=[host], groups=[])
     db.add(rule)
     await db.flush()
     revision(db, rule, "Von Firewall übernommen")

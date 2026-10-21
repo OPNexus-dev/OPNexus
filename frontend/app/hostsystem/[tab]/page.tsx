@@ -196,7 +196,7 @@ function Snapshots({ hostId, readOnly }: { hostId: string; readOnly: boolean }) 
                   <fieldset disabled={readOnly} className="contents">
                     <div className="flex justify-end">
                       {(row.active === "-" || row.active === "") && (
-                        <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} onClick={() => remove(row)}>
+                        <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => remove(row)}>
                           <Trash2 size={14} />
                         </Button>
                       )}

@@ -74,7 +74,7 @@
         "rolloutProblems": "Rollout paused or not started automatically"
       },
       "pollInterval": "Check interval (seconds)",
-      "pollHint": "At least 60s, so the firewalls are not loaded unnecessarily.",
+      "pollHint": "At least 60 seconds, so the firewalls are not queried needlessly.",
       "monitoring": "Thresholds and debouncing",
       "monitoringHint": "Alerts for gateways, resources and services use the measurements OPNexus records every minute. An alert opens only when the latest measurements are all bad and closes only when they are all good again, so single spikes and flapping links do not send messages. 0 switches a single threshold off.",
       "limit": {
@@ -524,6 +524,55 @@
     "all": "Adopt all adoptable ({count})",
     "adopted": "Adopted “{name}”.",
     "allDone": "{count} adopted, {skipped} skipped.",
+    "linked": "“{name}” linked to the existing object.",
+    "allDoneLinked": "{count} adopted ({linked} of them linked), {skipped} skipped.",
+    "confirm": {
+      "title": "Adopt everything adoptable",
+      "summary": "Link {link}, adopt {created} as new, {left} not adoptable.",
+      "note": "Only objects that exactly equal an existing central object are linked. Nothing is changed on the firewall.",
+      "go": "Confirm and adopt"
+    },
+    "link": {
+      "badge": "Already exists centrally",
+      "found": "Equals the existing object “{name}” (firewalls: {hosts}). Linking adds this firewall there as another target instead of creating a second object.",
+      "choose": "Link to",
+      "action": "Link",
+      "linkTip": "Adds this firewall as another target of the existing object. Nothing is changed on the firewall; later changes are rolled out to all firewalls together.",
+      "adoptNew": "Adopt as own object",
+      "newTip": "Creates a second, independent object. Only useful if this firewall should keep its own values for good.",
+      "newBlockedTip": "An object with this name already exists, so only linking is possible. To keep it separate, rename it on the firewall first.",
+      "similar": "Similar: “{name}” (firewalls: {hosts}) differs and is therefore not linked.",
+      "similarNext": "Make the object on the firewall or the central object match, then it can be linked. Or adopt it separately.",
+      "diffValues": "central “{central}”, on the firewall “{live}”",
+      "variableMissing": "This firewall has no value for the variable {names}. Enter it in the host variables.",
+      "yes": "Yes",
+      "no": "No",
+      "fields": {
+        "name": "Name",
+        "type": "Type",
+        "content": "Content",
+        "description": "Description",
+        "enabled": "Enabled",
+        "interface": "Interface",
+        "direction": "Direction",
+        "ipprotocol": "IP version",
+        "protocol": "Protocol",
+        "action": "Action",
+        "source_net": "Source",
+        "source_port": "Source port",
+        "destination_net": "Destination",
+        "destination_port": "Destination port",
+        "log": "Log packets",
+        "target": "Target IP",
+        "local_port": "Target port",
+        "target_port": "Target port (NAT)",
+        "natreflection": "NAT reflection",
+        "external": "External address",
+        "source_not": "Source inverted",
+        "destination_not": "Destination inverted",
+        "variables": "Variables"
+      }
+    },
     "failed": "Adopting failed",
     "loadFailed": "Could not load objects.",
     "notPossible": "Cannot be adopted",
@@ -550,6 +599,7 @@
       "unsupported_type": "OPNexus does not support type “{detail}”",
       "name_invalid": "The name contains characters OPNexus does not allow (letters, digits, _ only)",
       "name_exists": "OPNexus already has an alias with this name",
+      "twin_busy": "The identical central object is still waiting for a confirmation. Try again afterwards",
       "content_too_large": "Content too large (over 8000 characters)",
       "proto_set": "Has an IPv4/IPv6 restriction OPNexus cannot represent",
       "value_too_long": "A value is longer than OPNexus stores",
@@ -740,6 +790,10 @@
     "RULE_NOT_ADOPTABLE": "This rule cannot be adopted ({reasons})",
     "OBJECT_NOT_ADOPTABLE": "This object cannot be adopted ({reasons})",
     "ADOPT_OBJECT_NOT_FOUND": "The object was not found on the firewall. Reload the list.",
+    "ADOPT_LINK_TARGET_NOT_FOUND": "The central object no longer exists. Reload the list.",
+    "ADOPT_LINK_TARGET_CHANGED": "The central object and the firewall differ now ({fields}). Reload the list and check.",
+    "ADOPT_LINK_HOST_HAS_OBJECT": "This firewall already manages this object under another UUID. Reload the list.",
+    "ADOPT_LINK_BUSY": "The object has an open confirmation or rollback. Confirm or resolve it first, then link.",
     "OUTBOUND_MODE_BLOCKS_ADOPT": "{host}: in outbound NAT mode “{mode}” OPNsense does not list manual rules. Switch the mode to Hybrid/Manual in OPNsense itself, then they can be adopted. OPNexus does not change this mode.",
     "NETWORK_ACK_REQUIRED": "This change can cut the connection to the firewall and must be confirmed explicitly ({reasons})",
     "NETWORK_APPLY_UNCERTAIN": "The change was written, but applying it on “{host}” failed or is unclear. Check the firewall; backup: {backup_id}",
@@ -810,7 +864,7 @@
     "disabled": "Target hosts disabled",
     "draft": "Changes pending",
     "synced": "Deployed",
-    "tooltip": "State of the deployments stored by OPNexus; not a live comparison"
+    "tooltip": "Shows what OPNexus rolled out last. The firewall is not queried live for this."
   },
   "certStatus": {
     "expired": "Expired",
@@ -885,7 +939,7 @@
     "status": "Status",
     "running": "running",
     "stopped": "stopped",
-    "locked": "Locked by OPNsense",
+    "locked": "This service is locked in OPNsense and cannot be controlled here.",
     "startTitle": "Start",
     "stopTitle": "Stop",
     "restartTitle": "Restart"
@@ -1431,9 +1485,9 @@
     "reasserting": "Reassert running…",
     "reassert": "Re-establish order",
     "preRules": "Pre rules",
-    "preHint": "Evaluated before the post rules. Across several levels: root-most group first.",
+    "preHint": "Evaluated before the post rules. With several levels, the topmost group comes first.",
     "postRules": "Post rules",
-    "postHint": "Evaluated after the pre rules. Across several levels: leaf-most (most specific) group first.",
+    "postHint": "Evaluated after the pre rules. With several levels, the lowest (most specific) group comes first.",
     "editGroup": "Edit group",
     "parentGroup": "Parent group (optional)",
     "rootGroup": "(none — root group)",
@@ -1503,7 +1557,7 @@
     "registration": "Registration: {state}",
     "registrationOk": "successful",
     "registrationFailed": "failed",
-    "pushFirst": "Push first",
+    "pushFirst": "Not on the firewall yet: send it there first with “Push”.",
     "register": "Register",
     "requests": "ACME certificate requests",
     "newRequest": "New request",
@@ -1540,7 +1594,7 @@
     "deleted": "Tunnel “{name}” deleted",
     "title": "IPsec VPN (site-to-site)",
     "new": "New tunnel",
-    "intro": "Site-to-site tunnels with pre-shared-key authentication, maintained centrally and deployed to target hosts or device groups — analogous to the firewall rules, but without their automatic rollback safety net: a failed service reload can cut exactly the connection OPNexus uses to reach the host. v1 only supports PSK auth, one phase 2 (child) per tunnel and simple 1:1 network-to-network tunnels — no OpenVPN/WireGuard, no certificates/EAP, no pools.",
+    "intro": "Site-to-site tunnels with a pre-shared key, maintained centrally and deployed to firewalls or device groups. Unlike firewall rules there is no automatic rollback: a failed service reload can cut the connection OPNexus uses to reach the firewall. One phase 2 per tunnel and simple network-to-network tunnels are supported (no certificates/EAP, no pools).",
     "showAll": "Show all tunnels",
     "none": "No IPsec tunnels created yet.",
     "createFirst": "Create first tunnel",
@@ -1582,7 +1636,7 @@
     "deleted": "Instance “{name}” deleted",
     "title": "OpenVPN instances",
     "new": "New instance",
-    "intro": "OpenVPN instances (server or client role), maintained centrally and deployed to target hosts or device groups — analogous to the IPsec feature, but without its automatic rollback safety net: a failed service reload can cut exactly the connection OPNexus uses to reach the host. v1 requires a certificate/CA that already exists on every target host — selectable via a picker from the respective host's trust store, since a certificate UUID is host-local —, supports optional TLS hardening (tls-auth/tls-crypt) via a static key, but no certificate-less “shared key” instance (not provided for in the modern OPNsense model).",
+    "intro": "OpenVPN instances (server or client), maintained centrally and deployed to firewalls or device groups. As with IPsec there is no automatic rollback: a failed service reload can cut the connection OPNexus uses to reach the firewall. Every target firewall must already have a certificate and CA (selected from its certificate store); optional TLS protection (tls-auth/tls-crypt) via a static key is supported, but no “shared key” instances without a certificate.",
     "showAll": "Show all instances",
     "none": "No OpenVPN instances created yet.",
     "createFirst": "Create first instance",
@@ -1622,7 +1676,7 @@
     "created": "Tunnel “{name}” created",
     "deleteConfirm": "Really delete this WireGuard tunnel? It will also be removed from all target hosts (peer, then server) and the WireGuard service will be reloaded.",
     "title": "WireGuard tunnels",
-    "intro": "WireGuard interconnects (one server interface + exactly one peer per tunnel), maintained centrally and deployed to target hosts or device groups — analogous to IPsec/OpenVPN, without their automatic rollback safety net: a failed service reload can cut exactly the connection OPNexus uses to reach the host. v1 requires the server private key AND public key as well as the peer public key to be supplied manually by the operator (no key pair generator), optionally supports WireGuard's own pre-shared key per peer, and models exactly one server↔peer connection (no multi-peer hub).",
+    "intro": "WireGuard connections (one server interface and exactly one peer per tunnel), maintained centrally and deployed to firewalls or device groups. As with IPsec there is no automatic rollback: a failed service reload can cut the connection OPNexus uses to reach the firewall. You generate and enter the keys yourself; a pre-shared key per peer is optional.",
     "none": "No WireGuard tunnels created yet.",
     "noPrivateKey": "No private key stored",
     "pskMissing": "PSK enabled but not stored",
@@ -1717,7 +1771,7 @@
   },
   "overlay": {
     "title": "Management tunnel",
-    "intro": "Lets OPNexus manage firewalls that have no public address (behind NAT, CGNAT, a mobile link). Each firewall dials OUT to a WireGuard hub on this server; OPNexus then reaches its API through the tunnel. Nothing on the firewall has to be reachable from the internet. Needs the hub container (COMPOSE_PROFILES=overlay) and the UDP port reachable from the internet.",
+    "intro": "Lets OPNexus manage firewalls that have no public address (behind NAT, CGNAT, a mobile link). Each firewall dials out to a WireGuard hub on this server; OPNexus then reaches its API through the tunnel. Nothing on the firewall has to be reachable from the internet. Needed on the server: the hub container (COMPOSE_PROFILES=overlay) and a UDP port reachable from the internet.",
     "loadFailed": "Could not load the management tunnel",
     "saved": "Saved",
     "enable": "Enable the management tunnel",
@@ -2013,7 +2067,7 @@
     "colCreated": "Created",
     "colLastLogin": "Last sign-in",
     "you": "(you)",
-    "cannotDeleteSelf": "You cannot delete your own account",
+    "cannotDeleteSelf": "You cannot delete your own account – another admin has to do that.",
     "created": "User created",
     "updated": "User “{name}” updated",
     "createFailed": "Could not create user",
@@ -2242,19 +2296,19 @@
       },
       "noUpdate": {
         "title": "No installable update",
-        "text": "The last check reports no stable package update."
+        "text": "The last check reports no stable package update. Run a new check if needed."
       },
       "noMajor": {
         "title": "No installable major upgrade",
-        "text": "The last check reports no available major upgrade."
+        "text": "The last check reports no available major upgrade. Run a new check if needed."
       },
       "pending": {
         "title": "Maintenance still open",
-        "text": "An earlier maintenance must be completed first, after the technical check."
+        "text": "An earlier maintenance must be completed first: check its result and finish it on the host page."
       },
       "change": {
         "title": "Change still open",
-        "text": "A deployment or rollback in the cluster is not finished yet."
+        "text": "A deployment or rollback in the cluster is still running. Wait until it has finished."
       },
       "locked": "Update blocked"
     },
@@ -2288,7 +2342,7 @@
     "intro": "When opened, all eligible hosts are automatically checked for updates. Major upgrades and HA role switches remain deliberate manual steps.",
     "checkAgain": "Check for updates again",
     "refreshView": "Refresh view",
-    "readOnlyNote": "Read-only access: status, package changes and logs are visible; checks and updates are blocked.",
+    "readOnlyNote": "With your role (read-only) you can view status, package changes and logs, but you cannot start checks or updates.",
     "sumHosts": "Managed hosts",
     "sumStable": "Stable updates",
     "sumMajor": "Major upgrades",
@@ -2372,8 +2426,8 @@
     "downtimeShort": "The host may be unreachable during installation",
     "downtimeTip": "Connections can drop. There is no automatic rollback.",
     "tipConfirmName": "Typing the host name prevents updating the wrong host by accident.",
-    "confirmRunDisabledName": "Enter the host name exactly to continue",
-    "confirmRunDisabledAck": "Confirm the maintenance window first",
+    "confirmRunDisabledName": "Enter the host name exactly to continue.",
+    "confirmRunDisabledAck": "Confirm the maintenance window first (tick the box in the dialog).",
     "cancelWarnShort": "Does not confirm a successful completion",
     "cancelWarnTip": "The operation is only closed so the host or cluster does not stay locked. Use only if the expected state demonstrably never occurred (e.g. a stuck CARP role switch).",
     "finishNoteTip": "This confirmation documents your check and triggers no firewall action.",
@@ -2403,8 +2457,8 @@
     "skipVerifyHelp": "The connection stays encrypted, but OPNexus cannot tell whether the firewall is really answering. For testing only.",
     "probeFailed": "The certificate could not be retrieved",
     "pinnedTip": "Certificate pinned · SHA-256 {fp}…",
-    "systemTip": "Standard certificate check. For self-signed firewalls, pin the certificate.",
-    "insecureTip": "The certificate is not verified. Edit the host to pin it."
+    "systemTip": "The certificate is checked against the standard certificate authorities. For a self-signed certificate, pin it under Edit.",
+    "insecureTip": "The certificate is not verified. Pin it under Edit to secure the connection."
   },
   "twofa": {
     "title": "Two-factor sign-in",
@@ -3288,7 +3342,7 @@
       "egressIface": "Egress interface",
       "run": "Analyze",
       "refresh": "Re-read from the firewall",
-      "refreshHint": "Without this, rules are cached for up to 60 seconds.",
+      "refreshHint": "Reads the rules fresh from the firewall instead of using data cached for up to 60 seconds.",
       "missing": "Source and destination IP are required.",
       "noHostsSelected": "Select at least one host.",
       "noGroupSelected": "Select a device group."
@@ -3307,7 +3361,7 @@
       "decisive": "Deciding rule",
       "decisiveIfKnown": "Most likely rule if the open points do not apply",
       "noRule": "No rule matches",
-      "noRuleHint": "No rule entry matches; pf then lets the packet through.",
+      "noRuleHint": "No rule entry matches; the packet filter (pf) then lets the packet through.",
       "unresolved": "No interface could be determined",
       "unresolvedHint": "The source IP belongs to no interface network. Choose the ingress interface manually.",
       "undecided": "Cannot be determined reliably",
@@ -3327,7 +3381,7 @@
       "ruleGateway": "Gateway",
       "ruleSchedule": "Schedule",
       "quick": "quick",
-      "quickHint": "quick: the first match decides immediately.",
+      "quickHint": "quick: this rule decides immediately; no further rules are checked.",
       "pfNumber": "pf rule @{number}",
       "automatic": "automatic",
       "legacy": "legacy format",
@@ -3363,7 +3417,7 @@
     },
     "trace": {
       "title": "Why?",
-      "hint": "All rules in the order pf checks them. The last match wins unless a quick rule matches earlier.",
+      "hint": "All rules in the order the packet filter (pf) checks them. The last match wins unless a quick rule matches earlier.",
       "leg": "Trace {direction} on {interface}",
       "dirIn": "in",
       "dirOut": "out",
@@ -3434,7 +3488,7 @@
       "RATE_LIMIT": "Rate limit",
       "RATE_LIMIT_hint": "The rule limits connections; above the limit it may behave differently.",
       "PF_DEFAULT_PASS": "Default: pass",
-      "PF_DEFAULT_PASS_hint": "No rule matches; pf then lets the packet through.",
+      "PF_DEFAULT_PASS_hint": "No rule matches; the packet filter (pf) then lets the packet through.",
       "QUICK_UNKNOWN": "quick unclear",
       "QUICK_UNKNOWN_hint": "For one rule it is unclear whether it decides immediately.",
       "GROUPS_UNAVAILABLE": "Interface groups unavailable",
@@ -3492,14 +3546,14 @@
   "guiAccess": {
     "title": "Firewall interface through OPNexus",
     "intro": "Opens the web interface of a managed firewall in its own browser tab through OPNexus, even when the firewall is only reachable over the management tunnel. Admins only; you still sign in on the firewall itself. The ticket works once for 30 seconds, every session has time limits and is logged in the audit. Details: manual (German), chapter “Firewall-Oberfläche über OPNexus”.",
-    "defaultOff": "Off by default. Setting it up needs the Compose profile “gui”, OPNEXUS_GUI_SITES and GUI_GATEWAY_TOKEN on the server (see the manual, chapter “Firewall-Oberfläche über OPNexus”).",
+    "defaultOff": "Off by default. It is set up on the server (Compose profile “gui”, OPNEXUS_GUI_SITES, GUI_GATEWAY_TOKEN) – see the manual (German), chapter “Firewall-Oberfläche über OPNexus”.",
     "on": "On",
     "off": "Off",
     "notReady": "Not set up yet. Missing:",
     "reason": {
-      "cookie_secure": "HTTPS sign-in (COOKIE_SECURE=true)",
-      "gateway_token": "GUI_GATEWAY_TOKEN (at least 32 characters)",
-      "gui_sites": "OPNEXUS_GUI_SITES with the slot addresses (and the Compose profile “gui”)"
+      "cookie_secure": "Secure HTTPS sign-in (setting COOKIE_SECURE=true)",
+      "gateway_token": "Access token for the GUI gateway service (GUI_GATEWAY_TOKEN, at least 32 characters)",
+      "gui_sites": "Ports for the firewall interfaces (OPNEXUS_GUI_SITES) and the Compose profile “gui”"
     },
     "enabled": "Allow opening the firewall interface",
     "enabledTip": "Turns the feature on for all admins. Turning it off ends open sessions (within about 20 seconds).",
@@ -3508,10 +3562,10 @@
     "absolute": "Total duration (minutes)",
     "absoluteTip": "Every session ends after this time at the latest, even when active (5 to 720).",
     "slotCount": "Simultaneous slots",
-    "slotCountTip": "How many firewall interfaces can be open at the same time (1 to 4). Each slot has its own port and therefore its own browser origin.",
+    "slotCountTip": "How many firewall interfaces can be open at the same time (1 to 4). Each slot has its own port so the open firewalls cannot interfere with each other in the browser.",
     "orderError": "The inactivity limit must not exceed the total duration.",
     "activeSlots": "Active slots (ports)",
-    "activeSlotsTip": "The slot ports configured in OPNEXUS_GUI_SITES that are used with the chosen count. Which slot is in use right now is shown in the audit (type “GUI access”).",
+    "activeSlotsTip": "The ports defined in OPNEXUS_GUI_SITES that are used with the chosen count. Which slot is in use right now is shown in the audit (type “GUI access”).",
     "noSlots": "none configured",
     "lastChange": "Last changed by {who} on {when}",
     "saved": "Firewall interface settings saved"
@@ -3522,10 +3576,16 @@
     "opened": "Opening the interface in a new tab (slot {slot}). If nothing happens, allow pop-ups for this site.",
     "failed": "Could not open the interface",
     "reason": {
-      "off": "Switched off. An admin can turn the feature on under Settings.",
-      "host_disabled": "This firewall is disabled.",
-      "host_https": "Only firewalls with an https:// address can be opened.",
-      "host_tls": "Only possible with a verified or pinned certificate (TLS verification is off for this firewall)."
+      "off": "Switched off. Turn it on under Settings › Firewall interface through OPNexus.",
+      "host_disabled": "This firewall is disabled. Enable it under Hosts › Edit (tick “Active”).",
+      "host_https": "This firewall’s address does not start with https://. Change it under Hosts › Edit.",
+      "host_tls": "Certificate verification is switched off for this firewall. Turn it on under Hosts › Edit or pin the certificate.",
+      "unavailable": {
+        "cookie_secure": "Not set up: secure HTTPS sign-in is not active on the server (setting COOKIE_SECURE). A server admin has to change this – instructions: manual (German), chapter “Firewall-Oberfläche über OPNexus”.",
+        "gateway_token": "Not set up: the access token for the GUI gateway service is missing (GUI_GATEWAY_TOKEN, at least 32 characters). A server admin has to add it – instructions: manual (German), chapter “Firewall-Oberfläche über OPNexus”.",
+        "gui_sites": "Not set up: no ports are defined for the firewall interfaces (OPNEXUS_GUI_SITES, Compose profile “gui”). A server admin has to add them – instructions: manual (German), chapter “Firewall-Oberfläche über OPNexus”."
+      },
+      "more": "More missing items: Settings › Firewall interface through OPNexus."
     }
   }
 }

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.adopt import LinkTarget
+
 
 class RuleCreate(BaseModel):
     description: str = Field(min_length=1, max_length=255)
@@ -78,6 +80,8 @@ class DeployApproval(BaseModel):
 
 class AdoptRequest(BaseModel):
     host_id: uuid.UUID
+    # Link to this existing central rule instead of creating a new one (services/adopt_link_service.py).
+    link_to: uuid.UUID | None = None
     rule_uuid: str = Field(min_length=1, max_length=64)
 
 
@@ -98,3 +102,7 @@ class UnmanagedRule(BaseModel):
     adoptable: bool
     # Codes such as "negated_source" or "not_quick"; the UI turns them into text.
     reasons: list[str]
+    # Central rules equal to this one (resolved for the host), same-description rules that differ, link possible.
+    matches: list[LinkTarget] = Field(default_factory=list)
+    similar: list[LinkTarget] = Field(default_factory=list)
+    linkable: bool = False
