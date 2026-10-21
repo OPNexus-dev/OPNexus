@@ -89,6 +89,31 @@ TOOLS = [
         "query": ("q",),
     },
     {
+        "name": "rule_match",
+        "description": "Which firewall rule decides a packet (first packet of a new connection), per firewall, "
+                       "with the verdict (pass/block/reject), the deciding rule and an honest confidence "
+                       "(sure/probable/unknown plus reason codes). Reads only; nothing is changed.",
+        "inputSchema": {
+            "type": "object", "required": ["src", "dst"],
+            "properties": {
+                "src": {"type": "string", "description": "source IP address"},
+                "dst": {"type": "string", "description": "destination IP address"},
+                "proto": {"type": "string", "description": "tcp, udp, icmp, ipv6-icmp or a protocol number", "default": "tcp"},
+                "dport": {"type": "integer", "minimum": 0, "maximum": 65535},
+                "sport": {"type": "integer", "minimum": 0, "maximum": 65535, "description": "default: any ephemeral port"},
+                "icmptype": {"type": "string", "description": "e.g. echoreq or 8"},
+                "iface": {"type": "string", "description": "ingress interface identifier (e.g. lan); default: guessed per firewall"},
+                "egress": {"type": "string", "description": "also check the outgoing side: auto or an interface identifier"},
+                "host_ids": {"type": "string", "description": "comma separated firewall ids (default: all)"},
+                "group_id": {"type": "string", "description": "device group id instead of host_ids"},
+            },
+        },
+        "path": "/api/rule-analysis/match",
+        "query": ("src", "dst", "proto", "dport", "sport", "icmptype", "iface", "egress", "host_ids", "group_id"),
+        # The per-rule trace is for the UI; the verdict, deciding rule and reasons are what matters here.
+        "drop": ("trace",),
+    },
+    {
         "name": "api_get",
         "description": "Read any other OPNexus API endpoint (GET only), e.g. /api/rules, /api/aliases, /api/logs. "
                        "The schema of all endpoints is at /api/openapi.json.",

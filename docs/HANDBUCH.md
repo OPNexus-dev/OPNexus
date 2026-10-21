@@ -1100,6 +1100,18 @@ beurteilt OPNexus sie nicht (das meldet „Host nicht erreichbar“) und lässt 
   nie lief (etwa DHCPv6 ohne Präfix), bleibt still; einen absichtlich gestoppten Dienst nimmst du aus der Liste. Eine Firewall listet nur Dienste, die
   in ihrer Konfiguration aktiviert sind, ein nicht eingerichteter Dienst taucht also gar nicht auf.
 
+### Regel-Analyse
+
+Unter **Regelwerk › Regel-Analyse** fragst du, welche Regel für eine Verbindung greift: Quell- und Ziel-IP,
+Protokoll, Zielport und das Eingangs-Interface („automatisch“ rät es aus der Quell-IP und kennzeichnet das als
+Hinweis). Mit „Ausgangsseite prüfen“ werden zusätzlich die Regeln für ausgehenden Verkehr geprüft. Geprüft wird
+das erste Paket einer neuen Verbindung gegen den tatsächlich geladenen Regelsatz der Firewall; es wird nur gelesen.
+Je Firewall erscheint eine Karte mit dem Urteil (Erlaubt, Blockiert, Abgewiesen), der **Sicherheit** (sicher,
+vermutlich, unbekannt; Tooltip mit den Gründen) und der entscheidenden Regel. Ist das Ergebnis „unbekannt“
+(zum Beispiel fehlt der Zielport oder ein Alias ist nicht auflösbar), zeigt die Karte bewusst kein Urteil, sondern
+die offenen Punkte. Unter „Warum?“ steht jede geprüfte Regel in der Prüfreihenfolge mit ✓/✗/? je Feld.
+Die Abfrage steht in der Adresszeile und lässt sich als Link teilen.
+
 ### Sicherheitslage
 
 Unter **Monitoring › Sicherheitslage** prüft OPNexus jede Firewall auf typische

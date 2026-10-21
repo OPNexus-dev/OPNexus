@@ -31,6 +31,27 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.26.0] "Kite" — 2026-10-21
+
+Geplant als MINOR-Release **1.26.0** (Regel-Analyse). Backend, MCP und Oberfläche.
+
+- **Regel-Analyse „Welche Regel greift?“ (API):** `GET /api/hosts/{id}/rule-analysis/match` und
+  `GET /api/rule-analysis/match` (ganze Flotte, Auswahl oder Gerätegruppe) beantworten für Quelle, Ziel, Protokoll
+  und Port, ob eine Firewall das erste Paket einer neuen Verbindung durchlässt oder blockiert, welche Regel das
+  entscheidet und warum (Prüfprotokoll Regel für Regel). Grundlage ist der tatsächlich geladene pf-Regelsatz
+  inklusive automatischer Regeln, Floating- und Gruppenregeln, `quick`/letzter Treffer, Negation, verschachtelter
+  Aliase (pf-Tabellentest der Firewall), Port-Aliase und Adressfamilien. Jede Antwort trägt eine ehrliche
+  Konfidenz **sicher / vermutlich / unbekannt** mit Begründungscodes; was nicht belegbar ist (z. B. `tagged`,
+  nicht auflösbare Aliase, geratenes Interface, NAT in der Nähe), wird nie als „sicher“ gemeldet. Nur lesend,
+  auch mit `read`-Token nutzbar; es wird nichts gespeichert und nichts an der Firewall geändert.
+- **MCP:** neues Werkzeug `rule_match` für KI-Assistenten (gleiche Abfrage, ohne Prüfprotokoll).
+- **Seite „Regel-Analyse“ (Regelwerk):** Formular für Hosts oder Gerätegruppe, Quell-/Ziel-IP, Protokoll, Ports,
+  Eingangs-Interface („automatisch“ oder Liste) und optional die Ausgangsseite. Die Abfrage steht in der Adresszeile
+  (teilbar, wird beim Öffnen sofort ausgeführt). Je Firewall eine Karte mit Erlaubt/Blockiert/Abgewiesen, Sicherheit
+  des Urteils, entscheidender Regel und Hinweisen; ein „unbekannt“-Ergebnis erscheint bewusst nicht als Urteil.
+  Aufklappbares „Warum?“ zeigt jede geprüfte Regel mit ✓/✗/? je Feld, überstimmte Regeln durchgestrichen. Auch mit
+  Nur-Lesen-Rolle nutzbar.
+
 ## [1.25.0] "Goshawk" — 2026-10-21
 
 Geplant als MINOR-Release **1.25.0** (Flotten-Rollout).

@@ -25,6 +25,7 @@ import {
   RefreshCw,
   Route,
   Router,
+  ScanSearch,
   ScrollText,
   Search,
   Server,
@@ -68,6 +69,7 @@ export const navGroups: NavGroup[] = [
     icon: Shield,
     items: [
       { href: "/rules", label: "Regeln", icon: Shield, keywords: ["Firewall-Regeln", "Filter"] },
+      { href: "/analysis", label: "Regel-Analyse", icon: ScanSearch, keywords: ["Welche Regel", "Welche Regel trifft", "Pfad", "Simulation", "Firewall-Regel prüfen", "Paket-Test", "Rule match", "Which rule", "Rule analysis", "Packet path", "Trace"] },
       { href: "/policy-hierarchy", label: "Policy-Hierarchie", icon: GitBranch, keywords: ["Pre-Rules", "Post-Rules", "Vererbung", "Inheritance", "Hierarchische Policies"] },
       { href: "/groups", label: "Gruppen", icon: FolderTree, keywords: ["Gerätegruppen", "Device Groups"] },
       { href: "/aliases", label: "Aliase", icon: Tags, keywords: ["Netzwerk-Objekte", "Netzwerkgruppen"] },

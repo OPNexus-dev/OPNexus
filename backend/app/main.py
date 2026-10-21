@@ -52,6 +52,7 @@ from app.services import resource_monitor_service
 from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.routers import maintenance_windows as maintenance_windows_router
 from app.routers import rollouts as rollouts_router
+from app.routers import rule_analysis as rule_analysis_router
 from app.services import scheduled_maintenance_service
 from app.services import rollout_engine
 from app.services import compliance_service
@@ -529,3 +530,4 @@ app.include_router(resource_samples_router.router, prefix="/api")
 app.include_router(scheduled_maintenance_router.router, prefix="/api")
 app.include_router(maintenance_windows_router.router, prefix="/api")
 app.include_router(rollouts_router.router, prefix="/api")
+app.include_router(rule_analysis_router.router, prefix="/api")

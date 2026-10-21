@@ -1517,6 +1517,11 @@ export const api = {
 
   listCompliance: () => request<ComplianceHost[]>("/compliance"),
   getHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance`),
+  analyzeRule: (query: AnalysisQuery) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) if (value !== undefined && value !== "" && value !== false) params.set(key, String(value));
+    return request<AnalysisResult[]>(`/rule-analysis/match?${params.toString()}`);
+  },
   getRuleHits: (id: string) => request<RuleHit[]>(`/hosts/${id}/rule-hits`),
   checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
   checkFleetCompliance: () => request<ComplianceHost[]>("/compliance/check", { method: "POST" }),
@@ -2042,3 +2047,36 @@ export interface PolicyHierarchyRule extends PolicyHierarchyRuleCreate {
   deployments: DeploymentResult[];
 }
 export interface PolicyHierarchyRuleRevision { id: string; created_at: string; note: string; snapshot: PolicyHierarchyRuleCreate; }
+
+export type AnalysisAction = "pass" | "block" | "reject";
+export type AnalysisConfidence = "sure" | "probable" | "unknown";
+export type AnalysisTri = "true" | "false" | "unknown";
+export interface AnalysisRule {
+  uuid: string | null; label: string | null; description: string | null; section: string; sort_order: string | null;
+  pf_numbers: number[]; action: AnalysisAction | null; quick: boolean | null; interfaces: string[]; interface_not: boolean;
+  direction: string; automatic: boolean; legacy: boolean; loaded: boolean | null; editable: boolean;
+  source: string; destination: string; source_port: string | null; destination_port: string | null;
+  gateway: string | null; schedule: string | null;
+}
+export interface AnalysisStep {
+  rule: AnalysisRule; result: AnalysisTri;
+  effect: "decisive" | "overridden" | "possible" | "no_match" | "not_loaded" | "disabled";
+  fields: Record<string, AnalysisTri>; reasons: string[];
+}
+export interface AnalysisLeg {
+  direction: string; interface: string; interface_source: string; action: AnalysisAction | null;
+  confidence: AnalysisConfidence; rule_confidence: AnalysisConfidence; decisive_rule: AnalysisRule | null;
+  notes: string[]; unknowns: string[];
+}
+export interface AnalysisResult {
+  host_id: string; host_name: string; cluster_name: string | null;
+  error: { code: string; params?: Record<string, string> } | null;
+  query?: { src: string; dst: string; proto: string; sport: number | null; dport: number | null; icmptype: string | null; direction: string; assumptions: string[] };
+  action?: AnalysisAction | null; confidence?: AnalysisConfidence; rule_confidence?: AnalysisConfidence;
+  decisive_rule?: AnalysisRule | null; notes?: string[]; unknowns?: string[];
+  legs?: AnalysisLeg[]; trace?: { leg: number; direction: string; interface: string; steps: AnalysisStep[] }[];
+}
+export interface AnalysisQuery {
+  src: string; dst: string; proto?: string; dport?: string; sport?: string; icmptype?: string;
+  iface?: string; egress?: string; host_ids?: string; group_id?: string; refresh?: boolean;
+}

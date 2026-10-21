@@ -419,6 +419,42 @@ async def get_pf_rule_statistics(host: OpnsenseHost) -> dict:
     return await _request(host, "GET", "/diagnostics/firewall/pfStatistics/rules")
 
 
+# ── Rule analysis (read-only) ─────────────────────────────────────────────
+# Checked against opnsense/core master (2026-10-21) and live on OPNsense 26.7:
+# - Firewall/Api/FilterUtilController::ruleStatsAction runs configd `!filter rule stats` and
+#   returns {"status": "ok", "stats": {"<label>": {pf_rules, evaluations, packets, bytes, states}}};
+#   the label is the rule UUID (MVC), an md5 (automatic) or a 32-hex label (unmigrated legacy).
+# - Firewall/Api/AliasUtilController::findReferencesAction requires POST with "ip" (only hex,
+#   ":", ".", "/", "_" accepted, else {"status": "Not an IP address!"}), runs configd
+#   `filter find_table_references` (a pf table test over all aliases) and returns
+#   {"status": "ok", "matches": ["<alias>", ...]}. It changes nothing; POST is only the
+#   controller's calling convention.
+# - Firewall/Api/FilterController::getInterfaceListAction: {"floating"|"groups"|"interfaces"|"any":
+#   {"label", "items": [{"value", "label", "type"}]}} (lo0 omitted).
+# - Firewall/Api/GroupController::searchItemAction -> searchBase("ifgroupentry"): rows with
+#   ifname, members (comma separated identifiers), sequence; the built-in groups (enc0, openvpn,
+#   wireguard) appear with their name as uuid and empty members.
+async def get_rule_stats(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/firewall/filter_util/ruleStats")
+
+
+async def find_alias_references(host: OpnsenseHost, ip: str) -> list[str] | None:
+    """Names of the aliases (pf tables) that contain ``ip`` right now; None when the firewall
+    could not answer (callers then treat table membership as unknown)."""
+    data = await _request(host, "POST", "/firewall/alias_util/findReferences", json={"ip": ip})
+    if not isinstance(data, dict) or data.get("status") != "ok" or not isinstance(data.get("matches"), list):
+        return None
+    return [str(name) for name in data["matches"]]
+
+
+async def get_filter_interface_list(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/firewall/filter/get_interface_list")
+
+
+async def search_interface_groups(host: OpnsenseHost) -> dict:
+    return await _request(host, "GET", "/firewall/group/searchItem", params={"rowCount": -1})
+
+
 async def get_firmware_status(host: OpnsenseHost) -> dict:
     # GET reads cached results. POST would trigger a synchronous probe.
     return await _request(host, "GET", "/core/firmware/status")
