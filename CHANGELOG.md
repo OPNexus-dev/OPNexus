@@ -31,6 +31,17 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.27.2] "Buzzard" — 2026-10-21
+
+- **`opnexus update` prüft den Proxy vor dem Wechsel:** Nach dem Ziehen der Images validiert das Werkzeug die Caddy-Konfiguration des neuen
+  Proxy-Images mit den Umgebungsvariablen *dieser* Installation. Ist sie ungültig, bricht das Update ab, bevor etwas gewechselt wurde.
+  Der Fall aus 1.27.0 (Compose-Datei mit leerem `OPNEXUS_GUI_SITES`) wird dabei automatisch repariert: Das Werkzeug trägt den Platzhalter
+  `OPNEXUS_GUI_SITES=https://localhost:9441` in die `.env` ein und sagt es. Installationen, die noch die Compose-Datei aus 1.27.0 haben,
+  müssen also nur einmal `opnexus update` ausführen.
+- **`opnexus update` erkennt einen abstürzenden Proxy:** Ein Dienst ohne Healthcheck (der Proxy) gilt jetzt erst nach 10 Sekunden
+  durchgehender Laufzeit als gesund. Bisher meldete das Update „Fertig“, obwohl der Proxy in einer Neustart-Schleife hing, und das
+  automatische Zurückrollen griff nicht.
+
 ## [1.27.1] "Buzzard" — 2026-10-21
 
 - **Fix (1.27.1): Proxy startete mit der neuen Compose-Datei nicht.** Mit der `docker-compose.yml` aus 1.27.0 gab Compose die Variable

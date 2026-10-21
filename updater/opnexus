@@ -116,9 +116,19 @@ running_version() {
 }
 
 service_state() {  # healthy | unhealthy | starting | running | (leer)
-  local h
+  local h st id started
   h=$(c ps "$1" --format '{{.Health}}' 2>/dev/null || true)
-  if [ -n "$h" ]; then echo "$h"; else c ps "$1" --format '{{.State}}' 2>/dev/null || true; fi
+  if [ -n "$h" ]; then echo "$h"; return; fi
+  st=$(c ps "$1" --format '{{.State}}' 2>/dev/null || true)
+  # Ohne Healthcheck (Proxy) heißt "running" nur: der Prozess wurde gerade gestartet. Ein Container, der nach
+  # einer Sekunde wieder abstürzt, muss als "starting" gelten, sonst meldet das Update "fertig" bei kaputtem
+  # Proxy (so geschehen mit 1.27.0). "Läuft seit mindestens 10 s" heißt: stabil.
+  if [ "$st" = running ]; then
+    id=$(c ps -q "$1" 2>/dev/null | head -n1 || true)
+    started=$(docker inspect -f '{{.State.StartedAt}}' "$id" 2>/dev/null || true)
+    if [ -n "$started" ] && [ $(( $(date +%s) - $(date -d "$started" +%s 2>/dev/null || echo 0) )) -lt 10 ]; then st=starting; fi
+  fi
+  echo "$st"
 }
 
 wait_healthy() {
@@ -242,6 +252,29 @@ verify_signatures() {
   say "Signaturen geprüft."
 }
 
+# Prüft VOR dem Wechsel, dass der Proxy des neuen Images mit der Konfiguration DIESER Installation startet
+# (Caddy validate mit den Umgebungsvariablen, die Compose dem Proxy gibt). Hintergrund: 1.27.0 lieferte eine
+# Compose-Datei, die OPNEXUS_GUI_SITES leer weitergab; der Proxy fiel in eine Neustart-Schleife, OPNexus war weg.
+# Genau dieser Fall wird hier selbst repariert (Platzhalter in die .env), alles andere bricht VOR dem Wechsel ab.
+preflight_proxy_config() {
+  local target="$1" repo json args=() kv
+  repo=$(env_get OPNEXUS_IMAGE_REPO)
+  command -v python3 >/dev/null 2>&1 || { say "Proxy-Vorprüfung übersprungen (python3 fehlt)."; return 0; }
+  proxy_env_json() { OPNEXUS_VERSION="$target" c config --format json 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["services"]["proxy"].get("environment") or {}))'; }
+  json=$(proxy_env_json) || { say "Proxy-Vorprüfung übersprungen (Compose-Konfiguration nicht lesbar)."; return 0; }
+  if python3 -c 'import json,sys; e=json.loads(sys.argv[1]); sys.exit(0 if e.get("OPNEXUS_GUI_SITES", "x") == "" else 1)' "$json"; then
+    say "OPNEXUS_GUI_SITES ist leer (Compose-Datei aus 1.27.0): setze den Platzhalter https://localhost:9441 in $ENV_FILE."
+    env_set OPNEXUS_GUI_SITES "https://localhost:9441"
+    json=$(proxy_env_json) || return 0
+  fi
+  while IFS= read -r kv; do args+=(-e "$kv"); done < <(python3 -c 'import json,sys; [print("%s=%s" % i) for i in json.loads(sys.argv[1]).items()]' "$json")
+  if ! docker run --rm "${args[@]}" "$repo/opnexus-proxy:$target" caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    die "Die Proxy-Konfiguration des neuen Images ist mit dieser Installation ungültig — nichts wurde verändert. Prüfen: docker run --rm $(printf '%s ' "${args[@]}") $repo/opnexus-proxy:$target caddy validate --config /etc/caddy/Caddyfile"
+  fi
+  say "Proxy-Konfiguration geprüft."
+}
+
 cmd_update() {
   require_release_mode
   local target="${1:-$(env_get OPNEXUS_VERSION)}"
@@ -261,6 +294,7 @@ cmd_update() {
   if updater_enabled; then pull_services+=(updater); fi
   OPNEXUS_VERSION="$target" c pull "${pull_services[@]}" || die "Pull fehlgeschlagen — nichts wurde verändert."
   verify_signatures "$target" "${pull_services[@]}"
+  preflight_proxy_config "$target"
 
   started=$(date -u +%Y%m%dT%H%M%SZ)
   cat > "$STATE_FILE" <<STATE
