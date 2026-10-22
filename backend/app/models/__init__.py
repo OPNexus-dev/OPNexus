@@ -108,3 +108,8 @@ __all__ += ["LiveRuleState", "RuleChangeEvent"]
 
 from app.models.rule_cleanup import RuleCleanupOperation, RuleCleanupItem
 __all__ += ["RuleCleanupOperation", "RuleCleanupItem"]
+
+# Every mapped class must be registered here: a script that imports only app.models (python -m app.reset_password,
+# app.reset_2fa) otherwise fails at the first query because OpnsenseHost refers to classes nobody imported.
+from app.models.host_variable import HostVariable
+__all__ += ["HostVariable"]

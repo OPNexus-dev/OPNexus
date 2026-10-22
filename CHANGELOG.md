@@ -31,6 +31,13 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.31.1] "Vulture" — 2026-10-22
+
+- **Korrektur: `opnexus password` und `reset_2fa` stürzten ab.** Seit den Standort-Variablen (1.22) brach das Zurücksetzen des Admin-Passworts
+  (`./opnexus password`) bzw. der Zwei-Faktor-Anmeldung (`docker compose exec backend python -m app.reset_2fa <benutzer>`) mit einem
+  SQLAlchemy-Fehler ab, weil ein Datenmodell nicht registriert war. Der Weg bei vergessenem Passwort oder verlorenem 2FA-Gerät funktioniert wieder;
+  ein Regressionstest sichert ab, dass jedes Hilfsskript alle Modelle kennt.
+
 ## [1.31.0] "Vulture" — 2026-10-22
 
 - **Regel-Bereinigung: Entfernen, Bestätigen, Löschen, Wiederherstellen:** Im Tab **Bereinigung** (Regelwerk › Regel-Analyse) lassen sich Kandidaten jetzt auswählen
