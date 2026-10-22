@@ -9,7 +9,9 @@ releases without that endpoint fall back to parsing ``diagnostics/firewall/pfSta
 * A counter that grew since the last sample is a hit "now" (at most one sampling interval late).
 * A counter that is *lower* than before means pf reloaded its ruleset (an apply or a reboot), which
   zeroes everything. Whatever it shows above zero was hit since the reload, so that also counts as a hit now;
-  zero tells nothing, the old ``last_hit_at`` stays.
+  zero tells nothing, the old ``last_hit_at`` stays. (Live, 2026-10-22, OPNsense 26.7.7: ``firewall/filter/apply``
+  WITHOUT any pending change already zeroes every ``ruleStats`` counter - 16228 -> 0 packets on the busiest rule -
+  so every apply is such a reload; writers sample right before their own apply, see rule_cleanup_service.)
 * A rule is called unused only after OPNexus has watched it for ``UNUSED_AFTER_DAYS`` without a hit.
   A new rule, or a brand-new installation, is "still collecting data" instead of a false alarm.
 
@@ -20,6 +22,7 @@ never tracked.
 """
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import delete, select, update
@@ -163,6 +166,41 @@ async def sample_all(db: AsyncSession) -> int:
         except Exception:
             logger.exception("Regelnutzung von %s fehlgeschlagen", host.name)
     return sampled
+
+
+@dataclass
+class ClusterHit:
+    """The usage of one rule over all nodes of a cluster (DESIGN-1.31 §3.4). Has the attributes ``classify`` and
+    ``cleanup.unused_confidence`` read from a ``RuleHit``. Traffic goes through the CARP master, a backup sees
+    almost nothing: a rule is only unused when it is unused everywhere, so the newest hit of any node counts, the
+    window starts at the latest start of any node and the counters are only as fresh as the oldest node's."""
+    rule_uuid: str
+    enabled: bool
+    first_seen_at: datetime
+    last_hit_at: datetime | None
+    last_sampled_at: datetime
+    # The rule is not tracked on some node (missing there, or the node was never sampled): nothing is known
+    # about its traffic there, so "unused" is never better than "probable".
+    peer_missing: bool = False
+
+
+def merge_cluster_hits(own: dict[str, RuleHit], peers: list[dict[str, RuleHit]]) -> dict[str, ClusterHit]:
+    """Per rule over the union of all nodes' rows (a rule this node has no row for is still judged, as
+    ``peer_missing``: what this node saw of it is unknown)."""
+    merged: dict[str, ClusterHit] = {}
+    for key in {*own, *(k for p in peers for k in p)}:
+        rows = [own.get(key), *(p.get(key) for p in peers)]
+        present = [r for r in rows if r is not None]
+        hits = [r.last_hit_at for r in present if r.last_hit_at is not None]
+        mine = own.get(key) or present[0]
+        merged[key] = ClusterHit(
+            rule_uuid=mine.rule_uuid, enabled=mine.enabled,
+            first_seen_at=max(r.first_seen_at for r in present),
+            last_hit_at=max(hits) if hits else None,
+            last_sampled_at=min(r.last_sampled_at for r in present),
+            peer_missing=len(present) < len(rows),
+        )
+    return merged
 
 
 def classify(row: RuleHit, now: datetime, days: int = UNUSED_AFTER_DAYS) -> str:

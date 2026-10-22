@@ -378,7 +378,7 @@ async def test_0028_adds_the_event_window_and_is_idempotent(scratch):
         cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'rule_change_events'"))).scalars().all())
     assert "window_start" not in cols
     await _alembic(scratch, "upgrade", "head")
-    assert await _version(scratch) == _head() == "0028" and await _schema_diff(scratch) == []
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
     await _alembic(scratch, "downgrade", "0027")
     async with scratch.connect() as conn:
         cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'rule_change_events'"))).scalars().all())
@@ -386,3 +386,68 @@ async def test_0028_adds_the_event_window_and_is_idempotent(scratch):
     await _alembic(scratch, "upgrade", "head")
     await _alembic(scratch, "upgrade", "head")
     assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+async def test_0029_creates_the_rule_cleanup_tables_and_settings_and_is_idempotent(scratch):
+    """1.30 -> 1.31: two tables with a partial unique index (one unfinished item per rule and node) and three
+    columns on governance_settings; the downgrade removes all of it again."""
+    await _alembic(scratch, "upgrade", "0028")
+    async with scratch.begin() as conn:
+        await conn.execute(text("INSERT INTO governance_settings (id, operators_may_deploy) VALUES (1, true)"))
+        tables = set((await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all())
+        cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'governance_settings'"))).scalars().all())
+    assert "rule_cleanup_operations" not in tables and "rule_cleanup_items" not in tables
+    assert "cleanup_max_rules" not in cols
+
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+    async with scratch.connect() as conn:  # the existing settings row got the defaults of the design
+        row = (await conn.execute(text(
+            "SELECT cleanup_max_rules, cleanup_delete_min_days, cleanup_management_sources, cleanup_management_ports "
+            "FROM governance_settings"))).one()
+    assert tuple(row) == (10, 7, [], [])
+
+    host, op_id = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+    async with scratch.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO opnsense_hosts (id, name, base_url, api_key, verify_tls, enabled, created_at) "
+            "VALUES (:h, 'fw', 'https://fw.test', 'k', true, true, now())"), {"h": host})
+        await conn.execute(text(
+            "INSERT INTO rule_cleanup_operations (id, host_id, kind, status, actor, created_at, expires_at, preview_fingerprint, options) "
+            "VALUES (:o, :h, 'disable', 'preview', 'admin', now(), now(), 'f', '{}')"), {"o": op_id, "h": host})
+
+    async def item(conn, rule: str, state: str):
+        await conn.execute(text(
+            "INSERT INTO rule_cleanup_items (id, operation_id, host_id, rule_uuid, seq, state, description, categories) "
+            f"VALUES (gen_random_uuid(), :o, :h, '{rule}', 0, '{state}', 'r', '[]')"), {"o": op_id, "h": host})
+
+    async with scratch.begin() as conn:
+        await item(conn, "r1", "disabled")
+        await item(conn, "r2", "disabled")  # another rule is fine
+        await item(conn, "r1", "confirmed")  # finished items do not count
+        await item(conn, "r1", "reverted")
+    for blocked in ("queued", "unknown", "revert_failed", "deleting"):  # r1 is still open as "disabled"
+        with pytest.raises(DBAPIError):
+            async with scratch.begin() as conn:
+                await item(conn, "r1", blocked)
+    async with scratch.begin() as conn:  # on another node the same UUID is a different rule
+        await conn.execute(text(
+            "INSERT INTO opnsense_hosts (id, name, base_url, api_key, verify_tls, enabled, created_at) "
+            "VALUES ('33333333-3333-3333-3333-333333333333', 'fw2', 'https://fw2.test', 'k', true, true, now())"))
+        await conn.execute(text(
+            "INSERT INTO rule_cleanup_items (id, operation_id, host_id, rule_uuid, seq, state, description, categories) "
+            "VALUES (gen_random_uuid(), :o, '33333333-3333-3333-3333-333333333333', 'r1', 0, 'disabled', 'r', '[]')"), {"o": op_id})
+    async with scratch.begin() as conn:  # the host takes its operations and their items with it
+        await conn.execute(text("DELETE FROM opnsense_hosts WHERE id = :h"), {"h": host})
+        assert (await conn.execute(text("SELECT count(*) FROM rule_cleanup_operations"))).scalar() == 0
+        assert (await conn.execute(text("SELECT count(*) FROM rule_cleanup_items"))).scalar() == 0
+
+    await _alembic(scratch, "downgrade", "0028")
+    async with scratch.connect() as conn:
+        tables = set((await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all())
+        cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'governance_settings'"))).scalars().all())
+    assert "rule_cleanup_operations" not in tables and "rule_cleanup_items" not in tables
+    assert not {"cleanup_max_rules", "cleanup_delete_min_days", "cleanup_management_sources", "cleanup_management_ports"} & cols
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")  # second run: nothing to do
+    assert await _version(scratch) == _head() == "0029" and await _schema_diff(scratch) == []

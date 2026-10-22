@@ -13,6 +13,9 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 
 context = ContextVar("audit_context", default=None)
+# A key in ``details`` whose content only admins (session or admin-scope token) get to read (routers/audit.py):
+# firewall addresses and management sources of the rule cleanup.
+ADMIN_ONLY_DETAILS = "admin_only"
 
 
 # Column widths of audit_events. entity_id/host_id/action are taken from the

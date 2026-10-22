@@ -778,6 +778,7 @@
     "OPEN_DEPLOYMENT_DRAFT_UNCHANGED": "Offene Bestätigung oder fehlgeschlagenen Rollback zuerst klären; Entwurf bleibt unverändert",
     "OPEN_HOST_MAINTENANCE_BLOCKS_DEPLOY": "Offene Host-Wartung zuerst prüfen und abschließen, bevor Regeln ausgerollt werden.",
     "OPEN_RESTORE_BLOCKS_DEPLOY": "Eine Wiederherstellung ist für diesen Host offen. Bitte zuerst bestätigen oder abbrechen.",
+    "OPEN_CLEANUP_BLOCKS_DEPLOY": "Für diesen Host läuft oder wartet eine Regel-Bereinigung. Bitte zuerst bestätigen, zurücknehmen oder abschließen.",
     "READ_ONLY_ACCESS": "Nur-Lese-Zugriff: Diese Aktion erfordert die Rolle „Admin“.",
     "CROSS_ORIGIN_BLOCKED": "Anfrage von einer fremden Herkunft blockiert",
     "CROSS_SITE_REQUEST_BLOCKED": "Anfrage aus einer anderen Website blockiert (Sec-Fetch-Site). Öffne OPNexus direkt über seine eigene Adresse.",
@@ -868,7 +869,30 @@
     "API_RIGHTS_MISSING": "Dem API-Benutzer fehlt das Recht, den Gateway-Status zu lesen",
     "GATEWAY_NAME_INVALID": "Ungültiger Gateway-Name",
     "GATEWAY_UNKNOWN": "Dieses Gateway kennt OPNexus auf der Firewall nicht (Name prüfen, Groß-/Kleinschreibung)",
-    "GATEWAY_MUTE_LIMIT": "Es können höchstens {limit} Gateways stummgeschaltet werden"
+    "GATEWAY_MUTE_LIMIT": "Es können höchstens {limit} Gateways stummgeschaltet werden",
+    "BEREINIGUNG_NICHT_GEFUNDEN": "Bereinigung nicht gefunden.",
+    "BEREINIGUNG_AUSWAHL_UNGUELTIG": "Ungültige Auswahl ({field}).",
+    "BEREINIGUNG_VORSCHAU_VERALTET": "Der Stand der Firewall hat sich seit der Vorschau geändert ({uuids}). Es wurde nichts geschrieben; Vorschau neu öffnen.",
+    "BEREINIGUNG_REGEL_NICHT_AENDERBAR": "Regel {uuid} auf {host} kann nicht bereinigt werden (Grund: {reason}).",
+    "BEREINIGUNG_OFFENE_OPERATION": "Im Host/Cluster ist noch etwas offen ({reason}). Erst bestätigen, zurücknehmen oder abschließen.",
+    "BEREINIGUNG_ZU_VIELE_REGELN": "Höchstens {max} Regeln je Bereinigung (gewählt: {count}).",
+    "BEREINIGUNG_BESTAETIGUNG_FEHLT": "Für diese Regeln fehlt die ausdrückliche Bestätigung: {uuids}.",
+    "BEREINIGUNG_VERWALTUNGSQUELLEN_FEHLEN": "Zuerst in den Einstellungen die Verwaltungsquellen eintragen (Adressen, von denen aus die Firewalls verwaltet werden). Ohne sie ist die Bereinigung gesperrt.",
+    "BEREINIGUNG_CLUSTER_UNVOLLSTAENDIG": "Cluster nicht vollständig oder Rollen unklar ({reason}). Die Bereinigung braucht alle Knoten, genau einen MASTER und dieselbe Regel-UUID auf jedem Knoten.",
+    "BEREINIGUNG_FRIST_ABGELAUFEN": "Die Bestätigungsfrist ist abgelaufen oder die Bereinigung ist nicht mehr offen.",
+    "BEREINIGUNG_NICHT_BESTAETIGBAR": "Diese Bereinigung kann nicht bestätigt werden ({status}): mindestens eine Regel ist fehlgeschlagen oder unklar. Jetzt zurücknehmen oder auf die automatische Rücknahme warten.",
+    "BEREINIGUNG_LIVESTAND_ABWEICHEND": "Auf der Firewall sehen diese Regeln anders aus als erwartet: {uuids}. Nicht bestätigt; prüfen oder zurücknehmen.",
+    "BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR": "{host} ist nicht erreichbar oder nicht lesbar. Nicht bestätigen, wenn die Firewall gerade nicht antwortet: die automatische Rücknahme stellt den alten Stand her.",
+    "BEREINIGUNG_WARTEZEIT_NICHT_ERREICHT": "Regel {uuid} auf {host} ist noch nicht lange genug deaktiviert (noch {days} Tag(e)).",
+    "BEREINIGUNG_SNAPSHOT_FEHLT": "Für diese Regel gibt es keine Sicherung des Regelinhalts; sie wird nicht gelöscht bzw. kann nicht wiederhergestellt werden.",
+    "BEREINIGUNG_POSITION_NICHT_WIEDERHERSTELLBAR": "Die Regel wurde wiederhergestellt, aber nicht an ihrer alten Position: sie steht am Ende ihrer Gruppe. Position in OPNsense prüfen.",
+    "BEREINIGUNG_AKTION_NICHT_MOEGLICH": "Diese Aktion ist im aktuellen Zustand nicht möglich ({status}).",
+    "BEREINIGUNG_NICHT_AUSGEFUEHRT": "Nicht ausgeführt: die Bereinigung wurde vorher abgebrochen.",
+    "BEREINIGUNG_ANWENDEN_FEHLGESCHLAGEN": "Die Änderung wurde gespeichert, aber das Anwenden auf der Firewall ist fehlgeschlagen.",
+    "BEREINIGUNG_AUSGANG_UNKLAR": "Die Firewall hat nicht eindeutig geantwortet; der Stand wurde nachgelesen.",
+    "BEREINIGUNG_ABGEBROCHEN_VERWAIST": "Der Vorgang wurde unterbrochen (OPNexus neu gestartet?). Stand auf der Firewall mit „Erneut prüfen“ nachlesen.",
+    "BEREINIGUNG_EINSTELLUNG_UNGUELTIG": "Ungültige Einstellung der Bereinigung ({field}: {reason}).",
+    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "Der Bestätigungstext dieser Seite ist veraltet. Seite neu laden und die Regeln erneut bestätigen."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -2160,6 +2184,7 @@
   "audit": {
     "kind": {
       "rule": "Regeln",
+      "rule_cleanup": "Regel-Bereinigung",
       "alias": "Aliase",
       "port_forward": "Port Forward",
       "one_to_one": "1:1 NAT",
@@ -2179,6 +2204,11 @@
     },
     "action": {
       "deploy": "Push",
+      "disable": "Deaktiviert",
+      "enable": "Aktiviert",
+      "revert": "Zurückgenommen",
+      "restore": "Wiederhergestellt",
+      "cleanup_settings": "Einstellungen geändert",
       "confirm": "Bestätigung",
       "rollback": "Rollback",
       "remove": "Ziel entfernen",
@@ -3647,7 +3677,6 @@
     "rulesChecked": "{count} Regeln geprüft",
     "watching": "OPNexus zählt die Treffer dieser Firewall seit {when}. {collecting} Regel(n) werden noch beobachtet und können noch nicht als ungenutzt gelten.",
     "notWatching": "OPNexus hat noch keine Regelzähler dieser Firewall gesammelt. Ungenutzte Regeln erscheinen erst nach der Beobachtungszeit.",
-    "removalLater": "Nur Ansicht: Entfernen folgt in einer späteren Version. Bis dahin in der OPNsense-Oberfläche.",
     "notes": {
       "ORDER_GUESSED": "Reihenfolge geschätzt",
       "ORDER_GUESSED_hint": "Diese OPNsense-Version liefert keine Sortierung; die Reihenfolge wurde aus Gruppe und Folgenummer abgeleitet. Befunde zu verdeckten und doppelten Regeln gelten höchstens als vermutlich.",
@@ -3660,7 +3689,17 @@
       "ALIASES_UNAVAILABLE": "Aliase unbekannt",
       "ALIASES_UNAVAILABLE_hint": "Die Aliase waren nicht lesbar; Regeln mit Aliasen können nicht verglichen werden.",
       "NAT_UNAVAILABLE": "NAT unbekannt",
-      "NAT_UNAVAILABLE_hint": "Die Port-Weiterleitungen waren nicht lesbar (für die Bereinigung ohne Belang)."
+      "NAT_UNAVAILABLE_hint": "Die Port-Weiterleitungen waren nicht lesbar (für die Bereinigung ohne Belang).",
+      "CLUSTER_PEER_USAGE_UNKNOWN": "Nutzung im Cluster unvollständig",
+      "CLUSTER_PEER_USAGE_UNKNOWN_hint": "Für mindestens eine Regel fehlen die Zählerdaten eines Cluster-Knotens. \"Ungenutzt\" ist dann höchstens \"wahrscheinlich\".",
+      "UNUSED_BLOCK_RULE": "Sperrregel",
+      "UNUSED_BLOCK_RULE_hint": "Eine Sperrregel ohne Treffer kann trotzdem schützen (seltene Angriffe). Darum gilt „ungenutzt“ hier höchstens als vermutlich.",
+      "UNUSED_WINDOW_SHORT": "kurzes Fenster",
+      "UNUSED_WINDOW_SHORT_hint": "Unter 30 Tagen Beobachtung fehlen Monats- und Quartalsjobs. „Ungenutzt“ gilt höchstens als vermutlich.",
+      "EXTERNAL_CHANGE": "extern geändert",
+      "EXTERNAL_CHANGE_hint": "Die Regel oder die verdeckende Regel wurde im Beobachtungszeitraum außerhalb von OPNexus geändert. Der Befund gilt höchstens als vermutlich.",
+      "ENABLE_MAY_BLOCK_MANAGEMENT": "kann Verwaltung sperren",
+      "ENABLE_MAY_BLOCK_MANAGEMENT_hint": "Eine Sperrregel, für die nicht bewiesen ist, dass sie den Verwaltungszugang nicht trifft. Einschalten nur mit ausdrücklicher Bestätigung."
     },
     "empty": {
       "title": "Keine Kandidaten",
@@ -3671,7 +3710,8 @@
       "rule": "Regel",
       "finding": "Befund",
       "lastHit": "Letzter Treffer",
-      "removable": "Entfernbar"
+      "removable": "Entfernbar",
+      "action": "Aktion"
     },
     "history": "Verlauf der Regel {rule} anzeigen",
     "historyTitle": "Verlauf",
@@ -3707,9 +3747,6 @@
     },
     "noHit": "keiner beobachtet",
     "noHitSince": "Seit {when} beobachtet OPNexus diese Regel und hat keinen Treffer gesehen.",
-    "removable": {
-      "yes": "ja"
-    },
     "notRemovable": {
       "automatic": "automatisch",
       "automatic_hint": "Diese Regel erzeugt OPNsense selbst und sie lässt sich nicht einzeln entfernen.",
@@ -3717,7 +3754,283 @@
       "legacy_hint": "Die Regel ist noch im alten Format. Zuerst in OPNsense in das neue Regelformat migrieren.",
       "managed": "von OPNexus verwaltet",
       "managed_hint": "OPNexus hat diese Regel ausgerollt. Sie wird über den normalen Ablauf der Regelseite entfernt, sonst legt OPNexus sie wieder an.",
-      "managedLink": "Regel \"{rule}\" öffnen"
+      "managedLink": "Regel \"{rule}\" öffnen",
+      "confidence": "unbekannt",
+      "confidence_hint": "Es gibt nur einen Hinweis, aber keinen Beleg. Solche Regeln werden nie zum Entfernen angeboten.",
+      "nothing": "kein Befund",
+      "nothing_hint": "Für diese Regel liegt kein Befund vor, der ein Deaktivieren begründet.",
+      "deleteWait": "noch nicht",
+      "deleteWait_hint": "Gelöscht wird nur, was lange genug deaktiviert und unverändert war und als sicher gilt. Noch nicht erreicht.",
+      "unreadable": "nicht lesbar",
+      "unreadable_hint": "Die Regel hat keine UUID im neuen Regelformat und lässt sich nicht gezielt ändern."
+    },
+    "action": {
+      "disable": "Deaktivieren",
+      "enable": "Aktivieren",
+      "delete": "Löschen"
+    },
+    "select": {
+      "column": "Auswählen",
+      "row": "Regel {rule} auswählen",
+      "count": "{n} von {max} gewählt",
+      "previewDisable": "Vorschau: Deaktivieren",
+      "previewDelete": "Vorschau: Löschen",
+      "clear": "Auswahl aufheben",
+      "none": "Wählen Sie mindestens eine Regel aus.",
+      "locked": "Gesperrt, bis Verwaltungsquellen eingetragen sind.",
+      "busy": "Es ist noch eine Bereinigung offen: erst bestätigen oder zurücksetzen.",
+      "otherKind": "Eine Bereinigung kann nicht Deaktivieren und Löschen mischen. Zuerst die andere Auswahl aufheben.",
+      "limit": "Höchstens {max} Regeln je Bereinigung (Einstellung).",
+      "needsAck": "Bestätigung nötig",
+      "needsAckHint": "Der Befund beruht auf einer Annahme. Vor der Vorschau bestätigen Sie für diese Regel ausdrücklich, dass sie nicht gebraucht wird."
+    },
+    "settings": {
+      "link": "Einstellungen",
+      "title": "Regel-Bereinigung",
+      "intro": "Grenzen und Schutz für das Deaktivieren, Löschen und Wiederherstellen von Regeln im Bereich Analyse, Bereinigung.",
+      "sources": "Verwaltungsquellen",
+      "sourcesHint": "Adressen oder Netze, von denen aus die Firewalls verwaltet werden (OPNexus selbst, Ihr Arbeitsplatz, ein Jump-Host). Eine Regel, die den Zugang von dort zur Firewall treffen könnte, wird nie deaktiviert. Ohne Eintrag ist die Bereinigung gesperrt. Nur IP-Adressen oder Netze (CIDR), keine Namen.",
+      "sourcesPlaceholder": "203.0.113.10\n198.51.100.0/24",
+      "sourcesInvalid": "„{value}“ ist keine IP-Adresse und kein Netz (z. B. 203.0.113.10 oder 198.51.100.0/24). Hostnamen sind nicht erlaubt.",
+      "sourcesEverything": "„{value}“ umfasst den gesamten Adressraum und würde jede Regel schützen.",
+      "sourcesTooMany": "Höchstens 20 Einträge.",
+      "maxRules": "Regeln je Bereinigung",
+      "maxRulesHint": "So viele Regeln darf eine einzelne Bereinigung höchstens ändern (1 bis 25).",
+      "maxRulesInvalid": "Eine ganze Zahl von 1 bis 25.",
+      "minDays": "Wartezeit bis zum Löschen (Tage)",
+      "minDaysHint": "So lange muss eine bestätigt deaktivierte Regel unverändert bleiben, bevor sie gelöscht werden darf (1 bis 365).",
+      "minDaysInvalid": "Eine ganze Zahl von 1 bis 365.",
+      "saved": "Einstellungen der Bereinigung gespeichert.",
+      "ports": "Weitere Verwaltungsports",
+      "portsHint": "TCP-Ports, auf denen die Firewalls zusätzlich verwaltet werden (z. B. SSH oder Weboberfläche auf einem anderen Port). API-Port, 443, 80 und 22 sind immer geschützt.",
+      "portsPlaceholder": "z. B. 2222, 8443",
+      "portsInvalid": "Kein gültiger Port: {value} (1–65535).",
+      "portsTooMany": "Höchstens 20 Ports."
+    },
+    "mgmt": {
+      "title": "Bereinigung gesperrt: Verwaltungsquellen fehlen",
+      "text": "Tragen Sie die Adressen ein, von denen aus Ihre Firewalls verwaltet werden. Danach schaltet die Bereinigung keine Regel ab, die diesen Zugang treffen könnte.",
+      "hint": "OPNexus prüft für jede gewählte Regel, ob sie ein Paket von einer Verwaltungsquelle an die Verwaltungsadresse und den Port der Firewall treffen kann. Trifft sie oder ist das nicht sicher auszuschließen, bleibt sie unangetastet. Nur IP-Adressen oder Netze (CIDR).",
+      "askAdmin": "Ein Administrator muss die Verwaltungsquellen in den Einstellungen eintragen."
+    },
+    "dur": {
+      "minutes": "{n} Min.",
+      "seconds": "{n} Sek."
+    },
+    "preview": {
+      "title": {
+        "disable": "Vorschau: Regeln deaktivieren",
+        "enable": "Vorschau: Regeln wieder aktivieren",
+        "delete": "Vorschau: Regeln löschen"
+      },
+      "intro": {
+        "disable": "Die Regeln auf {host} werden nur deaktiviert, nicht gelöscht, und die Änderung wird angewendet.",
+        "enable": "Die Regeln auf {host} werden wieder eingeschaltet und die Änderung wird angewendet.",
+        "delete": "Die bereits deaktivierten Regeln auf {host} werden gelöscht. Ihr Inhalt wird vorher gesichert."
+      },
+      "introHint": {
+        "disable": "Die Liste wurde gerade neu von der Firewall berechnet. Beim Ausrollen prüft OPNexus alles noch einmal und schreibt nichts, wenn sich etwas geändert hat.",
+        "enable": "Das Einschalten einer Regel kann Verbindungen verändern oder sperren. Darum gibt es danach wieder ein Bestätigungsfenster. Die Liste wurde gerade neu von der Firewall berechnet.",
+        "delete": "Eine deaktivierte Regel ist in der Firewall nicht geladen, das Löschen ändert daran nichts und braucht kein Bestätigungsfenster. Unter „Verlauf der Bereinigungen“ lässt sich die Regel wiederherstellen (deaktiviert, an alter Position, soweit möglich)."
+      },
+      "loading": "Berechne die Vorschau von der Firewall …",
+      "failed": "Die Vorschau konnte nicht berechnet werden.",
+      "compute": "Vorschau berechnen",
+      "again": "Vorschau neu berechnen",
+      "validFor": "Vorschau noch {time} gültig",
+      "expired": "Die Vorschau ist abgelaufen. Bitte neu berechnen.",
+      "clusterOrder": "Cluster: zuerst Backup, dann Master. Zurücksetzen in umgekehrter Reihenfolge.",
+      "basisConfirmed": "Seit {when} bestätigt deaktiviert und unverändert.",
+      "basisDisabled": "Von Hand deaktiviert und lange unverändert.",
+      "external": "extern geändert",
+      "externalHint": "Seit der Beobachtung wurde die Regel außerhalb von OPNexus geändert.",
+      "acknowledged": "ausdrücklich bestätigt",
+      "autoRevert": "Danach haben Sie {window} Zeit zu prüfen, ob alles funktioniert und die Firewall erreichbar ist. Bestätigen Sie in dieser Zeit nicht, setzt OPNexus die Änderung automatisch zurück.",
+      "confirmName": "Name der Firewall zur Bestätigung",
+      "confirmNameHint": "Geben Sie den Namen der Firewall genau so ein. Das verhindert, dass versehentlich die falsche Firewall geändert wird.",
+      "confirmNameAria": "Name der Firewall zur Bestätigung eingeben: {host}",
+      "deployDisabledName": "Der Name muss genau dem der Firewall entsprechen.",
+      "deployNotAdmin": "Nur Administratoren dürfen ausrollen. Eine Vorschau gehört dem, der sie erstellt hat: ein Administrator muss selbst eine neue Vorschau öffnen."
+    },
+    "ack": {
+      "title": "Diese Befunde beruhen auf einer Annahme. Bestätigen Sie jede Regel einzeln.",
+      "text": "Nicht belegt: Zeitplan, Aliasinhalt oder Beobachtungszeitraum sind geschätzt. Ich habe geprüft, dass die Regel „{rule}“ nicht gebraucht wird.",
+      "enableTitle": "Das Einschalten dieser Sperrregel kann den Verwaltungszugang treffen. Bestätigen Sie jede Regel einzeln.",
+      "enableText": "Ich habe geprüft, dass das Einschalten von „{rule}“ den Zugang von OPNexus und der Verwaltung zur Firewall nicht sperrt."
+    },
+    "protect": {
+      "false": "Verwaltungszugang unberührt",
+      "false_hint": "Keine Verwaltungsquelle ({sources}) kann mit dieser Regel auf die Verwaltung der Firewall zugreifen (geprüft: {queries} Kombinationen aus Quelle, Ziel, Port und Interface).",
+      "true": "trifft den Verwaltungszugang",
+      "true_hint": "Die Regel kann den Zugang von einer Verwaltungsquelle ({sources}) zur Firewall treffen. Das Bestätigungsfenster ist hier die Absicherung.",
+      "unknown": "Verwaltungszugang unklar",
+      "unknown_hint": "Ob die Regel den Zugang von einer Verwaltungsquelle ({sources}) betrifft, ließ sich nicht sicher ausschließen. Das Bestätigungsfenster ist hier die Absicherung.",
+      "sourcesHidden": "die eingetragenen Verwaltungsquellen"
+    },
+    "deploy": {
+      "disable": "Deaktivieren und anwenden",
+      "enable": "Aktivieren und anwenden",
+      "delete": "Endgültig löschen",
+      "failed": "Das Ausrollen ist fehlgeschlagen."
+    },
+    "toast": {
+      "deployedConfirm": "Angewendet. Prüfen Sie jetzt die Firewall und bestätigen Sie, sonst wird zurückgesetzt.",
+      "deployedDone": "Erledigt.",
+      "deployedCheck": "Nicht vollständig: Details im Kasten oben.",
+      "confirm": {
+        "confirmed": "Bestätigt. Die Änderung bleibt bestehen.",
+        "done": "Bestätigt."
+      },
+      "revert": {
+        "reverted": "Zurückgesetzt. Die Regeln sind wieder wie vorher.",
+        "revert_failed": "Das Zurücksetzen ist fehlgeschlagen. Stand auf der Firewall prüfen.",
+        "done": "Zurückgesetzt."
+      },
+      "retry": {
+        "reverted": "Zurückgesetzt. Die Regeln sind wieder wie vorher.",
+        "revert_failed": "Das Zurücksetzen ist wieder fehlgeschlagen.",
+        "done": "Stand erneut geprüft.",
+        "failed": "Stand erneut geprüft, nicht alles ist abgeschlossen."
+      },
+      "ended": {
+        "reverted": "Die Bereinigung wurde automatisch zurückgesetzt.",
+        "confirmed": "Die Bereinigung wurde bestätigt.",
+        "done": "Die Bereinigung ist abgeschlossen.",
+        "failed": "Die Bereinigung ist beendet, aber nicht alles ist gelungen."
+      }
+    },
+    "confirmFailed": "Das Bestätigen ist fehlgeschlagen.",
+    "revertFailed": "Das Zurücksetzen ist fehlgeschlagen.",
+    "retryFailed": "Die erneute Prüfung ist fehlgeschlagen.",
+    "op": {
+      "title": {
+        "disable": "Regeln deaktivieren",
+        "enable": "Regeln wieder aktivieren",
+        "delete": "Regeln löschen",
+        "restore": "Regel wiederherstellen"
+      },
+      "state": {
+        "running": "OPNexus schreibt die Änderung gerade auf die Firewall. Die automatische Rücknahme ist bereits scharf.",
+        "awaiting_confirm": "Die Änderung ist auf der Firewall angewendet. Prüfen Sie, ob alles funktioniert und die Firewall erreichbar ist, und bestätigen Sie dann.",
+        "partial": "Nicht alle Regeln konnten geändert werden. Bestätigen ist gesperrt: jetzt zurücksetzen oder auf die automatische Rücknahme warten.",
+        "apply_failed": "Die Regeln sind geändert, aber das Anwenden auf der Firewall ist fehlgeschlagen. Jetzt zurücksetzen oder auf die automatische Rücknahme warten.",
+        "reverting": "OPNexus setzt die Änderung gerade zurück.",
+        "revert_failed": "Das Zurücksetzen ist fehlgeschlagen. Der Stand auf der Firewall ist unklar: in OPNsense prüfen und erneut versuchen.",
+        "confirmed": "Bestätigt.",
+        "reverted": "Zurückgesetzt.",
+        "done": "Abgeschlossen.",
+        "failed": "Bei mindestens einer Regel ist der Ausgang unklar. Mit „Erneut prüfen“ liest OPNexus den Stand der Firewall nach.",
+        "preview": "Vorschau.",
+        "cancelled": "Abgebrochen.",
+        "expired": "Abgelaufen."
+      },
+      "countdown": "Noch {time} bis zur automatischen Rücknahme",
+      "countdownMinutes": "Noch etwa {n} Min. bis zur automatischen Rücknahme.",
+      "confirm": "Bestätigen",
+      "confirmNotYet": "Bestätigen ist erst möglich, wenn die Änderung angewendet ist.",
+      "confirmPartial": "Bestätigen ist gesperrt, weil mindestens eine Regel fehlgeschlagen oder unklar ist.",
+      "confirmApplyFailed": "Bestätigen ist gesperrt, weil das Anwenden auf der Firewall fehlgeschlagen ist.",
+      "revert": "Jetzt zurücksetzen",
+      "revertNeedsAdmin": "Nur Administratoren dürfen zurücksetzen (Einstellung: Operatoren dürfen ausrollen).",
+      "retryRevert": "Zurücksetzen wiederholen",
+      "retryCheck": "Erneut prüfen",
+      "retryNeedsAdmin": "Nur Administratoren dürfen wiederholen.",
+      "autoRevertNote": "Bestätigen heißt: Sie erreichen die Firewall noch. Bestätigen Sie nicht, setzt OPNexus nach Ablauf der Zeit automatisch zurück. Bestätigen ist nur in der Browser-Sitzung möglich, nicht per API-Token."
+    },
+    "status": {
+      "preview": "Vorschau",
+      "preview_hint": "Berechnet, noch nichts geschrieben.",
+      "running": "Läuft",
+      "running_hint": "OPNexus schreibt gerade auf die Firewall.",
+      "awaiting_confirm": "Wartet auf Bestätigung",
+      "awaiting_confirm_hint": "Angewendet. Ohne Bestätigung setzt OPNexus nach Fristablauf automatisch zurück.",
+      "confirmed": "Bestätigt",
+      "confirmed_hint": "Vom Nutzer bestätigt. Die Änderung bleibt.",
+      "partial": "Teilweise",
+      "partial_hint": "Nicht alle Regeln konnten geändert werden. Zurücksetzen oder die automatische Rücknahme abwarten.",
+      "apply_failed": "Anwenden fehlgeschlagen",
+      "apply_failed_hint": "Die Regeln sind geändert, aber die Firewall hat die Änderung nicht angewendet.",
+      "reverting": "Wird zurückgesetzt",
+      "reverting_hint": "OPNexus stellt den alten Stand her.",
+      "reverted": "Zurückgesetzt",
+      "reverted_hint": "Der alte Stand ist wiederhergestellt. Das Beobachtungsfenster der Regeln beginnt neu.",
+      "revert_failed": "Zurücksetzen fehlgeschlagen",
+      "revert_failed_hint": "Der Stand auf der Firewall ist unklar. Prüfen und erneut versuchen.",
+      "done": "Abgeschlossen",
+      "done_hint": "Vollständig ausgeführt.",
+      "failed": "Fehlgeschlagen",
+      "failed_hint": "Nicht alles wurde ausgeführt. Details bei den Regeln.",
+      "cancelled": "Abgebrochen",
+      "cancelled_hint": "Die Vorschau wurde nicht ausgerollt.",
+      "expired": "Abgelaufen",
+      "expired_hint": "Die Vorschau war nicht mehr gültig."
+    },
+    "state": {
+      "queued": "wartet",
+      "disabling": "wird deaktiviert",
+      "disabled": "deaktiviert",
+      "confirmed": "bestätigt",
+      "reverting": "wird zurückgesetzt",
+      "reverted": "zurückgesetzt",
+      "deleting": "wird gelöscht",
+      "deleted": "gelöscht",
+      "restoring": "wird wiederhergestellt",
+      "restored": "wiederhergestellt (deaktiviert)",
+      "failed": "fehlgeschlagen",
+      "unknown": "Ausgang unklar",
+      "revert_failed": "Zurücksetzen fehlgeschlagen",
+      "skipped": "übersprungen"
+    },
+    "stateEnable": {
+      "disabling": "wird eingeschaltet",
+      "disabled": "eingeschaltet"
+    },
+    "hist": {
+      "title": "Verlauf der Bereinigungen",
+      "empty": "Auf dieser Firewall wurde noch nichts bereinigt.",
+      "restore": "Wiederherstellen …",
+      "restoreHint": "Legt die gelöschte Regel aus der Sicherung neu an, deaktiviert und möglichst an der alten Position.",
+      "adminOnly": "Nur Administratoren dürfen wiederherstellen.",
+      "delete": "Löschen …",
+      "deleteHint": "Öffnet die Vorschau zum Löschen dieser deaktivierten Regel.",
+      "deleteWait": "Löschen ist erst ab dem {when} möglich (Wartezeit nach der Bestätigung, einstellbar).",
+      "enable": "Wieder aktivieren …",
+      "enableHint": "Öffnet die Vorschau zum Einschalten der Regel, mit Bestätigungsfenster.",
+      "restoredBadge": "wiederhergestellt"
+    },
+    "restore": {
+      "title": "Regel wiederherstellen",
+      "intro": "Die gelöschte Regel wird aus der Sicherung neu angelegt, deaktiviert und möglichst an ihrer alten Position.",
+      "introHint": "Die Regel bekommt eine neue UUID. Im Cluster wird sie auf allen Knoten wiederhergestellt. Einschalten ist ein eigener Schritt („Wieder aktivieren“) mit Bestätigungsfenster. Sind Aliase oder Kategorien der Regel inzwischen weg, lehnt die Firewall ab und die Meldung steht beim Ergebnis.",
+      "action": "Wiederherstellen",
+      "done": "Regel „{rule}“ wiederhergestellt (deaktiviert).",
+      "failed": "Das Wiederherstellen ist fehlgeschlagen.",
+      "next": "Zum Einschalten: unter „Verlauf der Bereinigungen“ „Wieder aktivieren“ wählen."
+    },
+    "refuse": {
+      "managed": "von OPNexus verwaltet",
+      "automatic": "automatische Regel",
+      "legacy": "Altformat",
+      "management": "könnte den Verwaltungszugang treffen",
+      "infrastructure": "Cluster-/Infrastrukturregel",
+      "confidence": "Befund nicht belegt",
+      "not_candidate": "kein Kandidat mehr"
+    },
+    "openReason": {
+      "deployment": "Regel-Ausrollen offen",
+      "cleanup": "andere Bereinigung offen",
+      "rule": "Regel wird schon bearbeitet"
+    },
+    "clusterReason": {
+      "peer_disabled": "ein Knoten ist deaktiviert",
+      "peer_missing": "ein Knoten fehlt",
+      "roles": "Rollen unklar",
+      "uuid_missing": "Regel fehlt auf einem Knoten"
+    },
+    "settingsReason": {
+      "not_an_address": "keine IP-Adresse oder Netz",
+      "everything": "gesamter Adressraum",
+      "too_many": "zu viele Einträge"
     }
   },
   "ruleHistory": {

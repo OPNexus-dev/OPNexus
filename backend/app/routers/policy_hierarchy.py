@@ -330,6 +330,8 @@ async def remove_previous_target(rule_id: uuid.UUID, host_id: uuid.UUID, approva
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_OHNE_OFFENEN_ROLLBACK_KOENNEN_06DE0ADB)
     deployment = next(d for d in rule.deployments if d.host_id == host_id)
     from app.services import opnsense_client
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
+    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
     try:
         await opnsense_client.del_rule(deployment.host, deployment.opnsense_policy_hierarchy_uuid)
         await opnsense_client.apply(deployment.host)

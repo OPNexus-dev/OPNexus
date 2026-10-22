@@ -53,6 +53,7 @@ from app.routers import scheduled_maintenance as scheduled_maintenance_router
 from app.routers import maintenance_windows as maintenance_windows_router
 from app.routers import rollouts as rollouts_router
 from app.routers import rule_analysis as rule_analysis_router
+from app.routers import rule_cleanup as rule_cleanup_router
 from app.routers import gui_access as gui_access_router
 from app.services import scheduled_maintenance_service
 from app.services import rollout_engine
@@ -62,6 +63,7 @@ from app.services import overlay_service, variables_service
 from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
 from app.services import rule_history_service
+from app.services import rule_cleanup_service
 
 # Without this, Python's root logger defaults to WARNING with no handler,
 # so every logger.info() call in the 5 background loops below (CARP role
@@ -142,6 +144,13 @@ async def _deploy_revert_sweep_loop():
                 logger.info("Auto-reverted %d unconfirmed policy-hierarchy deployment(s)", len(reverted))
         except Exception:
             logger.exception("Policy-hierarchy deploy-revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await rule_cleanup_service.sweep_expired_cleanups(db)
+            if reverted:
+                logger.info("Regel-Bereinigung: %d Operation(en) automatisch zurückgenommen/abgeschlossen", len(reverted))
+        except Exception:
+            logger.exception("Rule-cleanup revert sweep failed")
         await asyncio.sleep(_SWEEP_INTERVAL_SECONDS)
 
 
@@ -561,5 +570,6 @@ app.include_router(scheduled_maintenance_router.router, prefix="/api")
 app.include_router(maintenance_windows_router.router, prefix="/api")
 app.include_router(rollouts_router.router, prefix="/api")
 app.include_router(rule_analysis_router.router, prefix="/api")
+app.include_router(rule_cleanup_router.router, prefix="/api")
 app.include_router(gui_access_router.router, prefix="/api")
 app.include_router(gui_access_router.internal_router)

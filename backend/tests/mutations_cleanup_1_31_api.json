@@ -1,0 +1,373 @@
+[
+ {
+  "name": "middleware: confirm not session-only",
+  "file": "app/services/api_token_service.py",
+  "old": "|^/api/hosts/[^/]+/rule-cleanup/[^/]+/confirm/?$\")",
+  "new": "\")",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: retry not admin-only",
+  "file": "app/services/api_token_service.py",
+  "old": "(deploy|retry)|items",
+  "new": "(deploy)|items",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: restore not admin-only",
+  "file": "app/services/api_token_service.py",
+  "old": "|items/[^/]+/restore)/?$\")",
+  "new": ")/?$\")",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: deploy-scope token passes admin-only cleanup routes",
+  "file": "app/services/api_token_service.py",
+  "old": "if scope == \"deploy\" and (_ADMIN_ONLY_WRITES.match(path) or _ADMIN_ONLY_CLEANUP.match(path)):",
+  "new": "if scope == \"deploy\" and (_ADMIN_ONLY_WRITES.match(path)):",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: operator passes admin-only cleanup routes",
+  "file": "app/services/api_token_service.py",
+  "old": "        _ADMIN_ONLY_WRITES.match(path) or _ADMIN_ONLY_CLEANUP.match(path))",
+  "new": "        _ADMIN_ONLY_WRITES.match(path))",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: revert not a rollout (operators_may_deploy ignored)",
+  "file": "app/services/api_token_service.py",
+  "old": "r\"|rule-cleanup/[^/]+/(revert|retry)\"",
+  "new": "r\"|rule-cleanup/[^/]+/(retry)\"",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "middleware: retry not a rollout",
+  "file": "app/services/api_token_service.py",
+  "old": "r\"|rule-cleanup/[^/]+/(revert|retry)\"",
+  "new": "r\"|rule-cleanup/[^/]+/(revert)\"",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: deploy only needs a writer",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    _admin_only(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.deploy(",
+  "new": "    _writer(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.deploy(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: retry only needs a writer",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    _admin_only(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.retry(",
+  "new": "    _writer(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.retry(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: restore only needs a writer",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    _admin_only(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.restore_item(",
+  "new": "    _writer(user, request)\n    host = await _host(db, host_id)\n    return await _one(db, await service.restore_item(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: confirm only needs a writer (tokens may confirm)",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    _session_only(user, request)\n",
+  "new": "    _writer(user, request)\n",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: revert needs no deployer",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    await _deployer(user, request, db)\n",
+  "new": "    _writer(user, request)\n",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: admin role not checked",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if user.role != \"admin\":\n        raise api_error(403, ErrorCode.ADMIN_REQUIRED)\n    token = _token(request)",
+  "new": "    if False:\n        raise api_error(403, ErrorCode.ADMIN_REQUIRED)\n    token = _token(request)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: admin token scope not checked",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if token is not None and token.scope != \"admin\":",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: session-only token check removed",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if token is not None:\n        raise api_error(403, ErrorCode.API_TOKEN_SCOPE_FORBIDDEN, scope=token.scope)",
+  "new": "    if False:\n        raise api_error(403, ErrorCode.API_TOKEN_SCOPE_FORBIDDEN, scope=token.scope)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: operator revert ignores operators_may_deploy",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "if user.role == \"operator\" and (await governance.get_settings(db)).operators_may_deploy:",
+  "new": "if user.role == \"operator\":",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: read-only account may write",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if user.role == \"read_only\":\n        raise api_error(403, ErrorCode.READ_ONLY_ACCESS)",
+  "new": "    if False:\n        raise api_error(403, ErrorCode.READ_ONLY_ACCESS)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: read-scope token may write",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if token is not None and token.scope == \"read\":",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: preview needs no writer",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    user = await resolve_user(request, db)\n    _writer(user, request)\n    host = await _host(db, host_id)\n    kind, uuids",
+  "new": "    user = await resolve_user(request, db)\n    host = await _host(db, host_id)\n    kind, uuids",
+  "tests": "tests/test_rule_cleanup_api.py -k 'every_route_for_every_caller or pattern_table or governance_settings_are_admin'"
+ },
+ {
+  "name": "router: actor is not the account name",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "actor=user.username, actor_id=user.id, kind=kind",
+  "new": "actor='x', actor_id=user.id, kind=kind",
+  "tests": "tests/test_rule_cleanup_api.py -k 'preview_belongs_to_its_actor or shapes_and_audit'"
+ },
+ {
+  "name": "settings: any role may write",
+  "file": "app/routers/governance.py",
+  "old": "    if user.role != \"admin\":\n        raise api_error(403, ErrorCode.ADMIN_REQUIRED)\n    row = await get_settings(db)\n    changes",
+  "new": "    if False:\n        raise api_error(403, ErrorCode.ADMIN_REQUIRED)\n    row = await get_settings(db)\n    changes",
+  "tests": "tests/test_rule_cleanup_api.py -k only_an_admin_writes"
+ },
+ {
+  "name": "settings: whole address space accepted",
+  "file": "app/routers/governance.py",
+  "old": "        if net.prefixlen == 0:",
+  "new": "        if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: host names accepted",
+  "file": "app/routers/governance.py",
+  "old": "            raise _bad(\"cleanup_management_sources\", \"not_an_address\") from None",
+  "new": "            continue",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: unlimited list",
+  "file": "app/routers/governance.py",
+  "old": "    if len(values) > MAX_MANAGEMENT_SOURCES:",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: sources not canonical",
+  "file": "app/routers/governance.py",
+  "old": "        entry = str(net.network_address) if net.prefixlen == net.max_prefixlen else str(net)",
+  "new": "        entry = text",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: sources shown to everybody",
+  "file": "app/routers/governance.py",
+  "old": "cleanup_management_sources=sources if user.role == \"admin\" else [],",
+  "new": "cleanup_management_sources=sources,",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: change not audited",
+  "file": "app/routers/governance.py",
+  "old": "    if changes:\n        db.add(audit_service.make_event(",
+  "new": "    if False:\n        db.add(audit_service.make_event(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: max rules unbounded",
+  "file": "app/routers/governance.py",
+  "old": "        if not 1 <= payload.cleanup_max_rules <= MAX_CLEANUP_RULES:",
+  "new": "        if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "settings: min days unbounded",
+  "file": "app/routers/governance.py",
+  "old": "        if not 1 <= payload.cleanup_delete_min_days <= MAX_DELETE_MIN_DAYS:",
+  "new": "        if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'cleanup_settings or management_sources or only_see_whether'"
+ },
+ {
+  "name": "lock: ensure_no_maintenance ignores a cleanup",
+  "file": "app/services/host_maintenance_service.py",
+  "old": "    if cleanup and ids:\n        await ensure_no_open_cleanup(db, hosts)",
+  "new": "    if False:\n        await ensure_no_open_cleanup(db, hosts)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: ensure_no_open_cleanup never raises",
+  "file": "app/services/host_maintenance_service.py",
+  "old": "    if ids and await has_open_cleanup(db, ids):\n        raise api_error(409, ErrorCode.OPEN_CLEANUP_BLOCKS_DEPLOY)",
+  "new": "    if False:\n        raise api_error(409, ErrorCode.OPEN_CLEANUP_BLOCKS_DEPLOY)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: maintenance inspection ignores a cleanup",
+  "file": "app/services/host_maintenance_service.py",
+  "old": "    if await has_open_cleanup(db, fleet_ids):\n        blocked.append(",
+  "new": "    if False:\n        blocked.append(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: host delete ignores a cleanup",
+  "file": "app/routers/hosts.py",
+  "old": "    await ensure_no_open_cleanup(db, [host])\n    # Both deployment tables FK",
+  "new": "    # Both deployment tables FK",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: host re-addressing ignores a cleanup",
+  "file": "app/routers/hosts.py",
+  "old": "        await ensure_no_open_cleanup(db, [host])\n\n    if payload.name is not None:",
+  "new": "        pass\n\n    if payload.name is not None:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: rule deletion ignores a cleanup",
+  "file": "app/services/rule_deploy_service.py",
+  "old": "    await ensure_no_open_cleanup(db, [h for h in [await db.get(OpnsenseHost, d.host_id) for d in deployments] if h])",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: hierarchy rule deletion ignores a cleanup",
+  "file": "app/services/policy_hierarchy_deploy_service.py",
+  "old": "    await ensure_no_open_cleanup(db, [h for h in [await db.get(OpnsenseHost, d.host_id) for d in deployments] if h])",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: hierarchy reordering ignores a cleanup",
+  "file": "app/services/policy_hierarchy_deploy_service.py",
+  "old": "    await ensure_no_open_cleanup(db, [h for h in hosts.values() if h.enabled])",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: removing a rule target ignores a cleanup",
+  "file": "app/routers/rules.py",
+  "old": "    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: removing a hierarchy target ignores a cleanup",
+  "file": "app/routers/policy_hierarchy.py",
+  "old": "    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: adoption ignores a cleanup",
+  "file": "app/routers/rules.py",
+  "old": "    await ensure_no_open_cleanup(db, [host])\n    try:\n        rule = await rule_adopt_service.adopt(",
+  "new": "    try:\n        rule = await rule_adopt_service.adopt(",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or covers_the_cluster or host_delete_and_readdressing or rule_deletion_and_removal or hierarchy_rule_deletion or former_hierarchy or adopting_a_rule or confirmed_cleanup_blocks_nothing'"
+ },
+ {
+  "name": "lock: cleanup service trips over itself",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "await ensure_no_maintenance(db, [host], cleanup=False)",
+  "new": "await ensure_no_maintenance(db, [host])",
+  "tests": "tests/test_rule_cleanup_api.py -k 'open_cleanup_blocks_other or preview_input_forms or shapes_and_audit or other_open_work'"
+ },
+ {
+  "name": "service: lost revert claim hits an expired row",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "\n        await db.refresh(op)  # _revert rolled back when it lost the claim: the status is expired\n        raise api_error(409, ErrorCode.BEREINIGUNG_AKTION_NICHT_MOEGLICH, status=op.status)\n    await db.commit()",
+  "new": "\n        raise api_error(409, ErrorCode.BEREINIGUNG_AKTION_NICHT_MOEGLICH, status=op.status)\n    await db.commit()",
+  "tests": "tests/test_rule_cleanup_api.py -k revert_is_for_admins"
+ },
+ {
+  "name": "service: lost retry claim hits an expired row",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "\n            await db.refresh(op)  # _revert rolled back when it lost the claim: the status is expired",
+  "new": "",
+  "tests": "tests/test_rule_cleanup_api.py -k retry_after_a_failed"
+ },
+ {
+  "name": "notify: failed revert not reported",
+  "file": "app/services/notification_checks.py",
+  "old": "        if op.status == \"revert_failed\":",
+  "new": "        if False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'failed_reverts_and_unclear or unclear_delete_is_reported'"
+ },
+ {
+  "name": "notify: partial run not reported",
+  "file": "app/services/notification_checks.py",
+  "old": "        elif op.status in (\"partial\", \"apply_failed\"):",
+  "new": "        elif False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'failed_reverts_and_unclear or unclear_delete_is_reported'"
+ },
+ {
+  "name": "notify: unclear delete not reported",
+  "file": "app/services/notification_checks.py",
+  "old": "        elif op.kind in (\"delete\", \"restore\"):",
+  "new": "        elif False:",
+  "tests": "tests/test_rule_cleanup_api.py -k 'failed_reverts_and_unclear or unclear_delete_is_reported'"
+ },
+ {
+  "name": "notify: every item of a failed revert is reported",
+  "file": "app/services/notification_checks.py",
+  "old": "            stuck = [i for i in items if i.state in _CLEANUP_STILL_CHANGED]",
+  "new": "            stuck = list(items)",
+  "tests": "tests/test_rule_cleanup_api.py -k 'failed_reverts_and_unclear or unclear_delete_is_reported'"
+ },
+ {
+  "name": "notify: cleanup problems not part of the revert alert",
+  "file": "app/services/notification_checks.py",
+  "old": "    problems.update(await _cleanup_problems(db))",
+  "new": "    pass",
+  "tests": "tests/test_rule_cleanup_api.py -k 'failed_reverts_and_unclear or unclear_delete_is_reported'"
+ },
+ {
+  "name": "preview writes no own audit entry",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    db.add(audit_service.make_event(\n        kind=\"rule_cleanup\", action=\"preview\"",
+  "new": "    (lambda *a, **k: None)(audit_service.make_event(\n        kind=\"rule_cleanup\", action=\"preview\"",
+  "tests": "tests/test_rule_cleanup_api.py -k shapes_and_audit"
+ },
+ {
+  "name": "R9 alias undeploy without cleanup lock",
+  "file": "app/services/alias_deploy_service.py",
+  "old": "    await ensure_no_open_cleanup_on(db, AliasDeployment, AliasDeployment.alias_id == alias.id)\n",
+  "new": "",
+  "tests": "tests/test_rule_cleanup_api.py::test_alias_delete_and_target_removal_wait_for_the_cleanup"
+ },
+ {
+  "name": "R9 alias target removal without cleanup lock",
+  "file": "app/routers/aliases.py",
+  "old": "    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes\n",
+  "new": "",
+  "tests": "tests/test_rule_cleanup_api.py::test_alias_delete_and_target_removal_wait_for_the_cleanup"
+ },
+ {
+  "name": "R9 wireguard undeploy without cleanup lock",
+  "file": "app/services/wireguard_deploy_service.py",
+  "old": "    await ensure_no_open_cleanup_on(db, WireguardTunnelDeployment, WireguardTunnelDeployment.tunnel_id == tunnel.id)\n",
+  "new": "",
+  "tests": "tests/test_rule_cleanup_api.py::test_every_undeploy_and_target_removal_checks_for_an_open_cleanup_first"
+ },
+ {
+  "name": "R9 helper checks nothing",
+  "file": "app/services/host_maintenance_service.py",
+  "old": "    ids = set((await db.scalars(select(model.host_id).where(condition))).all())",
+  "new": "    ids = set()",
+  "tests": "tests/test_rule_cleanup_api.py::test_alias_delete_and_target_removal_wait_for_the_cleanup"
+ }
+]

@@ -1259,7 +1259,7 @@ Die Abfrage steht in der Adresszeile und lässt sich als Link teilen.
 #### Bereinigung
 
 Der Tab **Bereinigung** (Regelwerk › Regel-Analyse › Bereinigung) nennt je Firewall die Regeln, die einen Blick wert sind. Du wählst die Firewall
-und die **Schwelle** (7, 30, 90 oder 180 Tage); die Auswahl steht in der Adresszeile (`?tab=cleanup&host=…&days=…`). Die Liste wird nur gelesen:
+und die **Schwelle** (7, 30, 90 oder 180 Tage); die Auswahl steht in der Adresszeile (`?tab=cleanup&host=…&days=…`). Die Liste selbst wird nur gelesen; Ändern geht über die Auswahl (siehe unten):
 
 | Befund | Bedeutung |
 |---|---|
@@ -1274,11 +1274,55 @@ und der Vergleich beruht auf den Regeln selbst. **Vermutlich** heißt: es beruht
 Reihenfolge, eine Regel mit Zeitplan, ein fehlender pf-Regelsatz). **Unbekannt** heißt: es gibt einen Hinweis ohne Beleg, etwa weil die Regel in pf nicht geladen
 ist oder die Zähler veraltet sind. Der Tooltip erklärt es jeweils. Was nicht belegt ist, ist nie „sicher“.
 
-Die Spalte **Entfernbar** sagt, ob OPNexus die Regel später überhaupt zum Entfernen anbieten würde. Nicht möglich ist es für automatische Regeln
-(von OPNsense erzeugt), für Regeln im Altformat (zuerst in OPNsense migrieren) und für Regeln, die OPNexus ausgerollt hat: die entfernst du über den
-normalen Ablauf der Regelseite, sonst legt OPNexus sie wieder an. **Das Entfernen selbst gehört noch nicht zu OPNexus**; bis dahin änderst du die Regel in der
-OPNsense-Oberfläche. Die Sicherheitslage verlinkt ihre Befunde „ungenutzt“, „verdeckt“ und „doppelt“ direkt in diese Liste. Per API:
-`GET /api/hosts/{id}/rule-analysis/cleanup?unused_days=30`, per MCP: `rule_cleanup_candidates`.
+Die Spalte **Aktion** sagt, was eine Auswahl der Regel bewirken würde (**Deaktivieren** oder, bei einer schon deaktivierten Regel, **Löschen**) oder warum
+die Regel nicht angeboten wird: automatische Regeln (von OPNsense erzeugt), Regeln im Altformat (zuerst in OPNsense migrieren), von OPNexus ausgerollte Regeln
+(die entfernst du über den normalen Ablauf der Regelseite, sonst legt OPNexus sie wieder an) und Regeln mit Befund „unbekannt“. Die Sicherheitslage verlinkt
+ihre Befunde „ungenutzt“, „verdeckt“ und „doppelt“ direkt in diese Liste. Per API: `GET /api/hosts/{id}/rule-analysis/cleanup?unused_days=30`, per MCP: `rule_cleanup_candidates`.
+
+##### Verwaltungsquellen (Voraussetzung)
+
+Bevor die Bereinigung etwas ändern darf, trägst du die **Verwaltungsquellen** ein: die IP-Adressen oder Netze (CIDR, keine Hostnamen), von denen aus deine Firewalls verwaltet
+werden (OPNexus selbst, dein Arbeitsplatz, ein Jump-Host). Der Tab zeigt bis dahin einen Hinweis und (nur für Administratoren) ein kleines Formular; dasselbe steht unter
+**Einstellungen › Regel-Bereinigung**, dort auch die **Obergrenze je Lauf** (1 bis 25, Standard 10) und die **Wartezeit bis zum Löschen** (1 bis 365 Tage, Standard 7).
+Für jede gewählte Regel prüft OPNexus, ob sie ein Paket von einer Verwaltungsquelle an eine Adresse der Firewall auf einem Verwaltungsport treffen kann (API-Port aus
+der Host-Adresse, 443, 80, 22 und die **weiteren Verwaltungsports**, die du unter Einstellungen › Regel-Bereinigung einträgst, z. B. SSH auf 2222 oder die Weboberfläche
+auf einem eigenen Port; bis 20 Ports). Geprüft wird auf jedem Interface, auch für Pakete über nicht zugewiesene Geräte (WireGuard, OpenVPN, IPsec). Trifft die Regel oder
+lässt sich das nicht ausschließen, wird sie nie deaktiviert. Dazu kommen Cluster-Regeln (CARP, pfsync), die nie angeboten werden. Eine Sperrregel wieder einzuschalten,
+die den Verwaltungszugang treffen könnte, verlangt eine ausdrückliche Bestätigung je Regel.
+
+> **Wichtig: OPNexus selbst gehört in die Verwaltungsquellen.** Trag die Adresse ein, mit der OPNexus bei den Firewalls ankommt (bei NAT die Absenderadresse nach der
+> Übersetzung, über das Management-Overlay die Overlay-Adresse). Fehlt sie, kann eine Bereinigung genau die Regel abschalten, über die OPNexus die Firewall erreicht; dann
+> scheitert auch das automatische Zurücksetzen. Im **Cluster** gilt das für jeden Knoten: OPNexus muss beide Knoten über eingetragene Quellen erreichen.
+> Quellen, Ports und Firewall-Adressen sehen nur Administratoren; alle anderen sehen nur, ob etwas eingetragen ist.
+
+##### Deaktivieren, Bestätigen, automatisches Zurücksetzen
+
+1. **Auswählen.** Pro Lauf entweder nur Deaktivieren oder nur Löschen, höchstens so viele Regeln wie eingestellt. Bei Befunden „vermutlich“ fragt OPNexus vor der Vorschau je Regel
+   mit einem festen Text nach, ob du geprüft hast, dass die Regel nicht gebraucht wird (Zeitplan, Aliasinhalt, kurzes Beobachtungsfenster, Sperrregel ohne Treffer). „Ungenutzt“ ist unter
+   30 Tagen Beobachtung und bei Sperrregeln höchstens „vermutlich“.
+2. **Vorschau.** OPNexus berechnet alles frisch von der Firewall (im Cluster von allen Knoten; die Regel muss auf jedem Knoten dieselbe UUID haben und es muss genau einen
+   Master geben). Je Regel stehen Aktion, Befund, Sicherheit, die Schutzprüfung zum Verwaltungszugang und Hinweise (z. B. „extern geändert“). Die Vorschau gilt 5 Minuten
+   und gehört dem, der sie erstellt hat. Offene Wartungen, Ausrollvorgänge oder eine andere Bereinigung im Cluster sperren sie.
+3. **Ausrollen** (nur Administratoren, mit Eingabe des Firewall-Namens). OPNexus prüft den Stand erneut und schreibt nichts, wenn er von der Vorschau abweicht. Dann werden die Regeln
+   deaktiviert (im Cluster zuerst der Backup) und angewendet.
+4. **Bestätigen oder zurücksetzen.** Der Kasten oben im Tab zeigt den Countdown. **Bestätigen** (Operator oder Administrator, **nur in der Browser-Sitzung, nie per API-Token**) liest
+   vorher jede Firewall noch einmal und verweigert, wenn sie nicht antwortet: das ist das Signal, dass du dich ausgesperrt haben könntest. Bestätigst du nicht
+   rechtzeitig, setzt OPNexus automatisch zurück; mit **Jetzt zurücksetzen** geht das sofort (Administrator, oder Operator, wenn dieser Schalter unter Einstellungen erlaubt ist). Ist
+   eine Regel fehlgeschlagen oder unklar (Status *Teilweise*), ist Bestätigen gesperrt. Schlägt das Zurücksetzen selbst fehl, hilft **Zurücksetzen wiederholen**. Nach einem Zurücksetzen beginnt
+   das Beobachtungsfenster der Regel neu.
+
+##### Löschen und Wiederherstellen
+
+Gelöscht werden nur Regeln, die schon deaktiviert sind: eine bestätigt deaktivierte Regel nach der Wartezeit (und nur, wenn sie seitdem unverändert und nicht extern geändert wurde)
+oder eine von Hand deaktivierte Regel mit Befund „lange deaktiviert“ (sicher). Eine deaktivierte Regel ist in der Firewall nicht geladen, das Löschen ändert dort also nichts
+und hat darum kein Bestätigungsfenster. OPNexus sichert vorher den vollständigen Regelinhalt samt Position; ohne Sicherung wird nicht gelöscht. Unter **Verlauf der Bereinigungen**
+(am Seitenende des Tabs) zeigt jede Zeile ihre Schritte; bei gelöschten Regeln gibt es **Wiederherstellen** (nur Administratoren, mit Firewall-Namen): die Regel kommt aus der Sicherung neu zurück, **deaktiviert**,
+mit neuer UUID (im Cluster auf allen Knoten) und möglichst direkt vor ihrer alten Nachfolgerin. Lässt sich die Position nicht herstellen, steht die Regel am Ende ihrer Gruppe und
+OPNexus weist darauf hin. Fehlt der Firewall inzwischen ein Alias oder eine Kategorie der Regel, lehnt sie ab und ihre Meldung steht unverändert beim Ergebnis. Zum Einschalten gibt es
+**Wieder aktivieren** (auch bei bestätigt deaktivierten Regeln): ein eigener Lauf mit Bestätigungsfenster, weil das Einschalten einer Sperrregel aussperren kann.
+
+Rechte im Überblick: Vorschau, Abbrechen und Bestätigen dürfen Operatoren und Administratoren; Ausrollen, Wiederholen und Wiederherstellen nur Administratoren; Nur-Lese-Konten sehen die Liste und den Verlauf,
+aber keine Knöpfe. Jeder Schritt steht je Regel im Audit-Protokoll und im Änderungsverlauf der Regel (Herkunft „über OPNexus“).
 
 #### Verlauf einer Regel
 

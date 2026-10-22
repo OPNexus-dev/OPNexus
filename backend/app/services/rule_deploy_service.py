@@ -155,9 +155,13 @@ async def sweep_expired_deployments(db: AsyncSession) -> list[RuleDeployment]:
 
 
 async def undeploy_rule(db: AsyncSession, rule: FirewallRule) -> None:
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
     failures = []
     result = await db.execute(select(RuleDeployment).where(RuleDeployment.rule_id == rule.id))
-    for deployment in result.scalars().all():
+    deployments = list(result.scalars().all())
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them.
+    await ensure_no_open_cleanup(db, [h for h in [await db.get(OpnsenseHost, d.host_id) for d in deployments] if h])
+    for deployment in deployments:
         host = await db.get(OpnsenseHost, deployment.host_id)
         if host and deployment.opnsense_rule_uuid:
             try:

@@ -40,10 +40,12 @@ logger = logging.getLogger(__name__)
 
 BASELINE_KEY = "__baseline__"
 RETENTION_DAYS = 365
-# Audit kinds whose events carry the UUID of a rule on a firewall in details["remote_uuid"].
-AUDIT_KINDS = ("rule", "policy_hierarchy")
-# Audit statuses that mean the firewall's rule was (or was meant to be) touched.
-AUDIT_STATUSES_NO_CHANGE = ("requested", "interrupted", "error")
+# Audit kinds whose events carry the UUID of a rule on a firewall in details["remote_uuid"]. "rule_cleanup": the
+# cleanup assistant (rule_cleanup_service) switching a hand-made rule off/on, deleting or restoring it.
+AUDIT_KINDS = ("rule", "policy_hierarchy", "rule_cleanup")
+# Audit statuses that mean the firewall's rule was NOT changed by that event (so it cannot explain a change).
+# "confirmed": the cleanup's confirmation only re-reads the firewall.
+AUDIT_STATUSES_NO_CHANGE = ("requested", "interrupted", "error", "confirmed")
 # The audit entry is written right after the firewall changed; allow for the observer running just before it.
 AUDIT_SLACK = timedelta(minutes=2)
 RECHECK_WINDOW = timedelta(minutes=45)
@@ -274,8 +276,11 @@ async def prune(db: AsyncSession, retention_days: int = RETENTION_DAYS) -> int:
     events = await db.execute(delete(RuleChangeEvent).where(RuleChangeEvent.observed_at < cutoff))
     gone = await db.execute(delete(LiveRuleState).where(
         LiveRuleState.present.is_(False), LiveRuleState.rule_uuid != BASELINE_KEY, LiveRuleState.changed_at < cutoff))
+    # Finished cleanup operations (with the snapshots of deleted rules) are kept as long as the history.
+    from app.services.rule_cleanup_service import prune_operations
+    cleanups = await prune_operations(db, cutoff)
     await db.commit()
-    return (events.rowcount or 0) + (gone.rowcount or 0)
+    return (events.rowcount or 0) + (gone.rowcount or 0) + cleanups
 
 
 # ── Reading the history of one rule ───────────────────────────────────────

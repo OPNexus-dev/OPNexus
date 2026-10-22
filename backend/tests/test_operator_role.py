@@ -146,9 +146,9 @@ def test_what_counts_as_a_rollout(method, path, rollout):
 async def test_with_separation_of_duties_operators_prepare_but_only_admins_deploy(client):
     op = await _operator(client, "dutyop")
     try:
-        assert (await op.get("/api/settings/governance")).json() == {"operators_may_deploy": True}
+        assert (await op.get("/api/settings/governance")).json()["operators_may_deploy"] is True
         assert (await op.put("/api/settings/governance", json={"operators_may_deploy": False})).status_code == 403
-        assert (await client.put("/api/settings/governance", json={"operators_may_deploy": False})).json() == {"operators_may_deploy": False}
+        assert (await client.put("/api/settings/governance", json={"operators_may_deploy": False})).json()["operators_may_deploy"] is False
         # Preparing still works ...
         assert (await op.post("/api/groups", json={"name": "prepared"})).status_code == 201
         # ... rolling out does not, whatever the target (the 403 comes before any lookup).

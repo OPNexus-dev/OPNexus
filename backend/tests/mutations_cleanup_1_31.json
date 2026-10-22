@@ -1,0 +1,380 @@
+[
+ {
+  "name": "fingerprint not compared at deploy",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if plan_fingerprint(plan) != op.preview_fingerprint:",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup.py::test_deploy_refuses_a_stale_preview_without_writing"
+ },
+ {
+  "name": "management UNKNOWN treated as FALSE (service)",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if check[\"result\"] != \"false\":",
+  "new": "                if check[\"result\"] == \"true\":",
+  "tests": "tests/test_rule_cleanup.py::test_rules_that_must_not_be_switched_off_are_refused"
+ },
+ {
+  "name": "management UNKNOWN treated as FALSE (protection)",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "        return {\"result\": \"unknown\", \"queries\": queries, \"reasons\": sorted(reasons), \"match\": unknown_at}",
+  "new": "        return {\"result\": \"false\", \"queries\": queries, \"reasons\": [], \"match\": None}",
+  "tests": "tests/test_rule_cleanup_protection.py tests/test_rule_cleanup.py::test_rules_that_must_not_be_switched_off_are_refused"
+ },
+ {
+  "name": "network source: ranges ignored",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "    return Outcome(any(v == net.version and a <= high and b >= low for v, a, b in ranges))",
+  "new": "    return Outcome(False)",
+  "tests": "tests/test_rule_cleanup_protection.py"
+ },
+ {
+  "name": "CARP/pfsync protocol not excluded",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "    if rule.protos is not None and rule.protos & {CARP_PROTO, PFSYNC_PROTO}:",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_protection.py"
+ },
+ {
+  "name": "pfsync interface not checked",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "    if pfsync_if == \"\" or (pfsync_if is None and not clustered):",
+  "new": "    if True:",
+  "tests": "tests/test_rule_cleanup_protection.py tests/test_rule_cleanup.py::test_cluster_pfsync_interface_rules_are_infrastructure"
+ },
+ {
+  "name": "no management sources not locked",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if not sources:\n        raise api_error(409, ErrorCode.BEREINIGUNG_VERWALTUNGSQUELLEN_FEHLEN)\n    clustered",
+  "new": "    if False:\n        raise api_error(409, ErrorCode.BEREINIGUNG_VERWALTUNGSQUELLEN_FEHLEN)\n    clustered",
+  "tests": "tests/test_rule_cleanup.py::test_without_management_sources_everything_is_locked"
+ },
+ {
+  "name": "unused sure below 30 days",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if unused_days < MIN_SURE_UNUSED_DAYS:",
+  "new": "            if unused_days < 7:",
+  "tests": "tests/test_rule_cleanup_protection.py tests/test_rule_cleanup.py::test_short_window_and_external_change_cap_at_probable"
+ },
+ {
+  "name": "unused block rule not capped",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if rule.action in (\"block\", \"reject\"):",
+  "new": "            if rule.action in (\"reject\",):",
+  "tests": "tests/test_rule_cleanup_protection.py tests/test_rule_cleanup.py::test_probable_needs_an_explicit_acknowledgement_per_rule"
+ },
+ {
+  "name": "external change not capped",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if external and best is not None:",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_protection.py tests/test_rule_cleanup.py::test_short_window_and_external_change_cap_at_probable"
+ },
+ {
+  "name": "probable without acknowledgement",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if level == \"probable\" and given not in acknowledge:",
+  "new": "                if False:",
+  "tests": "tests/test_rule_cleanup.py::test_probable_needs_an_explicit_acknowledgement_per_rule"
+ },
+ {
+  "name": "unknown confidence selectable",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if level == \"unknown\":\n                    refuse(\"confidence\")",
+  "new": "                if False:\n                    refuse(\"confidence\")",
+  "tests": "tests/test_rule_cleanup.py::test_managed_legacy_and_unknown_confidence_are_refused"
+ },
+ {
+  "name": "cluster usage merge removed",
+  "file": "app/services/rule_analysis/service.py",
+  "old": "    return rule_hit_service.merge_cluster_hits(own, [await _hits(db, other) for other in others]), own",
+  "new": "    return own, own",
+  "tests": "tests/test_rule_cleanup.py::test_cluster_usage_is_judged_over_all_nodes"
+ },
+ {
+  "name": "write order master first",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    return sorted(nodes, key=lambda n: (n.role == \"MASTER\", n.host.name))",
+  "new": "    return sorted(nodes, key=lambda n: (n.role != \"MASTER\", n.host.name))",
+  "tests": "tests/test_rule_cleanup.py::test_cluster_writes_backup_first_and_reverts_master_first"
+ },
+ {
+  "name": "revert order backup first",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    for item in sorted(items, key=lambda i: (i.carp_role != \"MASTER\", str(i.host_id))):",
+  "new": "    for item in sorted(items, key=lambda i: (i.carp_role == \"MASTER\", str(i.host_id))):",
+  "tests": "tests/test_rule_cleanup.py::test_cluster_writes_backup_first_and_reverts_master_first"
+ },
+ {
+  "name": "no apply after a partial failure",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        if any(i.state in (\"disabled\", \"unknown\") for i in node_items):\n            # Also after an error",
+  "new": "        if not stop and any(i.state in (\"disabled\", \"unknown\") for i in node_items):\n            # Also after an error",
+  "tests": "tests/test_rule_cleanup.py::test_refused_toggle_stops_writing_but_applies_what_is_switched"
+ },
+ {
+  "name": "write continues after a refusal",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                item.state, item.message = \"failed\", str(exc)[:1000]\n                _audit(db, op, item, node.host, action=op.kind, status=\"error\", message=item.message)\n                stop = True",
+  "new": "                item.state, item.message = \"failed\", str(exc)[:1000]\n                _audit(db, op, item, node.host, action=op.kind, status=\"error\", message=item.message)",
+  "tests": "tests/test_rule_cleanup.py::test_refused_toggle_stops_writing_but_applies_what_is_switched"
+ },
+ {
+  "name": "unclear toggle counted as done",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                item.state = \"disabled\" if seen is target else (\"failed\" if seen is not None else \"unknown\")",
+  "new": "                item.state = \"disabled\"",
+  "tests": "tests/test_rule_cleanup.py::test_unclear_toggle_is_settled_by_reading"
+ },
+ {
+  "name": "confirm with unreachable firewall",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        except OpnsenseAPIError as exc:\n            raise api_error(502, ErrorCode.BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR, host=member.name) from exc\n        if not rule_hit_service.looks_complete(search):",
+  "new": "        except OpnsenseAPIError as exc:\n            continue\n        if not rule_hit_service.looks_complete(search):",
+  "tests": "tests/test_rule_cleanup.py::test_confirm_reads_the_firewall_and_refuses_when_unreachable_or_different"
+ },
+ {
+  "name": "confirm ignores re-enabled rule",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if row is None or _truthy(row.get(\"enabled\", \"1\")) is not target \\\n                    or _content_fp",
+  "new": "            if row is None \\\n                    or _content_fp",
+  "tests": "tests/test_rule_cleanup.py::test_confirm_reads_the_firewall_and_refuses_when_unreachable_or_different"
+ },
+ {
+  "name": "confirm after the deadline",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        RuleCleanupOperation.revert_deadline > now).values(\n        status=\"confirmed\"",
+  "new": "        RuleCleanupOperation.revert_deadline > now - timedelta(days=1)).values(\n        status=\"confirmed\"",
+  "tests": "tests/test_rule_cleanup.py::test_deadline_passing_while_confirm_reads_the_firewall_refuses tests/test_rule_cleanup.py::test_confirm_and_sweeper_at_the_deadline_decide_once"
+ },
+ {
+  "name": "sweeper does not revert expired",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        or_(and_(RuleCleanupOperation.status.in_(SWEEP_STATUSES), RuleCleanupOperation.revert_deadline <= now),",
+  "new": "        or_(and_(RuleCleanupOperation.status.in_(SWEEP_STATUSES), RuleCleanupOperation.revert_deadline <= now - timedelta(days=1)),",
+  "tests": "tests/test_rule_cleanup.py::test_confirm_after_the_deadline_is_refused_and_the_sweeper_reverts tests/test_rule_cleanup.py::test_failed_apply_keeps_the_deadline_and_the_sweeper_reverts"
+ },
+ {
+  "name": "sweeper retries revert_failed",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "SWEEP_STATUSES = (\"awaiting_confirm\", \"partial\", \"apply_failed\")",
+  "new": "SWEEP_STATUSES = (\"awaiting_confirm\", \"partial\", \"apply_failed\", \"revert_failed\")",
+  "tests": "tests/test_rule_cleanup.py::test_revert_now_and_failed_revert_is_not_retried_automatically"
+ },
+ {
+  "name": "heartbeat not checked",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if not _stale(op, len(items), nodes, now):\n                # alive",
+  "new": "            if False:\n                # alive",
+  "tests": "tests/test_rule_cleanup.py::test_sweeper_skips_a_live_run_and_takes_over_an_abandoned_one"
+ },
+ {
+  "name": "delete before the waiting time",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if now < due:",
+  "new": "            if False:",
+  "tests": "tests/test_rule_cleanup.py::test_delete_needs_the_waiting_time_an_unchanged_rule_and_no_external_change"
+ },
+ {
+  "name": "delete of a changed rule",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if _content_fp(row, False) != _content_fp(item.row_before or {}, False):",
+  "new": "            if False:",
+  "tests": "tests/test_rule_cleanup.py::test_delete_needs_the_waiting_time_an_unchanged_rule_and_no_external_change"
+ },
+ {
+  "name": "snapshot not committed before delRule",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            item.state, item.changed_at = \"deleting\", _now()\n            await _commit(db)  # heartbeat + snapshot + intent, durable before delRule\n",
+  "new": "            item.state, item.changed_at = \"deleting\", _now()\n",
+  "tests": "tests/test_rule_cleanup.py::test_delete_commits_the_snapshot_before_delrule"
+ },
+ {
+  "name": "unclear delete counted as deleted",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        return \"failed\"   # still there",
+  "new": "        return \"deleted\"",
+  "tests": "tests/test_rule_cleanup.py::test_unclear_delete_is_settled_with_getrule"
+ },
+ {
+  "name": "restore anchor ignored",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        await client.move_rule_before(member, new_uuid, anchor)",
+  "new": "        pass",
+  "tests": "tests/test_rule_cleanup.py::test_restore_adds_disabled_at_the_anchor_with_a_new_uuid"
+ },
+ {
+  "name": "restore position not verified",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    return i > 0 and position[i - 1] == new_uuid.lower()",
+  "new": "    return True",
+  "tests": "tests/test_rule_cleanup.py::test_restore_with_a_refused_move_is_verified_by_reading_and_only_warns"
+ },
+ {
+  "name": "R1 unassigned ingress not checked",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "    return [(i, None) for i in _interfaces(ctx)] + [(UNASSIGNED, virtual)]",
+  "new": "    return [(i, None) for i in _interfaces(ctx)]",
+  "tests": "tests/test_rule_cleanup_protection.py"
+ },
+ {
+  "name": "R1 builtin group members treated as known",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "        elif name in BUILTIN_GROUP_DEVICES or ctx.groups is None or name not in ctx.groups:",
+  "new": "        elif ctx.groups is None or name not in ctx.groups:",
+  "tests": "tests/test_rule_cleanup_protection.py"
+ },
+ {
+  "name": "R2 sweeper takes over a live run past its deadline",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "            if not _stale(op, len(items), nodes, now):",
+  "new": "            if not (op.revert_deadline is not None and op.revert_deadline <= now) and not _stale(op, len(items), nodes, now):",
+  "tests": "tests/test_rule_cleanup.py::test_sweeper_leaves_a_live_run_alone_even_past_its_deadline"
+ },
+ {
+  "name": "R2 heartbeat before a write not conditional",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        RuleCleanupOperation.id == op.id, RuleCleanupOperation.status == expect).values(heartbeat_at=now)",
+  "new": "        RuleCleanupOperation.id == op.id).values(heartbeat_at=now)",
+  "tests": "tests/test_rule_cleanup.py::test_a_run_taken_over_by_another_backend_writes_nothing_more"
+ },
+ {
+  "name": "R3 extra management ports ignored",
+  "file": "app/services/rule_analysis/protection.py",
+  "old": "    for port in (*MANAGEMENT_PORTS, *extra_ports):",
+  "new": "    for port in MANAGEMENT_PORTS:",
+  "tests": "tests/test_rule_cleanup.py::test_extra_management_ports_protect_rules_on_them"
+ },
+ {
+  "name": "R3 management ports shown to non-admins",
+  "file": "app/routers/governance.py",
+  "old": "        cleanup_management_ports=ports if user.role == \"admin\" else [],",
+  "new": "        cleanup_management_ports=ports,",
+  "tests": "tests/test_rule_cleanup_api.py::test_management_ports_are_validated_normalised_audited_and_hidden"
+ },
+ {
+  "name": "R3 port range not validated",
+  "file": "app/routers/governance.py",
+  "old": "        if isinstance(raw, bool) or not text.isdigit() or not 1 <= int(text) <= 65535:",
+  "new": "        if not text.isdigit():",
+  "tests": "tests/test_rule_cleanup_api.py::test_management_ports_are_validated_normalised_audited_and_hidden"
+ },
+ {
+  "name": "R4 any host may act on any operation",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if op.host_id != host.id and not (cluster and host.cluster_name and op.host_id in {h.id for h in await _fleet(db, host)}):",
+  "new": "    if op.host_id != host.id and not cluster:",
+  "tests": "tests/test_rule_cleanup.py::test_cluster_peer_may_confirm_and_read_but_strangers_may_not"
+ },
+ {
+  "name": "R4 peers refused",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if op.host_id != host.id and not (cluster and host.cluster_name and op.host_id in {h.id for h in await _fleet(db, host)}):",
+  "new": "    if op.host_id != host.id:",
+  "tests": "tests/test_rule_cleanup.py::test_cluster_peer_may_confirm_and_read_but_strangers_may_not"
+ },
+ {
+  "name": "R5 half-deleted node not skipped",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if clustered and kind == \"delete\" and await _already_deleted(db, node.host.id, u):",
+  "new": "                if False:",
+  "tests": "tests/test_rule_cleanup.py::test_half_done_cluster_delete_can_be_finished"
+ },
+ {
+  "name": "R5 failed delete counts as basis",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "               if not (o.kind == \"delete\" and i.state in (\"failed\", \"skipped\"))]",
+  "new": "               ]",
+  "tests": "tests/test_rule_cleanup.py::test_half_done_cluster_delete_can_be_finished"
+ },
+ {
+  "name": "R5 nothing left still planned",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "        if not any(i[\"given\"] == given for n in plan_nodes for i in n[\"items\"]):",
+  "new": "        if False:",
+  "tests": "tests/test_rule_cleanup.py::test_half_done_cluster_delete_can_be_finished"
+ },
+ {
+  "name": "R5 restore needs all siblings deleted",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if s.state == \"deleted\" and not s.restored_uuid]",
+  "new": "                ]\n    if any(s.state != \"deleted\" or s.restored_uuid for s in siblings):\n        raise api_error(409, ErrorCode.BEREINIGUNG_AKTION_NICHT_MOEGLICH, status=\"partial\")",
+  "tests": "tests/test_rule_cleanup.py::test_half_done_cluster_delete_can_be_restored_where_it_was_deleted"
+ },
+ {
+  "name": "R7 enabling a block rule without acknowledgement",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if rule.action != \"pass\" and item[\"protection\"][\"result\"] != \"false\":",
+  "new": "                if False:",
+  "tests": "tests/test_rule_cleanup.py::test_switching_a_block_rule_back_on_needs_an_acknowledgement_unless_proven_harmless"
+ },
+ {
+  "name": "R7 unknown protection counted as harmless",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "                if rule.action != \"pass\" and item[\"protection\"][\"result\"] != \"false\":",
+  "new": "                if rule.action != \"pass\" and item[\"protection\"][\"result\"] == \"true\":",
+  "tests": "tests/test_rule_cleanup.py::test_switching_a_block_rule_back_on_needs_an_acknowledgement_unless_proven_harmless"
+ },
+ {
+  "name": "R8 router does not redact for non-admins",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    if not _full_view(request):\n        operations = [service.redact(op) for op in operations]",
+  "new": "    if False:\n        operations = [service.redact(op) for op in operations]",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R8 preview answer not redacted",
+  "file": "app/routers/rule_cleanup.py",
+  "old": "    return result if _full_view(request) else service.redact(result)",
+  "new": "    return result",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R8 audit admin_only not stripped",
+  "file": "app/routers/audit.py",
+  "old": "    if not full_view(request):",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R8 read token of an admin sees everything",
+  "file": "app/routers/audit.py",
+  "old": "    return getattr(user, \"role\", None) == \"admin\" and (token is None or token.scope == \"admin\")",
+  "new": "    return getattr(user, \"role\", None) == \"admin\"",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R8 base_url kept in plan",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    out[\"nodes\"] = [{**{k: v for k, v in n.items() if k != \"base_url\"},",
+  "new": "    out[\"nodes\"] = [{**{k: v for k, v in n.items()},",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R8 protection match kept",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    return {k: v for k, v in check.items() if k != \"match\"}",
+  "new": "    return check",
+  "tests": "tests/test_rule_cleanup_api.py::test_sources_and_firewall_addresses_are_for_admins_only tests/test_rule_cleanup_protection.py::test_redacted_plan_names_no_source_port_or_firewall_address"
+ },
+ {
+  "name": "R10 stored restored_uuid ignored",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if item.restored_uuid:\n        try:\n            await client.get_rule(member, item.restored_uuid)",
+  "new": "    if False:\n        try:\n            await client.get_rule(member, item.restored_uuid)",
+  "tests": "tests/test_rule_cleanup.py::test_unclear_restore_uses_the_stored_uuid_before_searching_by_content"
+ },
+ {
+  "name": "R10 twins resolved to the first",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if len(found) == 1:\n        return \"found\", found[0]",
+  "new": "    if found:\n        return \"found\", found[0]",
+  "tests": "tests/test_rule_cleanup.py::test_unclear_restore_with_twins_and_no_stored_uuid_stays_unknown"
+ },
+ {
+  "name": "R11 any acknowledgement text version accepted",
+  "file": "app/services/rule_cleanup_service.py",
+  "old": "    if str(ack_text_version) != ACK_TEXT_VERSION:",
+  "new": "    if False:",
+  "tests": "tests/test_rule_cleanup.py::test_an_outdated_acknowledgement_text_is_refused"
+ }
+]

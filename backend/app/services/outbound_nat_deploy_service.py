@@ -147,6 +147,9 @@ async def sweep_expired_outbound_nat_deployments(db: AsyncSession) -> list[Outbo
 
 
 async def undeploy_outbound_nat(db: AsyncSession, rule: OutboundNatRule) -> None:
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, OutboundNatDeployment, OutboundNatDeployment.outbound_nat_id == rule.id)
     failures = []
     result = await db.execute(select(OutboundNatDeployment).where(OutboundNatDeployment.outbound_nat_id == rule.id))
     for deployment in result.scalars().all():

@@ -10,6 +10,7 @@ Auth is HTTP Basic: username = API key, password = API secret.
 """
 import logging
 import json
+import re
 from typing import Any
 
 import httpx
@@ -31,6 +32,11 @@ class OpnsenseAmbiguousError(OpnsenseAPIError):
     reply, timeout while waiting, server error, no UUID returned). A refusal the
     firewall actually answered is a plain OpnsenseAPIError; this one means the
     outcome of a write is unknown and must be reconciled, not retried blindly."""
+
+
+class OpnsenseNotFoundError(OpnsenseAPIError):
+    """The firewall answered, but there is no such object (an empty `getRule` answer: unknown UUID, or a rule that is
+    not part of the rules model - legacy or automatic). A refusal, never an unknown outcome."""
 
 
 class OpnsenseForbiddenError(OpnsenseAPIError):
@@ -241,6 +247,51 @@ def _mutation_result(data: Any, operation: str, results: set[str]) -> dict:
     return data
 
 
+# -- Filter rules (FilterController -> ApiMutableModelControllerBase, rules.rule) --------------------------------
+# Evidence for add/set/get/del/toggle/moveRuleBefore, checked 2026-10-22 against BOTH
+#   source  opnsense/core tags 26.7.7, 26.1.9 and 25.7.11, src/opnsense/mvc/app/controllers/OPNsense/:
+#           Firewall/Api/FilterController.php (the *RuleAction methods, moveRuleBeforeAction, ittrRules),
+#           Firewall/Api/FilterBaseController.php (applyAction),
+#           Base/ApiMutableModelControllerBase.php (addBase, setBase, getBase, delBase, toggleBase)
+#   live    OPNsense 26.7.7 on two lab test firewalls (scratch rules whose description began with
+#           `opnexus-b4-probe`, deleted again and applied afterwards; nothing was left behind).
+# Same in all three source lines unless said otherwise; the live checks cover 26.7.7 only.
+#
+# addRule      POST, body {"rule": {...}}. Answer {"result": "saved", "uuid": "<new>"}; a validation failure is HTTP 200
+#              {"result": "failed", "validations": {"rule.<field>": "<text>"}} (so _mutation_result raises).
+#              `sequence` is a FilterSequenceField (models/OPNsense/Firewall/Filter.xml: 1..999999, default 1;
+#              `sort_order` and `prio_group` are volatile, derived). Live: without `sequence` the rule gets the
+#              highest sequence of ALL rules + 100 (566, 666, 766, ...), so a copy always lands at the END of its
+#              prio_group; an explicit `sequence` IS honoured (sequence "3" -> sort_order 400000.0000003) and is not
+#              checked for uniqueness. A restore can therefore either send the old number or call moveRuleBefore.
+# setRule      POST /{uuid}, body {"rule": {...}}; answer {"result": "saved"}. It is an upsert (a well-formed unknown
+#              UUID creates the rule) - never call it for a rule that may be gone.
+# delRule      POST /{uuid}. {"result": "deleted"} or {"result": "not found"} (unknown, legacy and automatic UUIDs all
+#              answer "not found", HTTP 200, nothing changes). 26.1 and 26.7 accept a comma-separated list; 25.7 a
+#              single UUID. Consequence: "not found" proves nothing about a rule being gone - re-read it.
+# getRule      GET /{uuid} -> {"rule": {...}} (every field of the rules model, select fields as
+#              {"<option>": {"value": "<label>", "selected": 0|1}}, `categories` a select dict - or [] when the rule has
+#              none -; no `uuid` key; read-only: `sequence`, `sort_order`, `prio_group` and the nested `audit`).
+#              Live: an unknown, legacy (hex label) or automatic UUID answers HTTP 200 with a bare `[]`. 25.7 and 26.1
+#              also know `?fetchmode=copy` (pre-fills `sequence`); 26.7.7 no longer has it - not used here.
+#              Without a UUID it returns the template of a new rule (see get_rule_template above).
+# toggleRule   POST /{uuid}/{enabled} - `enabled` is "0" or "1" and EXPLICIT; without it the rule flips (never do that).
+#              Answer {"result": "Enabled"|"Disabled", "changed": true|false}. The explicit form is idempotent: repeating
+#              it answers the same result with "changed": false (live: 0,0 -> true,false; 1,1 -> true,false). Any other
+#              value answers {"result": "failed", "changed": false}; an unknown or legacy UUID, a GET, or a model that
+#              has no such node answers {"result": "failed"} without "changed" - all HTTP 200. It only edits the
+#              configuration; nothing reaches pf before apply() (the rule keeps its sort_order, searchRule shows
+#              enabled "0"/"1" at once). 26.1/26.7 take a list of UUIDs (explicit value only); 25.7 one UUID.
+# moveRuleBefore  POST /{selected}/{target}. {"status": "ok"} (no "result" key). Both rules must be in the same
+#              `prio_group` - the sort_order prefix - which is NOT the interface: every single-interface rule of every
+#              interface shares 400000 (lan and wan rules can be moved before each other), floating rules (several or
+#              no interface) are 200000, interface-group rules 3000xx. Live: unknown UUID, same UUID twice and
+#              different groups all answer HTTP 500 {"errorMessage": "Unexpected error, check log for details",
+#              "errorTitle": "Filter"}, a GET answers 200 {"status": "error"}. A 500 is Ambiguous in _do_request, so a
+#              caller that wants to tell "refused" from "unknown" must read sort_order back. The move only touches
+#              `sequence` of the moved rule (and, when the gap is too small, of the rules behind the target); legacy
+#              rules are not in the model and cannot be an anchor.
+# apply        POST. {"status": "OK\n\n"} after `filter reload skip_alias`. FilterBaseController has no savepoint here.
 async def add_rule(host: OpnsenseHost, payload: dict) -> dict:
     return _mutation_result(await _request(host, "POST", "/firewall/filter/addRule", json={"rule": payload}), "Regel anlegen", {"saved"})
 
@@ -253,18 +304,93 @@ async def del_rule(host: OpnsenseHost, rule_uuid: str) -> dict:
     return _mutation_result(await _request(host, "POST", f"/firewall/filter/delRule/{rule_uuid}"), "Regel entfernen", {"deleted", "not found"})
 
 
+_RULE_REF = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _rule_ref(rule_uuid: str) -> str:
+    """A rule reference ends up in the URL path: refuse anything that could leave it."""
+    if not isinstance(rule_uuid, str) or not _RULE_REF.match(rule_uuid):
+        raise OpnsenseAPIError("Ungültige Regel-UUID")
+    return rule_uuid
+
+
+async def get_rule(host: OpnsenseHost, rule_uuid: str) -> dict:
+    """The full model record of one rule (`getRule/{uuid}`, the inner `rule` dict, select fields still in
+    OPNsense's option form - reduce them with rule_write_payload()). A rule that is not in the rules model (unknown,
+    legacy hex label, automatic) is answered with `[]`: raises OpnsenseNotFoundError."""
+    data = await _request(host, "GET", f"/firewall/filter/getRule/{_rule_ref(rule_uuid)}")
+    rule = data.get("rule") if isinstance(data, dict) else None
+    if isinstance(rule, dict) and rule:
+        return rule
+    if data == [] or data == {}:
+        raise OpnsenseNotFoundError(f"Regel {rule_uuid} gibt es auf {host.name} nicht (oder sie ist keine bearbeitbare Regel)")
+    raise OpnsenseAPIError(f"Regel lesen: Keine auswertbare Antwort von {host.name}")
+
+
+async def toggle_rule(host: OpnsenseHost, rule_uuid: str, enabled: bool) -> dict:
+    """Sets the rule's `enabled` flag to exactly `enabled` (`toggleRule/{uuid}/1|0`; never the flipping form) and
+    returns OPNsense's answer, e.g. {"result": "Disabled", "changed": False}. Repeating it is harmless. Only the
+    configuration changes; call apply() afterwards. A refusal (unknown or legacy UUID) is a plain OpnsenseAPIError,
+    a lost answer an OpnsenseAmbiguousError - then read the rule back before doing anything else."""
+    if not isinstance(enabled, bool):
+        raise TypeError("toggle_rule: 'enabled' must be a bool (an implicit flip would not be idempotent)")
+    data = await _request(host, "POST", f"/firewall/filter/toggleRule/{_rule_ref(rule_uuid)}/{1 if enabled else 0}")
+    return _mutation_result(data, "Regel ein-/ausschalten", {"enabled" if enabled else "disabled"})
+
+
+# Fields of a getRule record that a write must not send: the UUID is the rule's identity, `sequence` is assigned
+# on creation (sort_order and prio_group are derived from it), `audit` is metadata OPNsense maintains itself.
+RULE_READONLY_FIELDS = frozenset({"uuid", "sequence", "sort_order", "prio_group", "audit"})
+
+
+def rule_write_payload(rule: dict) -> dict[str, str]:
+    """Turns a getRule record into the flat form addRule/setRule accept: select fields become their selected
+    option(s), comma-separated (`lan,wan`; none selected -> ""), the empty-list form of an empty multi-select
+    becomes "", read-only fields are left out. Live round trip on 26.7.7 (getRule -> this -> addRule -> getRule)
+    gave an identical record except uuid/sequence/sort_order/audit for single-interface, multi-interface (floating),
+    no-interface (floating), interface-group, ICMP and any-protocol rules with categories, aliases, port ranges,
+    TCP flags, tags and state limits."""
+    out: dict[str, str] = {}
+    for key, value in rule.items():
+        if key in RULE_READONLY_FIELDS:
+            continue
+        if isinstance(value, dict):
+            if value and all(isinstance(o, dict) and "selected" in o for o in value.values()):
+                out[key] = ",".join(k for k, o in value.items() if o.get("selected") and k != "")
+            # any other nested dict is metadata and is not sent
+        elif isinstance(value, list):
+            out[key] = ",".join(str(v) for v in value)
+        else:
+            out[key] = "" if value is None else str(value)
+    return out
+
+
 async def apply(host: OpnsenseHost) -> dict:
     return _mutation_result(await _request(host, "POST", "/firewall/filter/apply"), "Änderungen anwenden", set())
+
+
+async def get_hasync(host: OpnsenseHost) -> dict:
+    """System > High Availability settings, read-only: `core/hasync/get` (Core/Api/HasyncController extends
+    ApiMutableModelControllerBase, model Core/Hasync.xml; identical in opnsense/core 25.7.11, 26.1.9 and 26.7.7).
+    Answer {"hasync": {"pfsyncinterface": {"": {"value": "Disabled", ...}, "lan": {"value": "LAN", "selected": 1},
+    ...}, "pfsyncpeerip": "<address or empty>", "synchronizetoip": ..., "syncitems": {...}}} - `pfsyncinterface` is an
+    InterfaceField (the selected option, "" = disabled), `pfsyncpeerip` a NetworkField without mask. Live on 26.7.7
+    (both nodes of the lab cluster): pfsyncinterface `lan`, a peer address, synchronizetoip empty. Used by the rule
+    cleanup to keep pfsync rules out of reach (rule_analysis/protection.py); it reads nothing secret (the sync
+    password field comes back, but is never stored or logged by the caller)."""
+    return await _request(host, "GET", "/core/hasync/get")
 
 
 async def move_rule_before(host: OpnsenseHost, selected_uuid: str, target_uuid: str) -> dict:
     """`firewall/filter/moveRuleBefore/{selected_uuid}/{target_uuid}`
     (FilterController::moveRuleBeforeAction) — repositions `selected_uuid`
     to sit directly before `target_uuid` via gap-numbered `sequence`
-    floats, scoped to rules sharing the same `prio_group` (interface/type).
-    Verified against OPNsense core source: no "move to top/bottom"
-    sentinel exists, and both UUIDs must resolve to existing rules on the
-    SAME interface/type or the controller throws. On success it returns
+    floats, scoped to rules sharing the same `prio_group` (the sort_order
+    prefix, see the evidence block above - not the interface). Verified against OPNsense core source and live
+    (26.7.7): no "move to top/bottom"
+    sentinel exists, and both UUIDs must resolve to existing rules in the
+    SAME prio_group or the controller throws (HTTP 500, which this client
+    reports as OpnsenseAmbiguousError). On success it returns
     `{"status": "ok"}` (confirmed against FilterController.php directly —
     unlike addRule/setRule/delRule this has no "result" key at all), so
     this is dispatched through _mutation_result with an empty `results`

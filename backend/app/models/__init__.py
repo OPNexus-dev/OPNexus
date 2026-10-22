@@ -105,3 +105,6 @@ __all__ += ["GuiAccessSettings", "GuiSession", "GuiTicket"]
 
 from app.models.rule_history import LiveRuleState, RuleChangeEvent
 __all__ += ["LiveRuleState", "RuleChangeEvent"]
+
+from app.models.rule_cleanup import RuleCleanupOperation, RuleCleanupItem
+__all__ += ["RuleCleanupOperation", "RuleCleanupItem"]

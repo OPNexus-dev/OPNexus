@@ -195,6 +195,8 @@ async def remove_previous_target(instance_id: uuid.UUID, host_id: uuid.UUID, app
     if not entry["can_remove"]:
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_KOENNEN_BEREINIGT_WERDEN)
     deployment = next(d for d in instance.deployments if d.host_id == host_id)
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
+    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
     from app.services import opnsense_client
     try:
         if deployment.opnsense_instance_uuid:

@@ -67,6 +67,10 @@ const CODE_LIST_PARAMS: Record<string, { param: string; prefix: string }> = {
   GUI_GATEWAY_NOT_CONFIGURED: { param: "reasons", prefix: "guiAccess.reason" },
   NETWORK_CHANGE_BLOCKED: { param: "reasons", prefix: "network.blocks" },
   NETWORK_ACK_REQUIRED: { param: "reasons", prefix: "network.risks" },
+  BEREINIGUNG_REGEL_NICHT_AENDERBAR: { param: "reason", prefix: "cleanup.refuse" },
+  BEREINIGUNG_OFFENE_OPERATION: { param: "reason", prefix: "cleanup.openReason" },
+  BEREINIGUNG_CLUSTER_UNVOLLSTAENDIG: { param: "reason", prefix: "cleanup.clusterReason" },
+  BEREINIGUNG_EINSTELLUNG_UNGUELTIG: { param: "reason", prefix: "cleanup.settingsReason" },
 };
 
 /** `reasons: "name_exists, proto_set"` -> readable sentences joined by " · "; an unknown code stays as it is.

@@ -39,7 +39,9 @@ _LAST_USED_GRANULARITY = timedelta(minutes=1)
 
 _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 # GUI tickets open a firewall's web interface in the browser: an interactive admin session only.
-_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-ticket$")
+# Rule cleanup (1.31): "I still have access" is a human decision, so confirming a cleanup is never possible with a
+# token, whatever its scope (a script must not be able to confirm blindly).
+_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-ticket$|^/api/hosts/[^/]+/rule-cleanup/[^/]+/confirm/?$")
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
 _ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/|^/api/overlay/peers/[^/]+/instructions$")
@@ -53,6 +55,13 @@ _ADMIN_ONLY_WRITES = re.compile(
     # The per-gateway alert switch is a notification setting (same rights as PUT /api/notifications/settings).
     r"|^/api/hosts/[^/]+/gateways/[^/]+/alert$"
 )
+
+
+# Rule cleanup: executing a cleanup, retrying a failed revert/reconcile and restoring a deleted rule are admin-only.
+# operators_may_deploy defaults to True, so _ROLLOUT_POST alone cannot express "admin only"; this pattern is checked
+# for operator accounts (operator_denies) and for tokens below scope admin (denies). Not part of _ADMIN_ONLY_WRITES:
+# that one means "who may access OPNexus / where data goes". The router checks the same rule once more.
+_ADMIN_ONLY_CLEANUP = re.compile(r"^/api/hosts/[^/]+/rule-cleanup/([^/]+/(deploy|retry)|items/[^/]+/restore)/?$")
 
 
 def _now() -> datetime:
@@ -73,7 +82,7 @@ def denies(scope: str, method: str, path: str) -> bool:
         return scope != "admin" and bool(_ADMIN_SCOPE_READS.match(path))
     if scope == "read":
         return True
-    if scope == "deploy" and _ADMIN_ONLY_WRITES.match(path):
+    if scope == "deploy" and (_ADMIN_ONLY_WRITES.match(path) or _ADMIN_ONLY_CLEANUP.match(path)):
         return True
     return False
 
@@ -82,7 +91,8 @@ def operator_denies(method: str, path: str) -> bool:
     """True if an `operator` account must not make this request: the writes that
     change who may access OPNexus or where it sends data. (Their own theme at
     PUT /api/settings stays open; account endpoints are not matched here.)"""
-    return method not in _SAFE_METHODS and path != "/api/settings" and bool(_ADMIN_ONLY_WRITES.match(path))
+    return method not in _SAFE_METHODS and path != "/api/settings" and bool(
+        _ADMIN_ONLY_WRITES.match(path) or _ADMIN_ONLY_CLEANUP.match(path))
 
 
 # Writes that put a change onto the fleet (as opposed to preparing one): deploy, remove/rollback a deployment,
@@ -92,6 +102,9 @@ def operator_denies(method: str, path: str) -> bool:
 _ROLLOUT_POST = re.compile(
     r"/(deploy|push|sign|poll|register|reassert-ordering"
     r"|deployments/[^/]+/(remove|retry-rollback)"
+    # Rule cleanup (1.31): switching rules off (/deploy matches above) and taking it back. Confirming and
+    # previewing stay open, like confirm_rule.
+    r"|rule-cleanup/[^/]+/(revert|retry)"
     r"|maintenance/(execute|carp-execute|schedule)"
     r"|network/changes"
     r"|services/[^/]+/(start|stop|restart)"

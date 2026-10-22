@@ -135,6 +135,9 @@ async def sweep_expired_one_to_one_deployments(db: AsyncSession) -> list[OneToOn
 
 
 async def undeploy_one_to_one(db: AsyncSession, rule: OneToOneRule) -> None:
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, OneToOneDeployment, OneToOneDeployment.one_to_one_id == rule.id)
     failures = []
     result = await db.execute(select(OneToOneDeployment).where(OneToOneDeployment.one_to_one_id == rule.id))
     for deployment in result.scalars().all():

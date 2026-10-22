@@ -147,6 +147,9 @@ async def sweep_expired_port_forward_deployments(db: AsyncSession) -> list[PortF
 
 
 async def undeploy_port_forward(db: AsyncSession, rule: PortForwardRule) -> None:
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, PortForwardDeployment, PortForwardDeployment.port_forward_id == rule.id)
     failures = []
     result = await db.execute(select(PortForwardDeployment).where(PortForwardDeployment.port_forward_id == rule.id))
     for deployment in result.scalars().all():

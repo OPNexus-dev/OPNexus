@@ -147,6 +147,11 @@ async def get_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 async def update_host(host_id: uuid.UUID, payload: HostUpdate, db: AsyncSession = Depends(get_db)):
     await policy_lock(db)
     host = await _get_host_or_404(db, host_id)
+    if (payload.base_url is not None or payload.enabled is not None or payload.clear_cluster_name
+            or payload.cluster_name is not None):
+        # An open rule cleanup (1.31) reverts through this address and this cluster pairing: not while it is open.
+        from app.services.host_maintenance_service import ensure_no_open_cleanup
+        await ensure_no_open_cleanup(db, [host])
 
     if payload.name is not None:
         existing = await db.scalar(
@@ -188,6 +193,9 @@ async def delete_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     host = await db.get(OpnsenseHost, host_id)
     if not host:
         raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    # An open rule cleanup (1.31) holds a revert deadline and snapshots for this host (and its cluster peers).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
+    await ensure_no_open_cleanup(db, [host])
     # Both deployment tables FK to opnsense_hosts with ondelete=CASCADE, so
     # deleting the host would silently drop OPNexus's only record of what
     # it pushed there — the rule/alias itself stays live on the actual

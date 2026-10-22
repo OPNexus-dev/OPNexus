@@ -34,7 +34,27 @@ async def peers(db, host):
     return [host]
 
 
-async def ensure_no_maintenance(db, hosts):
+async def ensure_no_open_cleanup(db, hosts):
+    """A rule cleanup (1.31) that is running, waiting for its confirmation or unresolved owns the host and its
+    cluster peers: nothing else may write to the firewall until it is confirmed, reverted or settled."""
+    from app.services.rule_cleanup_service import has_open_cleanup
+    ids = set()
+    for host in hosts:
+        ids.update(h.id for h in await peers(db, host))
+    if ids and await has_open_cleanup(db, ids):
+        raise api_error(409, ErrorCode.OPEN_CLEANUP_BLOCKS_DEPLOY)
+
+
+async def ensure_no_open_cleanup_on(db, model, condition):
+    """ensure_no_open_cleanup for every host that has a deployment row of ``model`` matching ``condition`` (the
+    undeploy paths: deleting a central object removes it from all its firewalls)."""
+    ids = set((await db.scalars(select(model.host_id).where(condition))).all())
+    hosts = [h for h in [await db.get(OpnsenseHost, i) for i in ids] if h is not None]
+    await ensure_no_open_cleanup(db, hosts)
+
+
+async def ensure_no_maintenance(db, hosts, *, cleanup=True):
+    """cleanup=False: only the cleanup service itself, which reports an open cleanup with its own error code."""
     ids = set()
     for host in hosts:
         ids.update(h.id for h in await peers(db, host))
@@ -42,6 +62,8 @@ async def ensure_no_maintenance(db, hosts):
         raise api_error(409, ErrorCode.OPEN_HOST_MAINTENANCE_BLOCKS_DEPLOY)
     if ids and await db.scalar(select(RestoreOperation.id).where(RestoreOperation.host_id.in_(ids), RestoreOperation.status.in_(RESTORE_OPEN)).limit(1)):
         raise api_error(409, ErrorCode.OPEN_RESTORE_BLOCKS_DEPLOY)
+    if cleanup and ids:
+        await ensure_no_open_cleanup(db, hosts)
 
 
 async def _shared_change_blockers(db, fleet):
@@ -56,6 +78,9 @@ async def _shared_change_blockers(db, fleet):
         blocked.append("Eine frühere Wartungsaktion im Host/Cluster muss zuerst geprüft und abgeschlossen werden.")
     if await db.scalar(select(RestoreOperation.id).where(RestoreOperation.host_id.in_(fleet_ids), RestoreOperation.status.in_(RESTORE_OPEN)).limit(1)):
         blocked.append("Eine Wiederherstellung im Host/Cluster ist offen und muss zuerst bestätigt oder abgebrochen werden.")
+    from app.services.rule_cleanup_service import has_open_cleanup
+    if await has_open_cleanup(db, fleet_ids):
+        blocked.append("Eine Regel-Bereinigung im Host/Cluster ist offen und muss zuerst bestätigt oder zurückgenommen werden.")
     return blocked
 
 

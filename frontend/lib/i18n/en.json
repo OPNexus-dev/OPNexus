@@ -778,6 +778,7 @@
     "OPEN_DEPLOYMENT_DRAFT_UNCHANGED": "Resolve the open confirmation or failed rollback first; the draft remains unchanged",
     "OPEN_HOST_MAINTENANCE_BLOCKS_DEPLOY": "Check and complete the open host maintenance before deploying rules.",
     "OPEN_RESTORE_BLOCKS_DEPLOY": "A restore is open for this host. Please confirm or cancel it first.",
+    "OPEN_CLEANUP_BLOCKS_DEPLOY": "A rule cleanup is running or waiting for this host. Please confirm, revert or finish it first.",
     "READ_ONLY_ACCESS": "Read-only access: this action requires the “Admin” role.",
     "CROSS_ORIGIN_BLOCKED": "Request from a foreign origin blocked",
     "CROSS_SITE_REQUEST_BLOCKED": "Request from another site blocked (Sec-Fetch-Site). Open OPNexus directly at its own address.",
@@ -868,7 +869,30 @@
     "API_RIGHTS_MISSING": "The API user lacks the right to read the gateway status",
     "GATEWAY_NAME_INVALID": "Invalid gateway name",
     "GATEWAY_UNKNOWN": "OPNexus does not know this gateway on the firewall (check the name and its case)",
-    "GATEWAY_MUTE_LIMIT": "At most {limit} gateways can be muted"
+    "GATEWAY_MUTE_LIMIT": "At most {limit} gateways can be muted",
+    "BEREINIGUNG_NICHT_GEFUNDEN": "Cleanup not found.",
+    "BEREINIGUNG_AUSWAHL_UNGUELTIG": "Invalid selection ({field}).",
+    "BEREINIGUNG_VORSCHAU_VERALTET": "The firewall changed since the preview ({uuids}). Nothing was written; open the preview again.",
+    "BEREINIGUNG_REGEL_NICHT_AENDERBAR": "Rule {uuid} on {host} cannot be cleaned up (reason: {reason}).",
+    "BEREINIGUNG_OFFENE_OPERATION": "Something is still open on the host/cluster ({reason}). Confirm, revert or finish it first.",
+    "BEREINIGUNG_ZU_VIELE_REGELN": "At most {max} rules per cleanup (selected: {count}).",
+    "BEREINIGUNG_BESTAETIGUNG_FEHLT": "These rules need an explicit acknowledgement: {uuids}.",
+    "BEREINIGUNG_VERWALTUNGSQUELLEN_FEHLEN": "First enter the management sources in the settings (addresses the firewalls are managed from). Without them the cleanup is locked.",
+    "BEREINIGUNG_CLUSTER_UNVOLLSTAENDIG": "Cluster incomplete or roles unclear ({reason}). The cleanup needs every node, exactly one MASTER and the same rule UUID on every node.",
+    "BEREINIGUNG_FRIST_ABGELAUFEN": "The confirmation window has passed or the cleanup is no longer open.",
+    "BEREINIGUNG_NICHT_BESTAETIGBAR": "This cleanup cannot be confirmed ({status}): at least one rule failed or is unclear. Revert now or wait for the automatic revert.",
+    "BEREINIGUNG_LIVESTAND_ABWEICHEND": "These rules look different on the firewall than expected: {uuids}. Not confirmed; check or revert.",
+    "BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR": "{host} cannot be reached or read. Do not confirm while the firewall does not answer: the automatic revert restores the previous state.",
+    "BEREINIGUNG_WARTEZEIT_NICHT_ERREICHT": "Rule {uuid} on {host} has not been switched off long enough yet ({days} more day(s)).",
+    "BEREINIGUNG_SNAPSHOT_FEHLT": "There is no backup of this rule's content; it is not deleted or cannot be restored.",
+    "BEREINIGUNG_POSITION_NICHT_WIEDERHERSTELLBAR": "The rule was restored, but not at its old position: it is at the end of its group. Check its position in OPNsense.",
+    "BEREINIGUNG_AKTION_NICHT_MOEGLICH": "This action is not possible in the current state ({status}).",
+    "BEREINIGUNG_NICHT_AUSGEFUEHRT": "Not executed: the cleanup stopped earlier.",
+    "BEREINIGUNG_ANWENDEN_FEHLGESCHLAGEN": "The change was saved, but applying it on the firewall failed.",
+    "BEREINIGUNG_AUSGANG_UNKLAR": "The firewall did not answer clearly; the state was read back.",
+    "BEREINIGUNG_ABGEBROCHEN_VERWAIST": "The run was interrupted (OPNexus restarted?). Read the firewall's state with “Check again”.",
+    "BEREINIGUNG_EINSTELLUNG_UNGUELTIG": "Invalid cleanup setting ({field}: {reason}).",
+    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "The acknowledgement text of this page is outdated. Reload the page and acknowledge the rules again."
   },
   "workflow": {
     "attention": "Check errors",
@@ -2160,6 +2184,7 @@
   "audit": {
     "kind": {
       "rule": "Rules",
+      "rule_cleanup": "Rule cleanup",
       "alias": "Aliases",
       "port_forward": "Port forward",
       "one_to_one": "1:1 NAT",
@@ -2179,6 +2204,11 @@
     },
     "action": {
       "deploy": "Push",
+      "disable": "Switched off",
+      "enable": "Switched on",
+      "revert": "Reverted",
+      "restore": "Restored",
+      "cleanup_settings": "Settings changed",
       "confirm": "Confirmation",
       "rollback": "Rollback",
       "remove": "Remove target",
@@ -3647,7 +3677,6 @@
     "rulesChecked": "{count} rules checked",
     "watching": "OPNexus has been counting this firewall's hits since {when}. {collecting} rule(s) are still being watched and cannot count as unused yet.",
     "notWatching": "OPNexus has not collected rule counters from this firewall yet. Unused rules only show up after the observation period.",
-    "removalLater": "View only: removal follows in a later version. Until then use the OPNsense interface.",
     "notes": {
       "ORDER_GUESSED": "Order guessed",
       "ORDER_GUESSED_hint": "This OPNsense version delivers no sort order; the order was derived from group and sequence number. Findings about shadowed and duplicate rules are at most probable.",
@@ -3660,7 +3689,17 @@
       "ALIASES_UNAVAILABLE": "Aliases unknown",
       "ALIASES_UNAVAILABLE_hint": "The aliases could not be read; rules using aliases cannot be compared.",
       "NAT_UNAVAILABLE": "NAT unknown",
-      "NAT_UNAVAILABLE_hint": "The port forwards could not be read (irrelevant for cleanup)."
+      "NAT_UNAVAILABLE_hint": "The port forwards could not be read (irrelevant for cleanup).",
+      "CLUSTER_PEER_USAGE_UNKNOWN": "Cluster usage incomplete",
+      "CLUSTER_PEER_USAGE_UNKNOWN_hint": "For at least one rule a cluster node has no counter data. \"Unused\" is then \"probable\" at best.",
+      "UNUSED_BLOCK_RULE": "block rule",
+      "UNUSED_BLOCK_RULE_hint": "A block rule without hits can still protect (rare attacks). So “unused” counts as probable at most here.",
+      "UNUSED_WINDOW_SHORT": "short window",
+      "UNUSED_WINDOW_SHORT_hint": "Under 30 days of observation, monthly and quarterly jobs are missing. “Unused” counts as probable at most.",
+      "EXTERNAL_CHANGE": "changed externally",
+      "EXTERNAL_CHANGE_hint": "The rule or the rule that shadows it was changed outside OPNexus during the observation period. The finding counts as probable at most.",
+      "ENABLE_MAY_BLOCK_MANAGEMENT": "may block management",
+      "ENABLE_MAY_BLOCK_MANAGEMENT_hint": "A block rule that is not proven to leave the management access alone. Switching it on needs an explicit acknowledgement."
     },
     "empty": {
       "title": "No candidates",
@@ -3671,7 +3710,8 @@
       "rule": "Rule",
       "finding": "Finding",
       "lastHit": "Last hit",
-      "removable": "Removable"
+      "removable": "Removable",
+      "action": "Action"
     },
     "history": "Show the history of rule {rule}",
     "historyTitle": "History",
@@ -3707,9 +3747,6 @@
     },
     "noHit": "none observed",
     "noHitSince": "OPNexus has been watching this rule since {when} and has seen no hit.",
-    "removable": {
-      "yes": "yes"
-    },
     "notRemovable": {
       "automatic": "automatic",
       "automatic_hint": "OPNsense generates this rule itself and it cannot be removed on its own.",
@@ -3717,7 +3754,283 @@
       "legacy_hint": "The rule is still in the old format. Migrate it to the new rule format in OPNsense first.",
       "managed": "managed by OPNexus",
       "managed_hint": "OPNexus deployed this rule. It is removed through the normal flow of the rules page, otherwise OPNexus would create it again.",
-      "managedLink": "Open rule \"{rule}\""
+      "managedLink": "Open rule \"{rule}\"",
+      "confidence": "unknown",
+      "confidence_hint": "There is a hint but no proof. Such rules are never offered for removal.",
+      "nothing": "no finding",
+      "nothing_hint": "There is no finding for this rule that would justify disabling it.",
+      "deleteWait": "not yet",
+      "deleteWait_hint": "Only rules that have been disabled long enough, unchanged, and count as sure are deleted. Not reached yet.",
+      "unreadable": "unreadable",
+      "unreadable_hint": "The rule has no UUID in the new rule format and cannot be changed individually."
+    },
+    "action": {
+      "disable": "Disable",
+      "enable": "Enable",
+      "delete": "Delete"
+    },
+    "select": {
+      "column": "Select",
+      "row": "Select rule {rule}",
+      "count": "{n} of {max} selected",
+      "previewDisable": "Preview: disable",
+      "previewDelete": "Preview: delete",
+      "clear": "Clear selection",
+      "none": "Select at least one rule.",
+      "locked": "Locked until management sources are set.",
+      "busy": "Another cleanup is still open: confirm or revert it first.",
+      "otherKind": "One cleanup cannot mix disabling and deleting. Clear the other selection first.",
+      "limit": "At most {max} rules per cleanup (setting).",
+      "needsAck": "Acknowledgement needed",
+      "needsAckHint": "The finding rests on an assumption. Before the preview you confirm for this rule explicitly that it is not needed."
+    },
+    "settings": {
+      "link": "Settings",
+      "title": "Rule cleanup",
+      "intro": "Limits and protection for disabling, deleting and restoring rules under Analysis, Cleanup.",
+      "sources": "Management sources",
+      "sourcesHint": "Addresses or networks the firewalls are managed from (OPNexus itself, your workstation, a jump host). A rule that could match access from there to the firewall is never disabled. Without an entry the cleanup is locked. IP addresses or networks (CIDR) only, no names.",
+      "sourcesPlaceholder": "203.0.113.10\n198.51.100.0/24",
+      "sourcesInvalid": "“{value}” is not an IP address or network (e.g. 203.0.113.10 or 198.51.100.0/24). Host names are not allowed.",
+      "sourcesEverything": "“{value}” covers the whole address space and would protect every rule.",
+      "sourcesTooMany": "At most 20 entries.",
+      "maxRules": "Rules per cleanup",
+      "maxRulesHint": "The most rules a single cleanup may change (1 to 25).",
+      "maxRulesInvalid": "A whole number from 1 to 25.",
+      "minDays": "Waiting time before deleting (days)",
+      "minDaysHint": "How long a rule that was confirmed as disabled has to stay unchanged before it may be deleted (1 to 365).",
+      "minDaysInvalid": "A whole number from 1 to 365.",
+      "saved": "Cleanup settings saved.",
+      "ports": "Additional management ports",
+      "portsHint": "TCP ports the firewalls are additionally managed on (e.g. SSH or the web GUI on another port). The API port, 443, 80 and 22 are always protected.",
+      "portsPlaceholder": "e.g. 2222, 8443",
+      "portsInvalid": "Not a valid port: {value} (1–65535).",
+      "portsTooMany": "At most 20 ports."
+    },
+    "mgmt": {
+      "title": "Cleanup locked: management sources missing",
+      "text": "Enter the addresses your firewalls are managed from. After that the cleanup never switches off a rule that could match this access.",
+      "hint": "For every selected rule OPNexus checks whether it can match a packet from a management source to the firewall's management address and port. If it matches, or this cannot be ruled out, the rule is left alone. IP addresses or networks (CIDR) only.",
+      "askAdmin": "An administrator has to enter the management sources in the settings."
+    },
+    "dur": {
+      "minutes": "{n} min",
+      "seconds": "{n} s"
+    },
+    "preview": {
+      "title": {
+        "disable": "Preview: disable rules",
+        "enable": "Preview: enable rules again",
+        "delete": "Preview: delete rules"
+      },
+      "intro": {
+        "disable": "The rules on {host} are only disabled, not deleted, and the change is applied.",
+        "enable": "The rules on {host} are switched on again and the change is applied.",
+        "delete": "The already disabled rules on {host} are deleted. Their content is backed up first."
+      },
+      "introHint": {
+        "disable": "The list was just recomputed from the firewall. When rolling out, OPNexus checks everything again and writes nothing if something changed.",
+        "enable": "Switching a rule on can change or block connections. That is why there is a confirmation window again. The list was just recomputed from the firewall.",
+        "delete": "A disabled rule is not loaded in the firewall, so deleting it changes nothing there and needs no confirmation window. Under “Cleanup history” the rule can be restored (disabled, at its old position where possible)."
+      },
+      "loading": "Computing the preview from the firewall …",
+      "failed": "The preview could not be computed.",
+      "compute": "Compute preview",
+      "again": "Recompute preview",
+      "validFor": "Preview valid for {time}",
+      "expired": "The preview has expired. Please recompute it.",
+      "clusterOrder": "Cluster: backup first, then master. Reverting runs in reverse order.",
+      "basisConfirmed": "Disabled and confirmed since {when}, unchanged.",
+      "basisDisabled": "Disabled by hand and unchanged for a long time.",
+      "external": "changed externally",
+      "externalHint": "The rule was changed outside OPNexus since it has been observed.",
+      "acknowledged": "explicitly acknowledged",
+      "autoRevert": "Afterwards you have {window} to check that everything works and the firewall is reachable. If you do not confirm in that time, OPNexus reverts the change automatically.",
+      "confirmName": "Firewall name to confirm",
+      "confirmNameHint": "Type the firewall's name exactly. This prevents changing the wrong firewall by accident.",
+      "confirmNameAria": "Type the firewall name to confirm: {host}",
+      "deployDisabledName": "The name has to match the firewall's name exactly.",
+      "deployNotAdmin": "Only administrators may roll out. A preview belongs to whoever created it: an administrator has to open a new preview themselves."
+    },
+    "ack": {
+      "title": "These findings rest on an assumption. Acknowledge each rule on its own.",
+      "text": "Not proven: schedule, alias content or observation period are estimated. I have checked that the rule “{rule}” is not needed.",
+      "enableTitle": "Switching these block rules on may hit the management access. Acknowledge each rule.",
+      "enableText": "I checked that switching on “{rule}” does not block OPNexus or the admins from reaching the firewall."
+    },
+    "protect": {
+      "false": "Management access untouched",
+      "false_hint": "No management source ({sources}) can use this rule to reach the firewall's management (checked: {queries} combinations of source, destination, port and interface).",
+      "true": "matches management access",
+      "true_hint": "The rule can match access from a management source ({sources}) to the firewall. The confirmation window is the safeguard here.",
+      "unknown": "Management access unclear",
+      "unknown_hint": "It could not be ruled out that the rule affects access from a management source ({sources}). The confirmation window is the safeguard here.",
+      "sourcesHidden": "the configured management sources"
+    },
+    "deploy": {
+      "disable": "Disable and apply",
+      "enable": "Enable and apply",
+      "delete": "Delete permanently",
+      "failed": "The roll-out failed."
+    },
+    "toast": {
+      "deployedConfirm": "Applied. Check the firewall now and confirm, otherwise it is reverted.",
+      "deployedDone": "Done.",
+      "deployedCheck": "Not complete: details in the box above.",
+      "confirm": {
+        "confirmed": "Confirmed. The change stays.",
+        "done": "Confirmed."
+      },
+      "revert": {
+        "reverted": "Reverted. The rules are as they were.",
+        "revert_failed": "Reverting failed. Check the firewall's state.",
+        "done": "Reverted."
+      },
+      "retry": {
+        "reverted": "Reverted. The rules are as they were.",
+        "revert_failed": "Reverting failed again.",
+        "done": "State checked again.",
+        "failed": "State checked again, not everything is complete."
+      },
+      "ended": {
+        "reverted": "The cleanup was reverted automatically.",
+        "confirmed": "The cleanup was confirmed.",
+        "done": "The cleanup is complete.",
+        "failed": "The cleanup has ended, but not everything worked."
+      }
+    },
+    "confirmFailed": "Confirming failed.",
+    "revertFailed": "Reverting failed.",
+    "retryFailed": "Checking again failed.",
+    "op": {
+      "title": {
+        "disable": "Disable rules",
+        "enable": "Enable rules again",
+        "delete": "Delete rules",
+        "restore": "Restore rule"
+      },
+      "state": {
+        "running": "OPNexus is writing the change to the firewall. The automatic revert is already armed.",
+        "awaiting_confirm": "The change is applied on the firewall. Check that everything works and the firewall is reachable, then confirm.",
+        "partial": "Not all rules could be changed. Confirming is locked: revert now or wait for the automatic revert.",
+        "apply_failed": "The rules are changed, but applying on the firewall failed. Revert now or wait for the automatic revert.",
+        "reverting": "OPNexus is reverting the change.",
+        "revert_failed": "Reverting failed. The firewall's state is unclear: check it in OPNsense and try again.",
+        "confirmed": "Confirmed.",
+        "reverted": "Reverted.",
+        "done": "Complete.",
+        "failed": "The outcome is unclear for at least one rule. “Check again” makes OPNexus read the firewall's state.",
+        "preview": "Preview.",
+        "cancelled": "Cancelled.",
+        "expired": "Expired."
+      },
+      "countdown": "{time} left until the automatic revert",
+      "countdownMinutes": "About {n} min left until the automatic revert.",
+      "confirm": "Confirm",
+      "confirmNotYet": "Confirming is possible once the change is applied.",
+      "confirmPartial": "Confirming is locked because at least one rule failed or is unclear.",
+      "confirmApplyFailed": "Confirming is locked because applying on the firewall failed.",
+      "revert": "Revert now",
+      "revertNeedsAdmin": "Only administrators may revert (setting: operators may roll out).",
+      "retryRevert": "Retry reverting",
+      "retryCheck": "Check again",
+      "retryNeedsAdmin": "Only administrators may retry.",
+      "autoRevertNote": "Confirming means: you can still reach the firewall. If you do not confirm, OPNexus reverts automatically when the time is up. Confirming works from the browser session only, not with an API token."
+    },
+    "status": {
+      "preview": "Preview",
+      "preview_hint": "Computed, nothing written yet.",
+      "running": "Running",
+      "running_hint": "OPNexus is writing to the firewall.",
+      "awaiting_confirm": "Waiting for confirmation",
+      "awaiting_confirm_hint": "Applied. Without confirmation OPNexus reverts automatically when the time is up.",
+      "confirmed": "Confirmed",
+      "confirmed_hint": "Confirmed by a user. The change stays.",
+      "partial": "Partial",
+      "partial_hint": "Not all rules could be changed. Revert or wait for the automatic revert.",
+      "apply_failed": "Apply failed",
+      "apply_failed_hint": "The rules are changed, but the firewall did not apply the change.",
+      "reverting": "Reverting",
+      "reverting_hint": "OPNexus is restoring the old state.",
+      "reverted": "Reverted",
+      "reverted_hint": "The old state is restored. The rules' observation window starts again.",
+      "revert_failed": "Revert failed",
+      "revert_failed_hint": "The firewall's state is unclear. Check it and try again.",
+      "done": "Complete",
+      "done_hint": "Fully carried out.",
+      "failed": "Failed",
+      "failed_hint": "Not everything was carried out. Details at the rules.",
+      "cancelled": "Cancelled",
+      "cancelled_hint": "The preview was not rolled out.",
+      "expired": "Expired",
+      "expired_hint": "The preview was no longer valid."
+    },
+    "state": {
+      "queued": "waiting",
+      "disabling": "being disabled",
+      "disabled": "disabled",
+      "confirmed": "confirmed",
+      "reverting": "being reverted",
+      "reverted": "reverted",
+      "deleting": "being deleted",
+      "deleted": "deleted",
+      "restoring": "being restored",
+      "restored": "restored (disabled)",
+      "failed": "failed",
+      "unknown": "outcome unclear",
+      "revert_failed": "revert failed",
+      "skipped": "skipped"
+    },
+    "stateEnable": {
+      "disabling": "being enabled",
+      "disabled": "enabled"
+    },
+    "hist": {
+      "title": "Cleanup history",
+      "empty": "Nothing has been cleaned up on this firewall yet.",
+      "restore": "Restore …",
+      "restoreHint": "Recreates the deleted rule from the backup, disabled and at its old position where possible.",
+      "adminOnly": "Only administrators may restore.",
+      "delete": "Delete …",
+      "deleteHint": "Opens the preview for deleting this disabled rule.",
+      "deleteWait": "Deleting is possible from {when} (waiting time after the confirmation, configurable).",
+      "enable": "Enable again …",
+      "enableHint": "Opens the preview for switching the rule on, with a confirmation window.",
+      "restoredBadge": "restored"
+    },
+    "restore": {
+      "title": "Restore rule",
+      "intro": "The deleted rule is recreated from the backup, disabled and at its old position where possible.",
+      "introHint": "The rule gets a new UUID. In a cluster it is restored on every node. Switching it on is a separate step (“Enable again”) with a confirmation window. If aliases or categories of the rule are gone meanwhile, the firewall refuses and its message appears in the result.",
+      "action": "Restore",
+      "done": "Rule “{rule}” restored (disabled).",
+      "failed": "Restoring failed.",
+      "next": "To switch it on: choose “Enable again” under “Cleanup history”."
+    },
+    "refuse": {
+      "managed": "managed by OPNexus",
+      "automatic": "automatic rule",
+      "legacy": "legacy format",
+      "management": "could match management access",
+      "infrastructure": "cluster/infrastructure rule",
+      "confidence": "finding not proven",
+      "not_candidate": "no longer a candidate"
+    },
+    "openReason": {
+      "deployment": "rule roll-out open",
+      "cleanup": "another cleanup open",
+      "rule": "rule already being handled"
+    },
+    "clusterReason": {
+      "peer_disabled": "a node is disabled",
+      "peer_missing": "a node is missing",
+      "roles": "roles unclear",
+      "uuid_missing": "rule missing on a node"
+    },
+    "settingsReason": {
+      "not_an_address": "not an IP address or network",
+      "everything": "whole address space",
+      "too_many": "too many entries"
     }
   },
   "ruleHistory": {

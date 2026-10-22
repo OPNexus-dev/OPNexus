@@ -117,6 +117,31 @@ def rule_fields(r: NormRule, q: Query, direction: str, iface: str, ctx: Context,
     return fields
 
 
+def match_rule(r: NormRule, q: Query, ctx: Context, *, iface: str | None = None,
+               source: Outcome | None = None, overrides: dict[str, Outcome] | None = None) -> Outcome:
+    """Could the rule's own fields match the packet ``q`` arriving on ``iface``? Order, ``quick``, other rules and
+    whether the rule is enabled or loaded play no part: this is the question "is this rule about such a packet at
+    all", which the cleanup asks about the way the admin reaches the firewall (DESIGN-1.31 §3.2).
+
+    ``iface`` defaults to ``q.iface`` and then to the interface guessed from the address; an interface that cannot
+    be resolved is UNKNOWN. ``source`` replaces the source field (the caller judged it for a whole network, see
+    rule_analysis/protection.py); ``overrides`` replaces further fields by name (e.g. ``interface`` for a packet
+    arriving on a device that is not an assigned interface). Tags set by earlier rules are not known here, so ``tagged`` is UNKNOWN. Only
+    ``False`` is a proof that the rule does not match; ``None`` (unknown) must be treated like ``True``."""
+    iface = iface or q.iface or guess_iface(q.src if q.direction == "in" else q.dst, ctx)
+    if iface is None:
+        return Outcome(None, ["IFACE_UNRESOLVED"])
+    fields = rule_fields(r, q, q.direction, iface, ctx, set(), None)
+    if source is not None:
+        fields["source"] = source
+    for name, outcome in (overrides or {}).items():
+        if name in fields or name == "interface":
+            fields[name] = outcome
+    value = t_and(*(f.value for f in fields.values()))
+    reasons = sorted({reason for f in fields.values() if f.value is None for reason in f.reasons}) if value is None else []
+    return Outcome(value, reasons)
+
+
 def _step(r: NormRule, fields: dict[str, Outcome], result, effect: str) -> dict:
     return {
         "rule": r.summary(), "result": tri_str(result), "effect": effect,

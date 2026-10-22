@@ -201,6 +201,62 @@ async def check_revert_failed(db: AsyncSession) -> dict[str, dict]:
                 "host_name": host.name if host else None,
                 "message": deployment.message,
             }
+    problems.update(await _cleanup_problems(db))
+    return problems
+
+
+# Rule cleanup (1.31) states that need a human: the automatic revert failed, or a run ended half-way.
+_CLEANUP_STILL_CHANGED = ("revert_failed", "unknown", "disabling", "disabled", "failed")
+
+
+async def _cleanup_problems(db: AsyncSession) -> dict[str, dict]:
+    """Rule cleanups whose automatic revert failed (per rule that could not be switched back) and runs stuck in
+    ``partial``/``apply_failed`` (a decision is needed before the window ends), plus delete/restore runs with an
+    unresolved item. Same ``revert_failed`` alert as the deployments. Keys: ``rule_cleanup:<item id>`` for one rule,
+    ``rule_cleanup_op:<operation id>`` for a whole run, so one open problem is one message."""
+    from app.models.rule_cleanup import RuleCleanupItem, RuleCleanupOperation
+
+    problems: dict[str, dict] = {}
+    operations = (await db.scalars(select(RuleCleanupOperation).where(
+        RuleCleanupOperation.status.in_(("revert_failed", "partial", "apply_failed", "failed"))))).all()
+    for op in operations:
+        items = list((await db.scalars(select(RuleCleanupItem).where(RuleCleanupItem.operation_id == op.id)
+                                       .order_by(RuleCleanupItem.seq))).all())
+        host = await db.get(OpnsenseHost, op.host_id)
+        base = {
+            "deployment_type": "rule_cleanup", "deployment_id": str(op.id), "host_id": str(op.host_id),
+            "host_name": host.name if host else None, "operation": op.kind, "operation_status": op.status,
+        }
+        if op.status == "revert_failed":
+            stuck = [i for i in items if i.state in _CLEANUP_STILL_CHANGED]
+            for item in stuck:
+                member = await db.get(OpnsenseHost, item.host_id)
+                problems[f"rule_cleanup:{item.id}"] = {
+                    **base, "entity_id": item.rule_uuid, "host_id": str(item.host_id),
+                    "host_name": member.name if member else None, "rule": item.description, "item_state": item.state,
+                    "message": item.message or op.message,
+                    "hinweis": "Bereinigung: Die Regel konnte nicht automatisch zurückgesetzt werden und ist möglicherweise "
+                               "noch geändert. Auf der Firewall prüfen und in OPNexus „Erneut zurücknehmen“ wählen.",
+                }
+            if not stuck:
+                problems[f"rule_cleanup_op:{op.id}"] = {**base, "entity_id": str(op.id), "message": op.message,
+                    "hinweis": "Bereinigung: Das automatische Zurücknehmen ist fehlgeschlagen. Zustand der Firewall prüfen."}
+        elif op.status in ("partial", "apply_failed"):
+            problems[f"rule_cleanup_op:{op.id}"] = {
+                **base, "entity_id": str(op.id), "message": op.message,
+                "regeln": ", ".join(i.rule_uuid for i in items if i.state in ("failed", "unknown")) or None,
+                "hinweis": "Bereinigung nur teilweise ausgeführt (oder das Anwenden ist fehlgeschlagen). Bestätigen ist gesperrt; "
+                           "jetzt zurücknehmen oder die automatische Rücknahme am Fristende abwarten.",
+            }
+        elif op.kind in ("delete", "restore"):
+            for item in (i for i in items if i.state == "unknown"):
+                member = await db.get(OpnsenseHost, item.host_id)
+                problems[f"rule_cleanup:{item.id}"] = {
+                    **base, "entity_id": item.rule_uuid, "host_id": str(item.host_id),
+                    "host_name": member.name if member else None, "rule": item.description, "item_state": item.state,
+                    "message": item.message or op.message,
+                    "hinweis": "Bereinigung: Der Ausgang beim Löschen/Wiederherstellen ist unklar. Mit „Erneut prüfen“ nachlesen.",
+                }
     return problems
 
 

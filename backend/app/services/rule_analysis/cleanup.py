@@ -15,7 +15,9 @@ Confidence (never higher than what is proven; what is not proven is never "sure"
                 sampled recently and over the whole window; shadowed/duplicate = literal comparison, order from
                 ``sort_order``, the covering rule is loaded; disabled_long = observed unchanged for N days.
 * ``probable``  relies on a guess or on static alias content, or pf's loaded ruleset is not available, or the rule
-                has a schedule (a hit might happen at another time).
+                has a schedule (a hit might happen at another time), or (cluster) some node has no usage data for
+                the rule. In a cluster "unused" is judged over all nodes (rule_hit_service.merge_cluster_hits):
+                the CARP backup sees almost no traffic, so its zero alone never makes a rule unused.
 * ``unknown``   there is a hint but no support: the rule is not loaded in pf (no counters can exist), or the
                 counters are stale.
 
@@ -57,6 +59,8 @@ def unused_confidence(rule: NormRule, hit, now: datetime) -> str:
         return "unknown"   # stale counters say nothing about the present
     if rule.loaded is None or rule.sched:
         return "probable"  # pf's ruleset not available / the rule only works at certain times
+    if getattr(hit, "peer_missing", False):
+        return "probable"  # cluster: some node has no usage data for this rule (rule_hit_service.ClusterHit)
     return "sure"
 
 
@@ -78,7 +82,10 @@ def build(rules: list[NormRule], ctx: Context, *, hits: dict, states: dict, mana
         key = rule.uuid.lower()
         hit = hits.get(key)
         if hit is not None and rule_hit_service.classify(hit, now, unused_days) == "unused":
-            categories.append({"kind": "unused", "confidence": unused_confidence(rule, hit, now), "days": unused_days})
+            category = {"kind": "unused", "confidence": unused_confidence(rule, hit, now), "days": unused_days}
+            if getattr(hit, "peer_missing", False):
+                category["notes"] = ["CLUSTER_PEER_USAGE_UNKNOWN"]
+            categories.append(category)
         overlap = overlaps.get(id(rule))
         if overlap is not None:
             categories.append({

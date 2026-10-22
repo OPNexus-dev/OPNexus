@@ -6,5 +6,5 @@ convention — but both are bumped together whenever a release ships).
 Versioning scheme: see CHANGELOG.md ("Versionierung").
 """
 
-APP_VERSION = "1.30.0"
-APP_CODENAME = "Owl"
+APP_VERSION = "1.31.0"
+APP_CODENAME = "Vulture"

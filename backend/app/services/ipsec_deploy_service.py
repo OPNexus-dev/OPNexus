@@ -303,6 +303,9 @@ async def undeploy_tunnel(db: AsyncSession, tunnel: IpsecTunnel) -> None:
     for this entity to gate on) — deletes Child/Local/Remote before their
     parent Connection (the ModelRelationField dependency direction), then
     the PreSharedKey (independent of the other 4), then reconfigures."""
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, IpsecTunnelDeployment, IpsecTunnelDeployment.tunnel_id == tunnel.id)
     failures = []
     result = await db.execute(select(IpsecTunnelDeployment).where(IpsecTunnelDeployment.tunnel_id == tunnel.id))
     for deployment in result.scalars().all():

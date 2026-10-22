@@ -31,6 +31,26 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.31.0] "Vulture" — 2026-10-22
+
+- **Regel-Bereinigung: Entfernen, Bestätigen, Löschen, Wiederherstellen:** Im Tab **Bereinigung** (Regelwerk › Regel-Analyse) lassen sich Kandidaten jetzt auswählen
+  (Checkbox, höchstens so viele Regeln je Lauf wie in den Einstellungen; „vermutlich“ nur mit einer ausdrücklichen Einzelbestätigung je Regel, „unbekannt“ nie).
+  **Vorschau** zeigt je Firewall (im Cluster zuerst der Backup) die Regeln mit Befund, Sicherheit und Schutzprüfung; **Ausrollen** deaktiviert die Regeln und wendet an.
+  Danach läuft ein Countdown: **Bestätigen** heißt „ich erreiche die Firewall noch“, ohne Bestätigung setzt OPNexus **automatisch zurück**; bis dahin geht auch
+  **Jetzt zurücksetzen**. Bestätigte Regeln lassen sich nach der Wartezeit (einstellbar, Standard 7 Tage) **löschen**; vorher sichert OPNexus den Regelinhalt, und
+  unter **Verlauf der Bereinigungen** kommt die Regel mit **Wiederherstellen** deaktiviert und möglichst an alter Position zurück (sonst mit Hinweis am Ende der Gruppe);
+  **Wieder aktivieren** hat wieder ein Bestätigungsfenster. Wichtig: **Ausrollen, Wiederholen und Wiederherstellen darf nur ein Administrator**, eine Vorschau gehört
+  dem, der sie erstellt hat (ein Admin öffnet selbst eine neue); **Bestätigen geht nur in der Browser-Sitzung**, nie per API-Token. **Die Bereinigung bleibt gesperrt,
+  bis unter Einstellungen die Verwaltungsquellen** (IP-Adressen oder Netze, von denen aus verwaltet wird) **eingetragen sind**: Regeln, die diesen Zugang treffen
+  könnten, deaktiviert OPNexus nie. Dort stehen auch die Obergrenze je Lauf, die Wartezeit bis zum Löschen und **weitere Verwaltungsports** (zusätzlich zu
+  API-Port, 443, 80, 22). Tragen Sie die Adresse ein, mit der OPNexus selbst bei den Firewalls ankommt (im Cluster für jeden Knoten). Quellen, Ports und
+  Firewall-Adressen sehen nur Administratoren. Der Hinweis „Entfernen folgt“ entfällt.
+- **Update: neuere CLI aus dem Zielrelease:** `opnexus update` (auch per Klick im Webinterface) holt sich nach dem Pull die CLI aus dem Updater-Image des
+  Zielreleases und startet sich damit neu, damit Korrekturen am Update-Ablauf sofort greifen statt erst beim übernächsten Update. Das geschieht nur, wenn
+  `cosign` und `cosign.pub` vorhanden sind und die Signatur des Image-**Digests** in diesem Lauf geprüft wurde (ausgeführt wird genau dieser Digest);
+  sonst und bei jedem Fehler läuft das Update mit der vorhandenen CLI weiter. Abschalten: `OPNEXUS_NO_CLI_REFRESH=1`. Wirksam wird es ab dem Update
+  *von* dieser Version.
+
 ## [1.30.0] "Owl" — 2026-10-22
 
 - **Regel-Analyse: Bereinigung (nur Ansicht):** Auf **Regelwerk › Regel-Analyse** gibt es den Tab **Bereinigung** (`?tab=cleanup`). Er listet je Firewall die

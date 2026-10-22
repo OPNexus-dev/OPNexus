@@ -374,6 +374,9 @@ async def undeploy_tunnel(db: AsyncSession, tunnel: WireguardTunnel) -> None:
     dependency direction; deleting the Peer first also auto-unlinks it
     from the Server's `peers` list server-side, per delClientAction's own
     behavior — see module docstring), then reconfigures."""
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, WireguardTunnelDeployment, WireguardTunnelDeployment.tunnel_id == tunnel.id)
     failures = []
     result = await db.execute(select(WireguardTunnelDeployment).where(WireguardTunnelDeployment.tunnel_id == tunnel.id))
     for deployment in result.scalars().all():

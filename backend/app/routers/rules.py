@@ -108,6 +108,10 @@ async def adopt_rule(payload: AdoptRequest, db: AsyncSession = Depends(get_db)):
     host = await db.get(OpnsenseHost, payload.host_id)
     if not host:
         raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    # Taking over a hand-made rule that a rule cleanup (1.31) is switching off/deleting would make it "managed"
+    # under the cleanup's feet: not while one is open on this host or its cluster.
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
+    await ensure_no_open_cleanup(db, [host])
     try:
         rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid, link_to=payload.link_to)
     except rule_adopt_service.RuleNotFoundOnHost as exc:
@@ -276,6 +280,8 @@ async def remove_previous_target(rule_id: uuid.UUID, host_id: uuid.UUID, approva
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_OHNE_OFFENEN_ROLLBACK_KOENNEN_06DE0ADB)
     deployment = next(d for d in rule.deployments if d.host_id == host_id)
     from app.services import opnsense_client
+    from app.services.host_maintenance_service import ensure_no_open_cleanup
+    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
     try:
         await opnsense_client.del_rule(deployment.host, deployment.opnsense_rule_uuid)
         await opnsense_client.apply(deployment.host)

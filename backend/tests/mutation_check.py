@@ -6,6 +6,7 @@ Each mutation: {"file": ..., "old": ..., "new": ..., "tests": "pytest selection"
 The file is patched, the selected tests must FAIL, then the file is restored.
 """
 import json
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -23,7 +24,7 @@ def main(spec_path: str) -> int:
             continue
         try:
             path.write_text(original.replace(m["old"], m["new"]))
-            result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *m["tests"].split()],
+            result = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *shlex.split(m["tests"])],
                                     capture_output=True, text=True)
         finally:
             path.write_text(original)

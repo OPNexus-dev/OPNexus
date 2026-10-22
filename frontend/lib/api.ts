@@ -1576,6 +1576,17 @@ export const api = {
   getRuleHits: (id: string) => request<RuleHit[]>(`/hosts/${id}/rule-hits`),
   getRuleCleanup: (id: string, unusedDays: number, refresh = false) =>
     request<RuleCleanupResult>(`/hosts/${id}/rule-analysis/cleanup?unused_days=${unusedDays}${refresh ? "&refresh=true" : ""}`),
+  listCleanupOperations: (id: string) => request<CleanupOperation[]>(`/hosts/${id}/rule-cleanup`),
+  previewCleanup: (id: string, body: CleanupPreviewRequest) =>
+    request<CleanupPreview>(`/hosts/${id}/rule-cleanup/preview`, { method: "POST", body: JSON.stringify(body) }),
+  cancelCleanup: (id: string, op: string) => request<CleanupOperation>(`/hosts/${id}/rule-cleanup/${op}/cancel`, { method: "POST" }),
+  deployCleanup: (id: string, op: string, confirmName: string) =>
+    request<CleanupOperation>(`/hosts/${id}/rule-cleanup/${op}/deploy`, { method: "POST", body: JSON.stringify({ confirm_name: confirmName }) }),
+  confirmCleanup: (id: string, op: string) => request<CleanupOperation>(`/hosts/${id}/rule-cleanup/${op}/confirm`, { method: "POST" }),
+  revertCleanup: (id: string, op: string) => request<CleanupOperation>(`/hosts/${id}/rule-cleanup/${op}/revert`, { method: "POST" }),
+  retryCleanup: (id: string, op: string) => request<CleanupOperation>(`/hosts/${id}/rule-cleanup/${op}/retry`, { method: "POST" }),
+  restoreCleanupItem: (id: string, item: string, confirmName: string) =>
+    request<CleanupOperation>(`/hosts/${id}/rule-cleanup/items/${item}/restore`, { method: "POST", body: JSON.stringify({ confirm_name: confirmName }) }),
   getRuleHistory: (id: string, ruleUuid: string) =>
     request<RuleHistory>(`/hosts/${id}/live-rules/${encodeURIComponent(ruleUuid)}/history`),
   checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
@@ -1585,8 +1596,9 @@ export const api = {
   getOidcSettings: () => request<OidcSettings>("/settings/oidc"),
   updateOidcSettings: (data: OidcSettingsUpdate) => request<OidcSettings>("/settings/oidc", { method: "PUT", body: JSON.stringify(data) }),
   testOidc: () => request<{ success: boolean; authorization_endpoint: string }>("/settings/oidc/test", { method: "POST" }),
-  getGovernance: () => request<{ operators_may_deploy: boolean }>("/settings/governance"),
-  updateGovernance: (operators_may_deploy: boolean) => request<{ operators_may_deploy: boolean }>("/settings/governance", { method: "PUT", body: JSON.stringify({ operators_may_deploy }) }),
+  getGovernance: () => request<GovernanceSettings>("/settings/governance"),
+  updateGovernance: (operators_may_deploy: boolean) => request<GovernanceSettings>("/settings/governance", { method: "PUT", body: JSON.stringify({ operators_may_deploy }) }),
+  updateCleanupSettings: (data: CleanupSettingsUpdate) => request<GovernanceSettings>("/settings/governance", { method: "PUT", body: JSON.stringify(data) }),
 
   getOverlay: () => request<{ settings: OverlaySettings; peers: OverlayPeer[] }>("/overlay"),
   updateOverlay: (data: Partial<Pick<OverlaySettings, "enabled" | "endpoint" | "subnet" | "listen_port">>) =>
@@ -2156,6 +2168,55 @@ export interface RuleCleanupResult {
   rules_total: number; candidates: CleanupCandidate[]; counts: Record<CleanupKind, number>; notes: string[];
   usage: { tracked: number; collecting: number; watching_since: string | null };
   history: { watching_since: string | null };
+}
+export interface GovernanceSettings {
+  operators_may_deploy: boolean; cleanup_max_rules: number; cleanup_delete_min_days: number;
+  // The list itself only comes for admins; everybody else just learns whether it is set.
+  cleanup_management_sources: string[]; cleanup_management_sources_configured: boolean;
+  // Extra management ports (besides API port, 443, 80, 22); the list only for admins, too.
+  cleanup_management_ports: number[]; cleanup_management_ports_configured: boolean;
+}
+export interface CleanupSettingsUpdate {
+  cleanup_max_rules?: number; cleanup_delete_min_days?: number; cleanup_management_sources?: string[];
+  cleanup_management_ports?: number[];
+}
+export type CleanupActionKind = "disable" | "enable" | "delete";
+export type CleanupOperationKind = CleanupActionKind | "restore";
+export type CleanupOperationStatus =
+  | "preview" | "running" | "awaiting_confirm" | "confirmed" | "partial" | "apply_failed" | "reverting" | "reverted"
+  | "revert_failed" | "done" | "failed" | "cancelled" | "expired";
+export type CleanupItemState =
+  | "queued" | "disabling" | "disabled" | "confirmed" | "reverting" | "reverted" | "deleting" | "deleted" | "restoring"
+  | "restored" | "failed" | "unknown" | "revert_failed" | "skipped";
+export interface CleanupItem {
+  id: string; host_id: string; host_name: string | null; rule_uuid: string; seq: number; carp_role: string | null;
+  state: CleanupItemState; description: string | null; categories: CleanupCategory[] | null; confidence: AnalysisConfidence | null;
+  cover_uuid: string | null; restored_uuid: string | null; changed_at: string | null; message: string | null;
+  has_snapshot: boolean; restorable: boolean;
+}
+export interface CleanupPlanItem {
+  uuid: string; given: string; seq: number; description: string; action: string | null;
+  categories: { kind: CleanupKind; confidence: AnalysisConfidence; notes?: string[]; days?: number }[];
+  level: AnalysisConfidence | null; needs_ack: boolean; notes: string[]; cover_uuid: string | null;
+  protection: { result: "false" | "true" | "unknown"; queries: number; reasons: string[] } | null;
+  external: string | null;
+  basis?: { type: "confirmed" | "disabled_long"; confirmed_at?: string; since?: string };
+}
+export interface CleanupPlanNode { host_id: string; host_name: string; role: string | null; items: CleanupPlanItem[]; }
+// sources/ports only for admins (the backend leaves them out for everybody else, sources_configured instead).
+export interface CleanupPlan { kind: CleanupActionKind; uuids: string[]; unused_days: number; sources?: string[]; ports?: number[]; sources_configured?: boolean; acknowledged: string[]; nodes: CleanupPlanNode[]; }
+export interface CleanupOperation {
+  id: string; host_id: string; host_name: string | null; cluster_name: string | null; kind: CleanupOperationKind;
+  status: CleanupOperationStatus; actor: string; created_at: string | null; expires_at: string | null;
+  revert_deadline: string | null; confirmed_at: string | null; finished_at: string | null; message: string | null;
+  plan: CleanupPlan | null; items: CleanupItem[]; can_confirm: boolean; can_revert: boolean; can_retry: boolean; warnings: string[];
+}
+export interface CleanupPreview {
+  preview_id: string; expires_at: string | null; kind: CleanupActionKind; plan: CleanupPlan; max_rules: number;
+  window_seconds: number; operation: CleanupOperation;
+}
+export interface CleanupPreviewRequest {
+  items: { uuid: string; kind: CleanupActionKind; ack: boolean }[]; unused_days: number; ack_text_version: string;
 }
 export interface RuleHistoryChange { field: string; before: unknown; after: unknown; }
 export interface RuleHistoryEvent {

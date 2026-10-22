@@ -371,6 +371,9 @@ async def undeploy_instance(db: AsyncSession, instance: OpenVpnInstance) -> None
     for this entity to gate on) — deletes the Instance before its
     referenced StaticKey (the ModelRelationField dependency direction),
     then reconfigures."""
+    # Deleting writes to the firewalls: not while a rule cleanup (1.31) owns one of them (or its cluster).
+    from app.services.host_maintenance_service import ensure_no_open_cleanup_on
+    await ensure_no_open_cleanup_on(db, OpenVpnInstanceDeployment, OpenVpnInstanceDeployment.instance_id == instance.id)
     failures = []
     result = await db.execute(select(OpenVpnInstanceDeployment).where(OpenVpnInstanceDeployment.instance_id == instance.id))
     for deployment in result.scalars().all():

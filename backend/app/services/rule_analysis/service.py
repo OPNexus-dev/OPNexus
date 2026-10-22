@@ -107,17 +107,47 @@ async def _managed_rules(db: AsyncSession, host: OpnsenseHost) -> dict[str, dict
     return managed
 
 
-async def cleanup_candidates(db: AsyncSession, host: OpnsenseHost, *, unused_days: int = cleanup.DEFAULT_UNUSED_DAYS,
-                             refresh: bool = False, now: datetime | None = None) -> dict:
-    """Read-only. Raises when the firewall cannot be read (callers map that)."""
+async def _hits(db: AsyncSession, host_id) -> dict:
+    return {r.rule_uuid.lower(): r for r in (await db.scalars(select(RuleHit).where(RuleHit.host_id == host_id))).all()}
+
+
+async def cluster_hits(db: AsyncSession, host: OpnsenseHost) -> tuple[dict, dict]:
+    """(usage to judge "unused" with, the host's own hit rows). For a cluster member the usage is merged over all
+    nodes (DESIGN-1.31 §3.4): "unused" only when it holds on every node."""
+    own = await _hits(db, host.id)
+    if not host.cluster_name:
+        return own, own
+    others = (await db.scalars(select(OpnsenseHost.id).where(
+        OpnsenseHost.cluster_name == host.cluster_name, OpnsenseHost.id != host.id))).all()
+    if not others:
+        return own, own
+    return rule_hit_service.merge_cluster_hits(own, [await _hits(db, other) for other in others]), own
+
+
+async def cleanup_view(db: AsyncSession, host: OpnsenseHost, *, unused_days: int = cleanup.DEFAULT_UNUSED_DAYS,
+                       refresh: bool = False, now: datetime | None = None):
+    """(context, normalized rules, candidate payload, managed rules) - the cleanup service needs all of them."""
     now = now or datetime.now(timezone.utc)
     ctx = await ctx_mod.load_context(host, use_cache=not refresh)
     rules, notes = normalize(ctx)
-    hits = {r.rule_uuid.lower(): r for r in (await db.scalars(select(RuleHit).where(RuleHit.host_id == host.id))).all()}
+    usage, hits = await cluster_hits(db, host)
     states = {s.rule_uuid: s for s in (await db.scalars(select(LiveRuleState).where(LiveRuleState.host_id == host.id))).all()}
-    rows = cleanup.build(rules, ctx, hits=hits, states=states, managed=await _managed_rules(db, host), now=now,
+    managed = await _managed_rules(db, host)
+    rows = cleanup.build(rules, ctx, hits=usage, states=states, managed=managed, now=now,
                          unused_days=unused_days, order_guessed=coverage.order_doubtful(notes))
+    return ctx, rules, _payload(host, rules, rows, hits, states, notes, ctx, unused_days, now), managed
+
+
+async def cleanup_candidates(db: AsyncSession, host: OpnsenseHost, *, unused_days: int = cleanup.DEFAULT_UNUSED_DAYS,
+                             refresh: bool = False, now: datetime | None = None) -> dict:
+    """Read-only. Raises when the firewall cannot be read (callers map that)."""
+    return (await cleanup_view(db, host, unused_days=unused_days, refresh=refresh, now=now))[2]
+
+
+def _payload(host, rules, rows, hits, states, notes, ctx, unused_days, now) -> dict:
     all_notes = sorted({*notes, *ctx.notes})
+    if host.cluster_name and any("CLUSTER_PEER_USAGE_UNKNOWN" in c.get("notes", ()) for r in rows for c in r["categories"]):
+        all_notes = sorted({*all_notes, "CLUSTER_PEER_USAGE_UNKNOWN"})
     return {
         "host_id": str(host.id), "host_name": host.name, "cluster_name": host.cluster_name,
         "unused_days": max(cleanup.MIN_DAYS, min(cleanup.MAX_DAYS, int(unused_days))), "generated_at": now,
