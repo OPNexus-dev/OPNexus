@@ -160,6 +160,13 @@ class Settings(BaseSettings):
     # wireguard_key_store.py.
     wireguard_key_secret_dir: str = "/data/wireguard-key-secrets"
 
+    # ── Rule observation (usage counters + change history of the live rules) ─
+    # Two read-only GETs per enabled firewall per cycle (searchRule, ruleStats). The interval is an operator
+    # setting (env RULE_OBSERVE_INTERVAL_SECONDS); it can not go below the floor, which keeps a typo from
+    # polling every firewall in a tight loop.
+    rule_observe_interval_seconds: int = 900
+    rule_observe_min_interval_seconds: int = 60
+
     # ── Resource monitoring ──────────────────────────────────────────────
     # Fixed interval, no admin-editable settings row/UI for this — v1
     # deliberately kept minimal (see resource_monitor_service.py).

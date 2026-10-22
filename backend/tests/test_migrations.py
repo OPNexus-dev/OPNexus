@@ -331,5 +331,58 @@ async def test_0026_adds_account_ids_matches_existing_names_and_is_idempotent(sc
     await _alembic(scratch, "upgrade", "head")
     await _alembic(scratch, "downgrade", "0025")
     await _alembic(scratch, "upgrade", "head")
-    assert await _version(scratch) == _head() == "0026"
+    assert await _version(scratch) == _head()
     assert await _schema_diff(scratch) == []
+
+
+async def test_0027_creates_the_rule_history_tables_and_is_idempotent(scratch):
+    """1.29 -> 1.30: two new tables, the downgrade drops them; running the upgrade over tables that a pre-Alembic
+    bridge (create_all) already made changes nothing."""
+    await _alembic(scratch, "upgrade", "0026")
+    async with scratch.connect() as conn:
+        tables = set((await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all())
+    assert "live_rule_states" not in tables and "rule_change_events" not in tables
+
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head()
+    assert await _schema_diff(scratch) == []
+    host = "11111111-1111-1111-1111-111111111111"
+    async with scratch.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO opnsense_hosts (id, name, base_url, api_key, verify_tls, enabled, created_at) "
+            "VALUES (:h, 'fw', 'https://fw.test', 'k', true, true, now())"), {"h": host})
+        await conn.execute(text(
+            "INSERT INTO rule_change_events (id, host_id, rule_uuid, seq, observed_at, kind, origin) "
+            "VALUES (gen_random_uuid(), :h, 'r', 1, now(), 'added', 'external')"), {"h": host})
+    with pytest.raises(DBAPIError):  # the same change can only be recorded once
+        async with scratch.begin() as conn:
+            await conn.execute(text(
+                "INSERT INTO rule_change_events (id, host_id, rule_uuid, seq, observed_at, kind, origin) "
+                "VALUES (gen_random_uuid(), :h, 'r', 1, now(), 'added', 'external')"), {"h": host})
+    async with scratch.begin() as conn:  # deleting the host takes its history with it
+        await conn.execute(text("DELETE FROM opnsense_hosts"))
+        assert (await conn.execute(text("SELECT count(*) FROM rule_change_events"))).scalar() == 0
+
+    await _alembic(scratch, "downgrade", "0026")
+    async with scratch.connect() as conn:
+        tables = set((await conn.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))).scalars().all())
+    assert "live_rule_states" not in tables and "rule_change_events" not in tables
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")  # second run: nothing to do
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+async def test_0028_adds_the_event_window_and_is_idempotent(scratch):
+    await _alembic(scratch, "upgrade", "0027")
+    async with scratch.connect() as conn:
+        cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'rule_change_events'"))).scalars().all())
+    assert "window_start" not in cols
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() == "0028" and await _schema_diff(scratch) == []
+    await _alembic(scratch, "downgrade", "0027")
+    async with scratch.connect() as conn:
+        cols = set((await conn.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name = 'rule_change_events'"))).scalars().all())
+    assert "window_start" not in cols
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []

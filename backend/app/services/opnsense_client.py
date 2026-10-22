@@ -442,6 +442,11 @@ async def get_pf_rule_statistics(host: OpnsenseHost) -> dict:
 #   ifname, members (comma separated identifiers), sequence; the built-in groups (enc0, openvpn,
 #   wireguard) appear with their name as uuid and empty members.
 async def get_rule_stats(host: OpnsenseHost) -> dict:
+    """Per-label counters, already summed over every pf line of a rule. Used for the rule usage sampling
+    (rule_hit_service). Live check 2026-10-22 on all three test firewalls (26.7, one with unmigrated legacy
+    rules): HTTP 200, ``stats`` has exactly one key per label of ``pfStatistics/rules`` (30/30/25 labels,
+    including the 32-hex label of the legacy user rule on the third), and each ``packets`` equals the sum over
+    that label's pf lines (differences only by traffic between the two reads)."""
     return await _request(host, "GET", "/firewall/filter_util/ruleStats")
 
 

@@ -17,6 +17,8 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.host import OpnsenseHost
 from app.models.policy import DeviceGroup
+from app.models.rule_history import LiveRuleState
+from app.services import rule_history_service
 from app.services.rule_analysis import service
 
 logger = logging.getLogger(__name__)
@@ -89,3 +91,38 @@ async def fleet_match(
             return await _run(host, q, refresh)
 
     return list(await asyncio.gather(*(one(h) for h in hosts)))
+
+
+@router.get("/hosts/{host_id}/rule-analysis/cleanup")
+async def host_cleanup(
+    host_id: uuid.UUID, unused_days: int = Query(30, ge=1, le=3650, description="observation window for 'unused' / 'disabled for a long time'"),
+    refresh: bool = False, db: AsyncSession = Depends(get_db),
+):
+    """Cleanup candidates (unused, shadowed, duplicate, disabled for a long time) with confidence and whether
+    each rule could be offered for removal. Read-only; removal is not part of this endpoint."""
+    host = await db.get(OpnsenseHost, host_id)
+    if host is None:
+        raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    try:
+        return await service.cleanup_candidates(db, host, unused_days=unused_days, refresh=refresh)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 - an unreachable firewall is a 502, not a crash
+        logger.info("cleanup candidates failed for %s: %s", host.name, exc)
+        raise api_error(502, ErrorCode.ANALYSE_FIREWALL_NICHT_LESBAR) from exc
+
+
+@router.get("/hosts/{host_id}/live-rules/{rule_uuid}/history")
+async def live_rule_history(host_id: uuid.UUID, rule_uuid: str, limit: int = Query(100, ge=1, le=500),
+                            db: AsyncSession = Depends(get_db)):
+    """What happened to one rule on one firewall: observed changes (also hand-made ones), saved revisions of
+    rules OPNexus manages and the audit entries, newest first. Reads the database only."""
+    host = await db.get(OpnsenseHost, host_id)
+    if host is None:
+        raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    baseline = await db.get(LiveRuleState, (host_id, rule_history_service.BASELINE_KEY))
+    return {
+        "host_id": str(host.id), "rule_uuid": rule_uuid.lower()[:64],
+        "watching_since": baseline.first_seen_at if baseline else None,
+        "events": await rule_history_service.rule_timeline(db, host, rule_uuid, limit),
+    }

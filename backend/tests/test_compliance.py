@@ -12,12 +12,12 @@ from tests.test_rules import _create_host
 
 
 def _mvc_rule(*, interface="lan", action="pass", src="any", dst="any", protocol="any", descr="r", seq=1,
-              enabled="1", dport="", direction="in", ipprotocol="inet", quick="1", src_not="0"):
+              enabled="1", dport="", direction="in", ipprotocol="inet", quick="1", src_not="0", extra=""):
     return (f"<rule><enabled>{enabled}</enabled><action>{action}</action><quick>{quick}</quick><interface>{interface}</interface>"
             f"<direction>{direction}</direction><ipprotocol>{ipprotocol}</ipprotocol><protocol>{protocol}</protocol>"
             f"<source_net>{src}</source_net><source_not>{src_not}</source_not><destination_net>{dst}</destination_net>"
             f"<destination_not>0</destination_not><destination_port>{dport}</destination_port>"
-            f"<description>{descr}</description><sequence>{seq}</sequence></rule>")
+            f"<description>{descr}</description><sequence>{seq}</sequence>{extra}</rule>")
 
 
 def _config(*, rules="", legacy="", protocol="https", ssh="", snmpd="", timeservers="0.pool.ntp.org", syslog="",
@@ -105,6 +105,52 @@ def test_rules_are_ordered_by_sequence_not_file_order():
     assert _run(_config(rules=rules))["rules_shadowed"]["params"]["examples"] == ["narrow"]
 
 
+def test_coverage_uses_networks_and_the_floating_section_like_the_firewall_does():
+    """1.30: a CIDR inside a CIDR is shadowed, a floating quick rule is evaluated before every interface rule,
+    and an interface rule never shadows a floating one that comes first."""
+    shadow = _run(_config(rules=(
+        _mvc_rule(src="10.0.0.0/8", action="block", descr="wide", seq=1)
+        + _mvc_rule(src="10.1.0.0/16", descr="inside", seq=2))))
+    assert shadow["rules_shadowed"]["params"]["examples"] == ["inside"]
+    floating = _run(_config(rules=(
+        _mvc_rule(interface="lan", src="10.1.0.0/16", descr="interface rule", seq=1)
+        + _mvc_rule(interface="lan,wan", src="10.0.0.0/8", action="block", descr="floating block", seq=9))))
+    assert floating["rules_shadowed"]["params"]["examples"] == ["interface rule"]
+    reverse = _run(_config(rules=(
+        _mvc_rule(interface="lan", src="10.0.0.0/8", action="block", descr="interface rule", seq=1)
+        + _mvc_rule(interface="lan,wan", src="10.1.0.0/16", descr="floating narrow", seq=9))))
+    assert reverse["rules_shadowed"]["passed"] is True
+
+
+def test_a_legacy_floating_rule_is_only_quick_when_it_says_so():
+    """mutation: defaulting legacy rules to quick makes a plain floating rule 'cover' everything after it."""
+    def legacy_rule(descr, *, floating, quick=None, src="any"):
+        return (f"<rule><type>block</type><interface>lan,wan</interface><ipprotocol>inet</ipprotocol>"
+                f"{'<floating>yes</floating>' if floating else ''}{f'<quick>{quick}</quick>' if quick else ''}"
+                f"<descr>{descr}</descr><source><any>1</any></source><destination><any>1</any></destination></rule>"
+                if src == "any" else
+                f"<rule><type>pass</type><interface>lan</interface><ipprotocol>inet</ipprotocol><descr>{descr}</descr>"
+                f"<source><address>{src}</address></source><destination><any/></destination></rule>")
+    later = legacy_rule("later", floating=False, src="10.0.0.0/8")
+    assert _run(_config(legacy=legacy_rule("not quick", floating=True) + later))["rules_shadowed"]["passed"] is True
+    quick = _run(_config(legacy=legacy_rule("quick", floating=True, quick="yes") + later))
+    assert quick["rules_shadowed"]["params"]["examples"] == ["later"]
+    # a non-floating legacy rule is always quick, whatever <quick> says
+    plain = _run(_config(legacy=legacy_rule("interface rule", floating=False) .replace("lan,wan", "lan") + later))
+    assert plain["rules_shadowed"]["params"]["examples"] == ["later"]
+
+
+def test_rules_at_the_same_position_in_the_config_are_not_compared():
+    rules = _mvc_rule(src="any", action="block", descr="first", seq=5) + _mvc_rule(src="10.0.0.0/8", descr="second", seq=5)
+    assert _run(_config(rules=rules))["rules_shadowed"]["passed"] is True
+
+
+def test_a_scheduled_or_tagged_rule_does_not_shadow_anything():
+    for extra in ("<sched>office</sched>", "<tagged>mark</tagged>", "<received-on>wan</received-on>"):
+        rules = _mvc_rule(src="any", action="block", descr="timed", seq=1, extra=extra) + _mvc_rule(src="10.0.0.0/8", descr="later", seq=2)
+        assert _run(_config(rules=rules))["rules_shadowed"]["passed"] is True, extra
+
+
 def test_ssh_levels():
     on = "<ssh><enabled>enabled</enabled><permitrootlogin>{}</permitrootlogin><passwordauth>{}</passwordauth></ssh>"
     worst = _run(_config(ssh=on.format(1, 1)))["ssh_hardened"]
@@ -159,6 +205,8 @@ def _mock_host(respx_mock, xml, firmware_status="none"):
     respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(200, content=xml))
     respx_mock.get(url__regex=r".*/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": firmware_status}))
+    # An older release without ruleStats: the usage sampling falls back to the pf ruleset text.
+    respx_mock.get(url__regex=r".*/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(404, json={"message": "not found"}))
     respx_mock.get(url__regex=r".*/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
     respx_mock.get(url__regex=r".*/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
 
@@ -246,7 +294,10 @@ def test_pf_counters_are_tied_to_rule_uuids_and_summed_over_expanded_lines():
     stats["rules"]["filter rules"][f'@7 pass in quick on vtnet0 inet6 all label "{U1}"'] = {"evaluations": 2, "packets": 3, "bytes": 30}
     got = rh.parse_counters(stats)
     assert got[U1] == {"packets": 8, "bytes": 530, "evaluations": 12}
-    assert "2f2c37025cd02b5cd29fd330f8e48954" not in got  # md5 labels are automatic rules, not user rules
+    # An md5 label is either an automatic rule or an unmigrated legacy rule: only searchRule (is_automatic) tells them apart.
+    assert got["2f2c37025cd02b5cd29fd330f8e48954"]["packets"] == 9
+    assert "2f2c37025cd02b5cd29fd330f8e48954" not in rh.configured_rules(
+        {"rows": [{"uuid": "2f2c37025cd02b5cd29fd330f8e48954", "is_automatic": True}]})
     assert rh.parse_counters({}) == {} and rh.parse_counters({"rules": None}) == {}
 
 
@@ -259,7 +310,8 @@ async def _sample(host_id, stats, search, at):
     async with SessionLocal() as db:
         host = await db.get(OpnsenseHost, __import__("uuid").UUID(host_id))
         from unittest.mock import AsyncMock, patch
-        with patch.object(rh.client, "get_pf_rule_statistics", AsyncMock(return_value=stats)), \
+        with patch.object(rh.client, "get_rule_stats", AsyncMock(side_effect=rh.OpnsenseAPIError("404"))), \
+             patch.object(rh.client, "get_pf_rule_statistics", AsyncMock(return_value=stats)), \
              patch.object(rh.client, "search_rules", AsyncMock(return_value=search)):
             return await rh.sample_host(db, host, now=at)
 
@@ -373,6 +425,7 @@ async def test_one_truncated_config_does_not_stop_the_others(client, respx_mock)
     for base, body in (("bad", b"<opnsense><system><webgui>"), ("good", _config())):
         respx_mock.get(f"https://{base}.test/api/core/backup/download/this").mock(return_value=httpx.Response(200, content=body))
         respx_mock.get(f"https://{base}.test/api/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": "none"}))
+        respx_mock.get(f"https://{base}.test/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(404, json={}))
         respx_mock.get(f"https://{base}.test/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
         respx_mock.get(f"https://{base}.test/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post("/api/compliance/check")

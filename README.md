@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.29.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.30.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -26,7 +26,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Automation** — personal API tokens (read / deploy / admin), Prometheus metrics, a read-only MCP endpoint for AI assistants and an OpenAPI schema.
 - **Security posture** — a 0–100 score per firewall from hardening and rule-hygiene checks (open WAN rules, weak SSH/SNMP, shadowed rules, stale backups …), read-only.
-- **Rule analysis** — "Which rule matches?" for a source, destination, protocol and port: the deciding rule per firewall (or fleet/group) with an honest confidence (sure / probable / unknown) and a rule-by-rule trace, read-only.
+- **Rule analysis** — "Which rule matches?" for a source, destination, protocol and port: the deciding rule per firewall (or fleet/group) with an honest confidence (sure / probable / unknown) and a rule-by-rule trace, read-only. A cleanup list names unused, shadowed, duplicate and long-disabled rules (each with its confidence) and every rule has a change history, including changes made outside OPNexus.
 - **Backups & recovery** — scheduled config backups with retention, an encrypted offsite copy to S3-compatible storage, a redacted change view between backups, and a full encrypted backup/restore of OPNexus itself (`opnexus backup --full`).
 - **Single sign-on** — sign in with your identity provider (OIDC); roles come from its groups at every login.
 - **Access** — HTTPS with pinned firewall certificates, optional two-factor sign-in, roles (admin / operator / read-only), keyboard operation, dark mode, German and English UI.
@@ -67,7 +67,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.29.0
+OPNEXUS_VERSION=1.30.0
 ```
 
 ```bash

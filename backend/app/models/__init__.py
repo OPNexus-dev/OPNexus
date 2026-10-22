@@ -102,3 +102,6 @@ __all__ += ["RolloutPlan", "RolloutPlanWave", "RolloutRun", "RolloutRunHost", "R
 
 from app.models.gui_access import GuiAccessSettings, GuiSession, GuiTicket
 __all__ += ["GuiAccessSettings", "GuiSession", "GuiTicket"]
+
+from app.models.rule_history import LiveRuleState, RuleChangeEvent
+__all__ += ["LiveRuleState", "RuleChangeEvent"]

@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldGroup, Input, Label, Select } from "@/components/ui/Field";
+import { RuleCleanup } from "@/components/RuleCleanup";
 import { Loading } from "@/components/ui/Loading";
+import { Tabs } from "@/components/ui/Tabs";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { AnalysisResult, api, DeviceGroup, Host, InterfaceOption } from "@/lib/api";
 import { Network, Search } from "lucide-react";
@@ -53,7 +55,30 @@ function toParams(form: FormState): URLSearchParams {
 
 export default function AnalysisPage() {
   const { t } = useLanguage();
-  return <Suspense fallback={<Loading>{t("common.loading")}</Loading>}><AnalysisContent /></Suspense>;
+  return <Suspense fallback={<Loading>{t("common.loading")}</Loading>}><AnalysisShell /></Suspense>;
+}
+
+/** Title and tabs (?tab=query|cleanup); each tab keeps its own state in the address bar. */
+function AnalysisShell() {
+  const { t } = useLanguage();
+  const router = useRouter();
+  const params = useSearchParams();
+  const tab = params.get("tab") === "cleanup" ? "cleanup" : "query";
+  return (
+    <div>
+      <h1 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-slate-900">
+        {t("analysis.title")}
+        <InfoTip text={t("analysis.intro")} size={18} />
+      </h1>
+      <Tabs
+        className="mb-6"
+        items={[{ key: "query", label: t("analysis.tabs.query") }, { key: "cleanup", label: t("analysis.tabs.cleanup") }]}
+        active={tab}
+        onChange={(key) => router.push(key === "cleanup" ? "/analysis?tab=cleanup" : "/analysis")}
+      />
+      <div role="tabpanel">{tab === "cleanup" ? <RuleCleanup /> : <AnalysisContent />}</div>
+    </div>
+  );
 }
 
 function AnalysisContent() {
@@ -144,11 +169,6 @@ function AnalysisContent() {
 
   return (
     <div>
-      <h1 className="mb-6 flex items-center gap-2 text-2xl font-semibold text-slate-900">
-        {t("analysis.title")}
-        <InfoTip text={t("analysis.intro")} size={18} />
-      </h1>
-
       <Card className="mb-6 p-4 sm:p-5">
         <form onSubmit={submit} aria-label={t("analysis.form.title")} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

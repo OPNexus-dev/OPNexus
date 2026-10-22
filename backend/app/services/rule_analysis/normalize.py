@@ -13,6 +13,8 @@ NAT, 600000 = interface missing, never loaded).
 """
 from __future__ import annotations
 
+import re
+
 from app.services.rule_analysis.context import Context
 from app.services.rule_analysis.model import (
     SECTION_ANTISPOOF, SECTION_FLOATING, SECTION_GROUP, SECTION_INTERFACE, SECTION_INVALID,
@@ -169,6 +171,11 @@ def normalize_row(row: dict, ctx: Context) -> NormRule:
     return rule
 
 
+# Words in an unlabeled pf line that restrict it in ways antispoof_rule() does not model (protocol, ports, flags,
+# tags, user/group, received-on, ICMP types, OS): such a line must never be used as a covering rule.
+_UNMODELLED = re.compile(r"\b(proto|port|flags|tagged|received-on|user|group|icmp6?-type|os|tag|label)\b")
+
+
 def antispoof_rule(line: PfLine, order: tuple[int, int]) -> NormRule:
     """An unlabeled pf line OPNsense generated itself (antispoof / own-address block)."""
     return NormRule(
@@ -179,6 +186,7 @@ def antispoof_rule(line: PfLine, order: tuple[int, int]) -> NormRule:
         src=Endpoint(raw="" if line.src == "any" else line.src, items=[] if line.src == "any" else [line.src]),
         dst=Endpoint(raw="" if line.dst == "any" else line.dst, items=[] if line.dst == "any" else [line.dst]),
         sport="", dport="", automatic=True, loaded=True, pf_numbers=[line.number], pf_line=line,
+        extra_notes=["UNMODELLED_CONDITION"] if _UNMODELLED.search(line.text) else [],
     )
 
 
@@ -188,7 +196,9 @@ def normalize(ctx: Context) -> tuple[list[NormRule], list[str]]:
     rules = [normalize_row(row, ctx) for row in ctx.rows]
     if any(not r.order_known for r in rules):
         notes.append("ORDER_GUESSED")
-    rules.sort(key=lambda r: (r.order, r.uuid))
+    # Equal sort_order (e.g. two rules with the same sequence): what pf actually loaded decides, the uuid only as
+    # a last resort (then coverage.analyse() lowers its confidence, it cannot know the real order).
+    rules.sort(key=lambda r: (r.order, min(r.pf_numbers) if r.pf_numbers else 10**9, r.uuid))
     if ctx.pf is not None:
         loaded = [r for r in rules if r.loaded and r.pf_numbers]
         firsts = [min(r.pf_numbers) for r in loaded]

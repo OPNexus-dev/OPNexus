@@ -1,0 +1,116 @@
+{
+ "_comment": "Anonymized from live OPNsense 26.7 test firewalls (2026-10-22): firewall/filter_util/ruleStats (3 automatic labels, 3 MVC rules, 1 unmigrated legacy rule with a 32-hex label; counters as read) and the matching searchRule row of the legacy rule. No addresses involved.",
+ "ruleStats": {
+  "status": "ok",
+  "stats": {
+   "02f4bab031b57d1e30553ce08e0ec131": {
+    "pf_rules": 2,
+    "evaluations": 17734,
+    "packets": 250,
+    "bytes": 28670,
+    "states": 0
+   },
+   "7355b5da99f40893221b6c4140de1006": {
+    "pf_rules": 6,
+    "evaluations": 860,
+    "packets": 0,
+    "bytes": 0,
+    "states": 0
+   },
+   "80f90f0d4c5aba0c28d1c539e1e35766": {
+    "pf_rules": 12,
+    "evaluations": 1219,
+    "packets": 0,
+    "bytes": 0,
+    "states": 0
+   },
+   "fccf1b9d-2461-43d6-938f-2c3c39b3ddee": {
+    "pf_rules": 1,
+    "evaluations": 171,
+    "packets": 458,
+    "bytes": 35302,
+    "states": 0
+   },
+   "920a850f-68c3-42f6-a5a4-5d06984e417b": {
+    "pf_rules": 2,
+    "evaluations": 8,
+    "packets": 4,
+    "bytes": 756,
+    "states": 0
+   },
+   "2ec1c6db-61e1-4476-b3f6-0599a28990a2": {
+    "pf_rules": 1,
+    "evaluations": 9625,
+    "packets": 234816,
+    "bytes": 99582131,
+    "states": 40
+   },
+   "db610dbc7c6467261cf08e8a72ade096": {
+    "pf_rules": 1,
+    "evaluations": 4712,
+    "packets": 110719,
+    "bytes": 55995167,
+    "states": 24
+   }
+  }
+ },
+ "legacy_row": {
+  "@attributes": {
+   "uuid": "a00d53d2-8107-4d87-a71d-53ac85c1e9da"
+  },
+  "interface": "WAN",
+  "ipprotocol": "inet",
+  "statetype": "keep state",
+  "direction": "in",
+  "quick": "1",
+  "updated": {
+   "username": "root@10.20.30.10",
+   "time": "1791536720.85",
+   "description": "/firewall_rules_edit.php made changes"
+  },
+  "created": {
+   "username": "root@10.20.30.10",
+   "time": "1791536720.85",
+   "description": "/firewall_rules_edit.php made changes"
+  },
+  "seq": 0,
+  "#priority": 400000,
+  "enabled": "1",
+  "action": "pass",
+  "replyto": "",
+  "description": "ALLOW ANY",
+  "source_net": "any",
+  "source_port": "",
+  "destination_net": "any",
+  "destination_port": "",
+  "ref": "ui/firewall/migration",
+  "uuid": "db610dbc7c6467261cf08e8a72ade096",
+  "source_not": "0",
+  "destination_not": "0",
+  "%direction": "In",
+  "%action": "Pass",
+  "%ipprotocol": "IPv4",
+  "protocol": "",
+  "%protocol": "",
+  "sort_order": "400000.1000023",
+  "legacy": true,
+  "is_automatic": false,
+  "category_colors": [],
+  "alias_meta_source_net": [
+   {
+    "value": "any",
+    "%value": "any",
+    "isAlias": false,
+    "description": ""
+   }
+  ],
+  "alias_meta_destination_net": [
+   {
+    "value": "any",
+    "%value": "any",
+    "isAlias": false,
+    "description": ""
+   }
+  ]
+ }
+}

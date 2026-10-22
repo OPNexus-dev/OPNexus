@@ -1574,6 +1574,10 @@ export const api = {
     return request<AnalysisResult[]>(`/rule-analysis/match?${params.toString()}`);
   },
   getRuleHits: (id: string) => request<RuleHit[]>(`/hosts/${id}/rule-hits`),
+  getRuleCleanup: (id: string, unusedDays: number, refresh = false) =>
+    request<RuleCleanupResult>(`/hosts/${id}/rule-analysis/cleanup?unused_days=${unusedDays}${refresh ? "&refresh=true" : ""}`),
+  getRuleHistory: (id: string, ruleUuid: string) =>
+    request<RuleHistory>(`/hosts/${id}/live-rules/${encodeURIComponent(ruleUuid)}/history`),
   checkHostCompliance: (id: string) => request<ComplianceHost>(`/hosts/${id}/compliance/check`, { method: "POST" }),
   checkFleetCompliance: () => request<ComplianceHost[]>("/compliance/check", { method: "POST" }),
 
@@ -2135,3 +2139,28 @@ export interface AnalysisQuery {
   src: string; dst: string; proto?: string; dport?: string; sport?: string; icmptype?: string;
   iface?: string; egress?: string; host_ids?: string; group_id?: string; refresh?: boolean;
 }
+
+export type CleanupKind = "unused" | "shadowed" | "duplicate" | "disabled_long";
+export type CleanupBlock = "automatic" | "legacy" | "managed";
+export interface CleanupCategory {
+  kind: CleanupKind; confidence: AnalysisConfidence; days?: number; since?: string;
+  by?: { uuid: string | null; description: string; section: string; automatic: boolean };
+}
+export interface CleanupCandidate extends AnalysisRule {
+  enabled: boolean; categories: CleanupCategory[]; hit_state: "used" | "unused" | "collecting" | "disabled" | null;
+  last_hit_at: string | null; watched_since: string | null; removable: boolean; not_removable_reason: CleanupBlock | null;
+  managed_by: { kind: "rule" | "policy_hierarchy"; id: string; name: string } | null;
+}
+export interface RuleCleanupResult {
+  host_id: string; host_name: string; cluster_name: string | null; unused_days: number; generated_at: string;
+  rules_total: number; candidates: CleanupCandidate[]; counts: Record<CleanupKind, number>; notes: string[];
+  usage: { tracked: number; collecting: number; watching_since: string | null };
+  history: { watching_since: string | null };
+}
+export interface RuleHistoryChange { field: string; before: unknown; after: unknown; }
+export interface RuleHistoryEvent {
+  source: "observed" | "audit" | "revision"; at: string; kind: string; origin: "opnexus" | "external";
+  actor: string | null; changes: RuleHistoryChange[]; status?: string; message?: string | null; note?: string;
+  audit_id: string | null; managed_rule_id?: string;
+}
+export interface RuleHistory { host_id: string; rule_uuid: string; watching_since: string | null; events: RuleHistoryEvent[]; }

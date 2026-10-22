@@ -2024,7 +2024,8 @@
         "collecting": "collecting data",
         "disabled": "disabled"
       }
-    }
+    },
+    "cleanupLink": "Show the candidates in cleanup"
   },
   "tokens": {
     "title": "API tokens",
@@ -3581,6 +3582,10 @@
       "FIRST_PACKET_hint": "The first packet of a new connection is evaluated. Replies and established connections follow state, not rules.",
       "SRC_PORT_EPHEMERAL": "Ephemeral source port",
       "SRC_PORT_EPHEMERAL_hint": "Without a source port, any port from the ephemeral range is assumed."
+    },
+    "tabs": {
+      "query": "Query",
+      "cleanup": "Cleanup"
     }
   },
   "guiAccess": {
@@ -3626,6 +3631,157 @@
         "gui_sites": "Not set up: no ports are defined for the firewall interfaces (OPNEXUS_GUI_SITES, Compose profile “gui”). A server admin has to add them – instructions: manual (German), chapter “Firewall-Oberfläche über OPNexus”."
       },
       "more": "More missing items: Settings › Firewall interface through OPNexus."
+    }
+  },
+  "cleanup": {
+    "loadFailed": "The cleanup list could not be loaded.",
+    "noHosts": "No enabled firewall.",
+    "form": {
+      "title": "Cleanup: firewall and threshold",
+      "host": "Firewall",
+      "threshold": "Threshold",
+      "thresholdHint": "How long a rule may go without a hit (or stay disabled and unchanged) before it shows up as a candidate. OPNexus can only look back as far as it has been watching the rule.",
+      "days": "{n} days",
+      "refreshHint": "Re-reads rules, interfaces and aliases from the firewall instead of using the cache (60 s)."
+    },
+    "rulesChecked": "{count} rules checked",
+    "watching": "OPNexus has been counting this firewall's hits since {when}. {collecting} rule(s) are still being watched and cannot count as unused yet.",
+    "notWatching": "OPNexus has not collected rule counters from this firewall yet. Unused rules only show up after the observation period.",
+    "removalLater": "View only: removal follows in a later version. Until then use the OPNsense interface.",
+    "notes": {
+      "ORDER_GUESSED": "Order guessed",
+      "ORDER_GUESSED_hint": "This OPNsense version delivers no sort order; the order was derived from group and sequence number. Findings about shadowed and duplicate rules are at most probable.",
+      "ORDER_MISMATCH": "Order differs",
+      "ORDER_MISMATCH_hint": "The loaded pf order does not match the rules' sort order. Read findings about shadowed rules with care.",
+      "PF_RULESET_UNAVAILABLE": "Loaded rules unknown",
+      "PF_RULESET_UNAVAILABLE_hint": "The rule set pf has loaded could not be read, so it is not certain whether a rule is active at all. Nothing is \"sure\".",
+      "GROUPS_UNAVAILABLE": "Interface groups unknown",
+      "GROUPS_UNAVAILABLE_hint": "The interface groups could not be read; rules on groups cannot be compared.",
+      "ALIASES_UNAVAILABLE": "Aliases unknown",
+      "ALIASES_UNAVAILABLE_hint": "The aliases could not be read; rules using aliases cannot be compared.",
+      "NAT_UNAVAILABLE": "NAT unknown",
+      "NAT_UNAVAILABLE_hint": "The port forwards could not be read (irrelevant for cleanup)."
+    },
+    "empty": {
+      "title": "No candidates",
+      "description": "No rule on this firewall is shadowed, duplicate, unused for {days} days or disabled for that long."
+    },
+    "tableCaption": "Cleanup candidates of {host}",
+    "col": {
+      "rule": "Rule",
+      "finding": "Finding",
+      "lastHit": "Last hit",
+      "removable": "Removable"
+    },
+    "history": "Show the history of rule {rule}",
+    "historyTitle": "History",
+    "allInterfaces": "all interfaces",
+    "disabledRule": "disabled",
+    "category": {
+      "unused": "Unused",
+      "unused_hint": "OPNexus has not observed a single hit of this rule within the threshold (pf counters, read every 15 minutes).",
+      "shadowed": "Shadowed",
+      "shadowed_hint": "An earlier rule with \"quick\" already matches everything this rule matches. This rule never decides.",
+      "duplicate": "Duplicate",
+      "duplicate_hint": "An earlier rule matches exactly the same traffic and has the same action.",
+      "disabled_long": "Long disabled",
+      "disabled_long_hint": "The rule is disabled and OPNexus has seen it unchanged like that for the whole threshold."
+    },
+    "detail": {
+      "unused": "no hit in {days} days",
+      "disabled": "disabled for at least {days} days",
+      "disabledSince": "disabled since {when}",
+      "by": "by \"{rule}\"",
+      "byAutomatic": "by the automatic rule \"{rule}\""
+    },
+    "confidence": {
+      "label": "Confidence",
+      "sure": "sure",
+      "probable": "probable",
+      "unknown": "unknown",
+      "tip": {
+        "sure": "Proven: the data is complete and current, none of it rests on an assumption.",
+        "probable": "Rests on an assumption (e.g. alias content, guessed order, the rule's schedule or a missing pf rule set). Check before removing.",
+        "unknown": "There is a hint but no proof (e.g. the rule is not loaded in pf or the counters are stale). Do not rely on it."
+      }
+    },
+    "noHit": "none observed",
+    "noHitSince": "OPNexus has been watching this rule since {when} and has seen no hit.",
+    "removable": {
+      "yes": "yes"
+    },
+    "notRemovable": {
+      "automatic": "automatic",
+      "automatic_hint": "OPNsense generates this rule itself and it cannot be removed on its own.",
+      "legacy": "legacy format",
+      "legacy_hint": "The rule is still in the old format. Migrate it to the new rule format in OPNsense first.",
+      "managed": "managed by OPNexus",
+      "managed_hint": "OPNexus deployed this rule. It is removed through the normal flow of the rules page, otherwise OPNexus would create it again.",
+      "managedLink": "Open rule \"{rule}\""
+    }
+  },
+  "ruleHistory": {
+    "title": "History: {rule}",
+    "host": "Firewall",
+    "loadFailed": "The history could not be loaded.",
+    "list": "Events",
+    "action": "History",
+    "open": "Show the history of rule {rule}",
+    "by": "by {actor}",
+    "since": "OPNexus has been watching this firewall since {when}.",
+    "empty": {
+      "title": "No changes observed",
+      "since": "This rule has not changed since {when}.",
+      "notYet": "OPNexus has not observed this firewall yet; the first observation runs shortly after startup."
+    },
+    "origin": {
+      "opnexus": "via OPNexus",
+      "opnexus_hint": "The change matches a deployment or rollback by OPNexus (an audit entry in that period).",
+      "external": "external",
+      "external_hint": "No OPNexus operation in that period: changed in the firewall's own interface, by a script or through another access."
+    },
+    "kind": {
+      "added": "created",
+      "changed": "changed",
+      "removed": "removed",
+      "enabled": "enabled",
+      "disabled": "disabled",
+      "revision": "saved in OPNexus",
+      "moved": "moved"
+    },
+    "audit": {
+      "deploy": "deployed",
+      "confirm": "confirmed",
+      "rollback": "rolled back",
+      "retry-rollback": "rollback retried",
+      "state_change": "state changed"
+    },
+    "field": {
+      "description": "Description",
+      "enabled": "enabled",
+      "action": "Action",
+      "interface": "Interface",
+      "interfacenot": "Interface inverted",
+      "direction": "Direction",
+      "ipprotocol": "IP version",
+      "protocol": "Protocol",
+      "source_net": "Source",
+      "source_not": "Source inverted",
+      "source_port": "Source port",
+      "destination_net": "Destination",
+      "destination_not": "Destination inverted",
+      "destination_port": "Destination port",
+      "quick": "Quick",
+      "gateway": "Gateway",
+      "sequence": "Sequence",
+      "sort_order": "Sort order",
+      "log": "Log",
+      "sched": "Schedule",
+      "statetype": "State type",
+      "tag": "Tag",
+      "tagged": "Tagged",
+      "source_ports": "Source port",
+      "prio_group": "Group/priority"
     }
   }
 }

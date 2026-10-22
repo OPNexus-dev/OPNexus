@@ -1106,11 +1106,12 @@ Sicherung) zeigt die Vorschau eine Warnung.
 Auf der Seite **Sicherheitslage** zeigt die Tabelle „Regelnutzung“, wann jede Regel
 zuletzt Verkehr getroffen hat. OPNexus liest dafür die Paketzähler der Firewall. Weil diese
 bei jeder Änderung und jedem Neustart von vorn beginnen, merkt sich OPNexus den Zeitpunkt, an dem
-ein Zähler zuletzt gewachsen ist (Auflösung: eine Prüfung, also bis zu 6 Stunden). Eine Regel gilt
+ein Zähler zuletzt gewachsen ist (Auflösung: eine Beobachtung, alle 15 Minuten). Die Zähler kommen aus `ruleStats` der
+Firewall (je Regel schon summiert; bei älteren OPNsense-Versionen aus dem geladenen Regelsatz). Eine Regel gilt
 als **ungenutzt**, wenn OPNexus sie mindestens 30 Tage beobachtet hat, ohne einen Treffer zu sehen;
-bis dahin steht sie auf „Daten werden gesammelt“, damit eine neue Installation keinen Fehlalarm
-auslöst. Nur Regeln aus dem Regel-Editor bzw. der API werden erfasst (die automatischen Regeln von
-OPNsense nicht). Ungenutzte Regeln fließen als Befund „Regeln in Benutzung“ in die Sicherheitslage ein.
+bis dahin steht sie auf „Daten werden gesammelt“ (die Beobachtungszeit beginnt neu, wenn die Regel eingeschaltet oder geändert wird, und nach einem pf-Neuladen mit langer Lücke bei den Zählern), damit eine neue Installation keinen Fehlalarm
+auslöst. Erfasst werden die Regeln aus dem Regel-Editor bzw. der API und noch nicht migrierte Regeln im Altformat (die
+automatischen Regeln von OPNsense nicht). Ungenutzte Regeln fließen als Befund „Regeln in Benutzung“ in die Sicherheitslage ein.
 
 ### Dashboard
 
@@ -1255,6 +1256,42 @@ vermutlich, unbekannt; Tooltip mit den Gründen) und der entscheidenden Regel. I
 die offenen Punkte. Unter „Warum?“ steht jede geprüfte Regel in der Prüfreihenfolge mit ✓/✗/? je Feld.
 Die Abfrage steht in der Adresszeile und lässt sich als Link teilen.
 
+#### Bereinigung
+
+Der Tab **Bereinigung** (Regelwerk › Regel-Analyse › Bereinigung) nennt je Firewall die Regeln, die einen Blick wert sind. Du wählst die Firewall
+und die **Schwelle** (7, 30, 90 oder 180 Tage); die Auswahl steht in der Adresszeile (`?tab=cleanup&host=…&days=…`). Die Liste wird nur gelesen:
+
+| Befund | Bedeutung |
+|---|---|
+| **Ungenutzt** | OPNexus beobachtet die Regel seit mindestens der Schwelle und hat in dieser Zeit keinen Treffer gesehen (siehe „Regelnutzung“). Eine neue Regel erscheint erst nach der Beobachtungszeit. |
+| **Verdeckt** | Eine frühere Quick-Regel trifft schon alles, was diese Regel trifft; die Regel entscheidet nie. Die verdeckende Regel steht daneben. |
+| **Doppelt** | Wie verdeckt, aber die frühere Regel hat dieselbe Aktion und trifft genau dasselbe. |
+| **Lange deaktiviert** | Die Regel ist deaktiviert und OPNexus hat sie seit mindestens der Schwelle unverändert gesehen (aus dem Änderungsverlauf). |
+
+Jeder Befund trägt eine **Sicherheit**. **Sicher** gibt es nur mit vollständigen, frischen Belegen: bei „ungenutzt“ muss die Regel in pf geladen sein,
+ohne Zeitplan, und die Zähler müssen frisch sein; bei „verdeckt/doppelt“ stammt die Reihenfolge von der Firewall, die verdeckende Regel ist geladen
+und der Vergleich beruht auf den Regeln selbst. **Vermutlich** heißt: es beruht auf einer Annahme (der Inhalt von Aliasen, eine geschätzte
+Reihenfolge, eine Regel mit Zeitplan, ein fehlender pf-Regelsatz). **Unbekannt** heißt: es gibt einen Hinweis ohne Beleg, etwa weil die Regel in pf nicht geladen
+ist oder die Zähler veraltet sind. Der Tooltip erklärt es jeweils. Was nicht belegt ist, ist nie „sicher“.
+
+Die Spalte **Entfernbar** sagt, ob OPNexus die Regel später überhaupt zum Entfernen anbieten würde. Nicht möglich ist es für automatische Regeln
+(von OPNsense erzeugt), für Regeln im Altformat (zuerst in OPNsense migrieren) und für Regeln, die OPNexus ausgerollt hat: die entfernst du über den
+normalen Ablauf der Regelseite, sonst legt OPNexus sie wieder an. **Das Entfernen selbst gehört noch nicht zu OPNexus**; bis dahin änderst du die Regel in der
+OPNsense-Oberfläche. Die Sicherheitslage verlinkt ihre Befunde „ungenutzt“, „verdeckt“ und „doppelt“ direkt in diese Liste. Per API:
+`GET /api/hosts/{id}/rule-analysis/cleanup?unused_days=30`, per MCP: `rule_cleanup_candidates`.
+
+#### Verlauf einer Regel
+
+OPNexus liest alle 15 Minuten die Regeln jeder Firewall (zwei Lesezugriffe) und vergleicht sie mit dem zuletzt gesehenen Stand – auch Regeln, die nicht von OPNexus
+stammen. Jede Änderung wird ein Ereignis: **angelegt, geändert** (mit Vorher/Nachher der betroffenen Felder), **verschoben** (nur Reihenfolge oder Gruppe), **aktiviert, deaktiviert, entfernt**. Als **Herkunft**
+steht „über OPNexus“, wenn das Audit seit der vorherigen Beobachtung (und noch für keine andere Änderung) ein Ausrollen oder Zurücksetzen dieser Regel auf dieser Firewall kennt (mit dem Benutzer), sonst „extern“ (in der
+Oberfläche der Firewall, per Skript oder über einen anderen Zugang). Die erste Beobachtung einer Firewall speichert nur den Ausgangszustand, es entstehen
+keine „angelegt“-Ereignisse für vorhandene Regeln; eine leere oder unvollständige Antwort der Firewall wird verworfen, und verschwinden mehr als die Hälfte der Regeln auf einmal, zählt erst die zweite gleiche Beobachtung; eine Änderung zwischen zwei Beobachtungen erscheint zum Zeitpunkt der zweiten. Ereignisse bleiben 365 Tage.
+
+Zu sehen ist der Verlauf in der **Live-Ansicht** (Regelwerk › Live über alle Hosts) über die Zeilenaktion **Verlauf**, in der Bereinigungsliste am Symbol neben der Regel,
+und per API (`GET /api/hosts/{id}/live-rules/{uuid}/history`). Bei einer von OPNexus verwalteten Regel stehen die gespeicherten Fassungen und die Audit-Einträge der
+Regel dabei. Automatische Regeln werden nicht verfolgt.
+
 ### Sicherheitslage
 
 Unter **Monitoring › Sicherheitslage** prüft OPNexus jede Firewall auf typische
@@ -1280,9 +1317,11 @@ Konfiguration nicht gespeichert. Alle sechs Stunden läuft die Prüfung von selb
 Ein kritischer Befund kostet 30 Punkte, ein hoher 15, ein mittlerer 8, ein niedriger 3.
 Nicht entscheidbare Prüfungen (etwa der Updatestatus einer gerade nicht erreichbaren
 Firewall) kosten nichts. Verdeckt oder doppelt meldet OPNexus nur, was sich beweisen
-lässt: Regeln werden Feld für Feld verglichen, Aliase werden nicht aufgelöst, also
-bleibt eine Überschneidung über Aliase unentdeckt, aber es gibt keine falschen
-Befunde. Beide Regelformate (OPNsense 26.x und ältere Installationen) werden gelesen.
+lässt: Regeln werden in der Reihenfolge der Firewall (Floating, Interface-Gruppen, Interface-Regeln) Feld für Feld
+verglichen, Netze und Portbereiche als Mengen; nur eine frühere Quick-Regel kann eine spätere verdecken, und
+Regeln mit Zeitplan, Markierung oder Limits verdecken nichts. Aliase gelten nur bei gleichem Namen als gleich; so entstehen
+keine falschen Befunde, aber eine Überschneidung über verschiedene Aliase bleibt hier unentdeckt (die Bereinigung vergleicht
+auch statische Alias-Inhalte, dort als „vermutlich“). Beide Regelformate (OPNsense 26.x und ältere Installationen) werden gelesen.
 Die Werte stehen auch als Prometheus-Metriken zur Verfügung (siehe unten).
 
 Das **Dashboard** zeigt die Firewalls mit dem niedrigsten Wert. Der Knopf **Bericht** erzeugt eine druckbare Übersicht

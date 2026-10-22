@@ -26,6 +26,7 @@ from app.models.host import OpnsenseHost
 from app.services import backup_store, rule_hit_service
 from app.services import opnsense_client as client
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.rule_analysis import coverage
 
 MAX_CONFIG_BYTES = 32 * 1024 * 1024
 BACKUP_MAX_AGE_DAYS = 7
@@ -83,10 +84,15 @@ def _mvc_rule(rule: Element) -> dict:
         "sport": _text(rule, "source_port"),
         "dst": _text(rule, "destination_net") or "any", "dst_not": _text(rule, "destination_not") == "1",
         "dport": _text(rule, "destination_port"),
-        "floating": False,
+        "if_not": _text(rule, "interfacenot") == "1",
+        "floating": False,  # decided in extract_rules (needs the list of interfaces)
         "quick": _text(rule, "quick") != "0",
         "descr": _text(rule, "description") or "",
         "order": int(_text(rule, "sequence") or 0),
+        "sched": _text(rule, "sched") or "", "tagged": _text(rule, "tagged") or "",
+        "received_on": _text(rule, "received-on") or "",
+        "icmptype": ",".join(filter(None, [_text(rule, "icmptype"), _text(rule, "icmp6type")])),
+        "limited": any(_text(rule, tag) for tag in ("max-src-conn-rate", "max-pkt-rate-number", "overload", "tcpflags1")),
     }
 
 
@@ -101,17 +107,29 @@ def _legacy_rule(rule: Element, index: int) -> dict:
         "ipprotocol": _text(rule, "ipprotocol") or "inet",
         "protocol": (_text(rule, "protocol") or "any").lower(),
         "src": src, "src_not": src_not, "sport": sport, "dst": dst, "dst_not": dst_not, "dport": dport,
+        "if_not": rule.find("interfacenot") is not None,
         "floating": _text(rule, "floating") == "yes",
-        "quick": _text(rule, "quick") != "0",
+        # Legacy rules: an interface rule is always evaluated "quick"; only a floating rule has the option,
+        # and it is off unless <quick> says yes.
+        "quick": _text(rule, "floating") != "yes" or (_text(rule, "quick") or "").lower() in ("yes", "1"),
         "descr": _text(rule, "descr") or "",
         "order": index,
+        "sched": _text(rule, "sched") or "", "tagged": _text(rule, "tagged") or "",
+        "received_on": _text(rule, "received-on") or "", "icmptype": _text(rule, "icmptype") or "",
+        "limited": any(_text(rule, tag) for tag in ("max-src-conn-rate", "max-pkt-rate-number", "overload", "tcpflags1")),
     }
 
 
 def extract_rules(root: Element) -> list[list[dict]]:
     """Rule lists in evaluation order, one per source (MVC, legacy)."""
-    mvc = sorted((_mvc_rule(r) for r in root.findall("OPNsense/Firewall/Filter/rules/rule")), key=lambda r: r["order"])
+    mvc = [_mvc_rule(r) for r in root.findall("OPNsense/Firewall/Filter/rules/rule")]
+    known = {node.tag for node in root.findall("interfaces/*")}
+    for rule in mvc:  # same rule as OPNsense: not exactly one interface (or "not") = floating
+        rule["floating"] = len(rule["interfaces"]) != 1 or rule["if_not"]
+        rule["group"] = not rule["floating"] and rule["interfaces"][0] not in known
+    mvc.sort(key=coverage.config_order)
     legacy = [_legacy_rule(r, i) for i, r in enumerate(root.findall("filter/rule"))]
+    legacy.sort(key=coverage.config_order)
     return [group for group in (mvc, legacy) if group]
 
 
@@ -133,41 +151,22 @@ def _is_any_any(rule: dict) -> bool:
 
 
 
-def _covers(a: dict, b: dict) -> bool:
-    """Every packet matched by rule b is already matched by the earlier rule a.
-    Only exact-or-any comparisons, so it never claims coverage it cannot prove."""
-    if not (a["enabled"] and b["enabled"]) or a["floating"] or b["floating"] or not a["quick"]:
-        return False
-    if not a["interfaces"] or not set(b["interfaces"]) <= set(a["interfaces"]):
-        return False
-    if a["direction"] != b["direction"] or a["ipprotocol"] != b["ipprotocol"]:
-        return False
-    if a["protocol"] != "any" and a["protocol"] != b["protocol"]:
-        return False
-    for side in ("src", "dst"):
-        if a[side + "_not"] or b[side + "_not"]:
-            if (a[side], a[side + "_not"]) != (b[side], b[side + "_not"]):
-                return False
-        elif a[side] != "any" and a[side] != b[side]:
-            return False
-    for port in ("sport", "dport"):
-        if a[port] and a[port] != b[port]:
-            return False
-    return True
-
-
 def _label(rule: dict) -> str:
     return rule["descr"] or f"{rule['action']} {rule['src']} → {rule['dst']}"
 
 
 def analyse_rules(groups: list[list[dict]]) -> dict:
+    """Shadowed and duplicate rules. The coverage logic lives in rule_analysis/coverage.py (shared with the
+    cleanup candidates); the rules of one list are compared in evaluation order."""
     shadowed, duplicates = [], []
     for rules in groups:
-        for j, later in enumerate(rules):
-            for earlier in rules[:j]:
-                if _covers(earlier, later):
-                    (duplicates if earlier["action"] == later["action"] and _covers(later, earlier) else shadowed).append(_label(later))
-                    break
+        ordered = sorted(rules, key=coverage.config_order)
+        norm = [coverage.from_config_rule(rule) for rule in ordered]
+        by_identity = {id(n): r for n, r in zip(norm, ordered)}
+        for overlap in coverage.analyse(norm):
+            if overlap.by.order == overlap.rule.order:
+                continue  # equal position in config.xml: the real order is unknown, claim nothing
+            (duplicates if overlap.kind == "duplicate" else shadowed).append(_label(by_identity[id(overlap.rule)]))
     return {"shadowed": shadowed, "duplicates": duplicates}
 
 

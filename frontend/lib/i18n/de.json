@@ -2024,7 +2024,8 @@
         "collecting": "Daten werden gesammelt",
         "disabled": "deaktiviert"
       }
-    }
+    },
+    "cleanupLink": "Kandidaten in der Bereinigung ansehen"
   },
   "tokens": {
     "title": "API-Tokens",
@@ -3581,6 +3582,10 @@
       "FIRST_PACKET_hint": "Bewertet wird das erste Paket einer neuen Verbindung. Antworten und bestehende Verbindungen folgen dem Zustand, nicht den Regeln.",
       "SRC_PORT_EPHEMERAL": "Dynamischer Quellport",
       "SRC_PORT_EPHEMERAL_hint": "Ohne Quellport wird ein beliebiger Port aus dem dynamischen Bereich angenommen."
+    },
+    "tabs": {
+      "query": "Abfrage",
+      "cleanup": "Bereinigung"
     }
   },
   "guiAccess": {
@@ -3626,6 +3631,157 @@
         "gui_sites": "Nicht eingerichtet: Es sind keine Ports für die Firewall-Oberflächen festgelegt (OPNEXUS_GUI_SITES, Compose-Profil „gui“). Das muss ein Server-Admin eintragen – Anleitung: Handbuch, Kapitel „Firewall-Oberfläche über OPNexus“."
       },
       "more": "Weitere fehlende Punkte: Einstellungen › Firewall-Oberfläche über OPNexus."
+    }
+  },
+  "cleanup": {
+    "loadFailed": "Die Bereinigungsliste konnte nicht geladen werden.",
+    "noHosts": "Keine aktivierte Firewall vorhanden.",
+    "form": {
+      "title": "Bereinigung: Firewall und Schwelle",
+      "host": "Firewall",
+      "threshold": "Schwelle",
+      "thresholdHint": "So lange darf eine Regel ohne Treffer sein (bzw. deaktiviert unverändert bleiben), bevor sie als Kandidat erscheint. OPNexus kann nur zurückschauen, seit es die Regel beobachtet.",
+      "days": "{n} Tage",
+      "refreshHint": "Liest Regeln, Interfaces und Aliase neu von der Firewall, statt den Zwischenspeicher (60 s) zu nutzen."
+    },
+    "rulesChecked": "{count} Regeln geprüft",
+    "watching": "OPNexus zählt die Treffer dieser Firewall seit {when}. {collecting} Regel(n) werden noch beobachtet und können noch nicht als ungenutzt gelten.",
+    "notWatching": "OPNexus hat noch keine Regelzähler dieser Firewall gesammelt. Ungenutzte Regeln erscheinen erst nach der Beobachtungszeit.",
+    "removalLater": "Nur Ansicht: Entfernen folgt in einer späteren Version. Bis dahin in der OPNsense-Oberfläche.",
+    "notes": {
+      "ORDER_GUESSED": "Reihenfolge geschätzt",
+      "ORDER_GUESSED_hint": "Diese OPNsense-Version liefert keine Sortierung; die Reihenfolge wurde aus Gruppe und Folgenummer abgeleitet. Befunde zu verdeckten und doppelten Regeln gelten höchstens als vermutlich.",
+      "ORDER_MISMATCH": "Reihenfolge weicht ab",
+      "ORDER_MISMATCH_hint": "Die geladene pf-Reihenfolge passt nicht zur Sortierung der Regeln. Befunde zu verdeckten Regeln mit Vorsicht lesen.",
+      "PF_RULESET_UNAVAILABLE": "Geladene Regeln unbekannt",
+      "PF_RULESET_UNAVAILABLE_hint": "Der von pf geladene Regelsatz war nicht lesbar. Ob eine Regel überhaupt aktiv ist, steht damit nicht fest; keine Aussage ist \"sicher\".",
+      "GROUPS_UNAVAILABLE": "Interface-Gruppen unbekannt",
+      "GROUPS_UNAVAILABLE_hint": "Die Interface-Gruppen waren nicht lesbar; Regeln auf Gruppen können nicht verglichen werden.",
+      "ALIASES_UNAVAILABLE": "Aliase unbekannt",
+      "ALIASES_UNAVAILABLE_hint": "Die Aliase waren nicht lesbar; Regeln mit Aliasen können nicht verglichen werden.",
+      "NAT_UNAVAILABLE": "NAT unbekannt",
+      "NAT_UNAVAILABLE_hint": "Die Port-Weiterleitungen waren nicht lesbar (für die Bereinigung ohne Belang)."
+    },
+    "empty": {
+      "title": "Keine Kandidaten",
+      "description": "In dieser Firewall ist keine Regel verdeckt, doppelt, seit {days} Tagen ungenutzt oder so lange deaktiviert."
+    },
+    "tableCaption": "Bereinigungskandidaten von {host}",
+    "col": {
+      "rule": "Regel",
+      "finding": "Befund",
+      "lastHit": "Letzter Treffer",
+      "removable": "Entfernbar"
+    },
+    "history": "Verlauf der Regel {rule} anzeigen",
+    "historyTitle": "Verlauf",
+    "allInterfaces": "alle Interfaces",
+    "disabledRule": "deaktiviert",
+    "category": {
+      "unused": "Ungenutzt",
+      "unused_hint": "Seit der Schwelle hat OPNexus keinen einzigen Treffer dieser Regel beobachtet (pf-Zähler, alle 15 Minuten gelesen).",
+      "shadowed": "Verdeckt",
+      "shadowed_hint": "Eine frühere Quick-Regel trifft schon alles, was diese Regel trifft. Diese Regel entscheidet nie.",
+      "duplicate": "Doppelt",
+      "duplicate_hint": "Eine frühere Regel trifft genau dasselbe und hat dieselbe Aktion.",
+      "disabled_long": "Lange deaktiviert",
+      "disabled_long_hint": "Die Regel ist deaktiviert und OPNexus hat sie seit der Schwelle unverändert so gesehen."
+    },
+    "detail": {
+      "unused": "kein Treffer in {days} Tagen",
+      "disabled": "seit mindestens {days} Tagen deaktiviert",
+      "disabledSince": "deaktiviert seit {when}",
+      "by": "durch \"{rule}\"",
+      "byAutomatic": "durch die automatische Regel \"{rule}\""
+    },
+    "confidence": {
+      "label": "Sicherheit",
+      "sure": "sicher",
+      "probable": "vermutlich",
+      "unknown": "unbekannt",
+      "tip": {
+        "sure": "Belegt: die Daten sind vollständig und aktuell, nichts davon beruht auf einer Annahme.",
+        "probable": "Beruht auf einer Annahme (z. B. Inhalt von Aliasen, geschätzte Reihenfolge, Zeitplan der Regel oder fehlender pf-Regelsatz). Vor dem Entfernen prüfen.",
+        "unknown": "Es gibt einen Hinweis, aber keinen Beleg (z. B. die Regel ist in pf nicht geladen oder die Zähler sind veraltet). Nicht darauf verlassen."
+      }
+    },
+    "noHit": "keiner beobachtet",
+    "noHitSince": "Seit {when} beobachtet OPNexus diese Regel und hat keinen Treffer gesehen.",
+    "removable": {
+      "yes": "ja"
+    },
+    "notRemovable": {
+      "automatic": "automatisch",
+      "automatic_hint": "Diese Regel erzeugt OPNsense selbst und sie lässt sich nicht einzeln entfernen.",
+      "legacy": "Altformat",
+      "legacy_hint": "Die Regel ist noch im alten Format. Zuerst in OPNsense in das neue Regelformat migrieren.",
+      "managed": "von OPNexus verwaltet",
+      "managed_hint": "OPNexus hat diese Regel ausgerollt. Sie wird über den normalen Ablauf der Regelseite entfernt, sonst legt OPNexus sie wieder an.",
+      "managedLink": "Regel \"{rule}\" öffnen"
+    }
+  },
+  "ruleHistory": {
+    "title": "Verlauf: {rule}",
+    "host": "Firewall",
+    "loadFailed": "Der Verlauf konnte nicht geladen werden.",
+    "list": "Ereignisse",
+    "action": "Verlauf",
+    "open": "Verlauf der Regel {rule} anzeigen",
+    "by": "von {actor}",
+    "since": "OPNexus beobachtet diese Firewall seit {when}.",
+    "empty": {
+      "title": "Keine Änderungen beobachtet",
+      "since": "Seit {when} hat sich an dieser Regel nichts geändert.",
+      "notYet": "OPNexus hat diese Firewall noch nicht beobachtet; die erste Beobachtung läuft kurz nach dem Start."
+    },
+    "origin": {
+      "opnexus": "über OPNexus",
+      "opnexus_hint": "Die Änderung passt zu einem Ausrollen oder Zurücksetzen durch OPNexus (Audit-Eintrag in diesem Zeitraum).",
+      "external": "extern",
+      "external_hint": "Kein OPNexus-Vorgang im Zeitraum: geändert in der Oberfläche der Firewall, per Skript oder durch einen anderen Zugang."
+    },
+    "kind": {
+      "added": "angelegt",
+      "changed": "geändert",
+      "removed": "entfernt",
+      "enabled": "aktiviert",
+      "disabled": "deaktiviert",
+      "revision": "in OPNexus gespeichert",
+      "moved": "verschoben"
+    },
+    "audit": {
+      "deploy": "ausgerollt",
+      "confirm": "bestätigt",
+      "rollback": "zurückgesetzt",
+      "retry-rollback": "Zurücksetzen wiederholt",
+      "state_change": "Zustand geändert"
+    },
+    "field": {
+      "description": "Beschreibung",
+      "enabled": "aktiv",
+      "action": "Aktion",
+      "interface": "Interface",
+      "interfacenot": "Interface invertiert",
+      "direction": "Richtung",
+      "ipprotocol": "IP-Version",
+      "protocol": "Protokoll",
+      "source_net": "Quelle",
+      "source_not": "Quelle invertiert",
+      "source_port": "Quellport",
+      "destination_net": "Ziel",
+      "destination_not": "Ziel invertiert",
+      "destination_port": "Zielport",
+      "quick": "Quick",
+      "gateway": "Gateway",
+      "sequence": "Reihenfolge",
+      "sort_order": "Sortierung",
+      "log": "Protokollieren",
+      "sched": "Zeitplan",
+      "statetype": "Statusart",
+      "tag": "Markierung",
+      "tagged": "Markiert mit",
+      "source_ports": "Quellport",
+      "prio_group": "Gruppe/Priorität"
     }
   }
 }

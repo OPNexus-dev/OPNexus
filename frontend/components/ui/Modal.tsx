@@ -6,9 +6,11 @@ interface ModalProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
+  /** Wider dialog for lists and tables. */
+  wide?: boolean;
 }
 
-export function Modal({ title, onClose, children }: ModalProps) {
+export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   const titleId = useId();
   const { t } = useLanguage();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,7 @@ export function Modal({ title, onClose, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="flex max-h-[90vh] outline-none w-full max-w-lg flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6"
+        className={`flex max-h-[90vh] outline-none w-full ${wide ? "max-w-2xl" : "max-w-lg"} flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6`}
       >
         <div className="mb-4 flex shrink-0 items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold text-slate-900">

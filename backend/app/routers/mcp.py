@@ -114,6 +114,23 @@ TOOLS = [
         "drop": ("trace",),
     },
     {
+        "name": "rule_cleanup_candidates",
+        "description": "Cleanup candidates of one firewall: rules that are unused (no hit for N days), shadowed or "
+                       "duplicate (an earlier quick rule already decides everything they match), or disabled for a "
+                       "long time. Each with its confidence (sure/probable/unknown), the last observed hit and "
+                       "whether it could be removed (not for automatic, legacy or OPNexus-managed rules). Reads only.",
+        "inputSchema": {
+            "type": "object", "required": ["host_id"],
+            "properties": {
+                "host_id": {"type": "string", "description": "Firewall id from list_hosts"},
+                "unused_days": {"type": "integer", "minimum": 1, "maximum": 3650, "default": 30,
+                                "description": "observation window for unused / disabled rules"},
+            },
+        },
+        "path": "/api/hosts/{host_id}/rule-analysis/cleanup",
+        "query": ("unused_days",),
+    },
+    {
         "name": "api_get",
         "description": "Read any other OPNexus API endpoint (GET only), e.g. /api/rules, /api/aliases, /api/logs. "
                        "The schema of all endpoints is at /api/openapi.json.",

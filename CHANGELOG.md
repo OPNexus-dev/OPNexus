@@ -31,6 +31,29 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Merlin …
 
+## [1.30.0] "Owl" — 2026-10-22
+
+- **Regel-Analyse: Bereinigung (nur Ansicht):** Auf **Regelwerk › Regel-Analyse** gibt es den Tab **Bereinigung** (`?tab=cleanup`). Er listet je Firewall die
+  Regeln, die einen Blick wert sind: **ungenutzt** (OPNexus hat in 7/30/90/180 Tagen keinen Treffer gesehen), **verdeckt** (eine frühere Quick-Regel
+  trifft schon alles, was sie trifft), **doppelt** und **lange deaktiviert**. Jeder Befund trägt eine Sicherheit (**sicher / vermutlich / unbekannt**, Tooltip mit
+  dem Grund): „sicher“ gibt es nur mit vollständigen, frischen Belegen, bei einer Regel mit Zeitplan, ohne geladenen pf-Regelsatz oder bei Aliasen bleibt es
+  höchstens „vermutlich“. Die Tabelle zeigt auch den letzten Treffer und ob die Regel entfernbar wäre (nicht: automatische Regeln, Regeln im Altformat, von OPNexus
+  verwaltete Regeln – die entfernt man über die Regelseite). Es wird nur gelesen; **Entfernen folgt in einer späteren Version**. Die Sicherheitslage verlinkt ihre
+  Befunde „ungenutzt/verdeckt/doppelt“ direkt dorthin; per API `GET /api/hosts/{id}/rule-analysis/cleanup?unused_days=30`, per MCP `rule_cleanup_candidates`.
+- **Änderungsverlauf je Regel:** OPNexus liest alle 15 Minuten die Regeln jeder Firewall und merkt sich, was sich geändert hat – auch bei Regeln, die nicht von OPNexus
+  stammen: angelegt, geändert (mit Vorher/Nachher), aktiviert, deaktiviert, entfernt, jeweils mit der Herkunft „über OPNexus“ (passender Audit-Eintrag) oder „extern“.
+  Auf der Live-Regel-Ansicht (Regelwerk › Live über alle Hosts) öffnet die Zeilenaktion **Verlauf** die Ereignisse zusammen mit den gespeicherten Fassungen und dem Audit der
+  verwalteten Regel. Die erste Beobachtung speichert nur den Ausgangszustand; der Verlauf wird 365 Tage aufbewahrt (`GET /api/hosts/{id}/live-rules/{uuid}/history`).
+  Eine Umsortierung (andere Reihenfolge oder Gruppe) gilt als „verschoben“, nicht als Änderung. Eine leere oder unvollständige Antwort der Firewall (ohne
+  automatische Regeln) wird verworfen; verschwinden mehr als die Hälfte der Regeln auf einmal, zählt erst die zweite gleiche Beobachtung. Die Herkunft „über OPNexus“
+  erklärt nur Audit-Einträge seit der vorherigen Beobachtung, und jeder Eintrag nur eine Änderung.
+  Schemaänderungen 0027 und 0028 (Tabellen und ein Feld für den Beobachtungszeitraum) laufen beim Start.
+- **Regelnutzung genauer:** Die Zähler kommen jetzt aus `ruleStats` (von der Firewall schon je Regel summiert; ältere Versionen weiterhin über den pf-Regelsatz) und werden alle
+  15 Minuten statt alle 6 Stunden gelesen. Regeln im Altformat (noch nicht migriert) werden ebenfalls erfasst. Das Beobachtungsfenster für „ungenutzt“ beginnt neu, wenn eine Regel eingeschaltet oder geändert wird, und nach einem pf-Neuladen mit langer Lücke bei den Zählern.
+- **Verdeckt/doppelt in der Sicherheitslage genauer:** Der Vergleich kennt jetzt die echte Reihenfolge (Floating vor Interface-Gruppen vor Interface-Regeln), Netze und
+  Portbereiche als Mengen (z. B. 10.1.0.0/16 liegt in 10.0.0.0/8), `inet46` und `tcp/udp`, und übergeht Regeln mit Zeitplan, Markierung oder Limits. Es findet dadurch
+  mehr verdeckte Regeln als bisher, nie weniger belegte.
+
 ## [1.29.0] "Caracara" — 2026-10-22
 
 - **Fehlende API-Rechte werden sichtbar:** Darf der API-Schlüssel einer Firewall den Gateway- oder Dienststatus nicht lesen (OPNsense antwortet

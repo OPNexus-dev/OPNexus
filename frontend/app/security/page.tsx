@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/Toast";
 import { api, ComplianceFinding, ComplianceHost, RuleHit, Severity } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useReadOnly } from "@/lib/useReadOnly";
-import { CheckCircle2, CircleHelp, FileText, Info, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, CircleHelp, FileText, Info, RefreshCw, ShieldAlert, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -149,7 +149,7 @@ export default function SecurityPage() {
           {!detail.error && findings.length === 0 && <p className="px-5 py-6 text-sm text-slate-500">{t("security.neverChecked")}</p>}
           <ul className="divide-y divide-slate-100">
             {findings.map((finding) => (
-              <FindingRow key={finding.id} finding={finding} />
+              <FindingRow key={finding.id} finding={finding} hostId={detail.host_id} />
             ))}
           </ul>
         </Card>
@@ -193,7 +193,10 @@ export default function SecurityPage() {
   );
 }
 
-function FindingRow({ finding }: { finding: ComplianceFinding }) {
+// Findings about the rule set itself: the cleanup list shows which rules and how sure that is.
+const CLEANUP_FINDINGS = new Set(["rules_unused", "rules_shadowed", "rules_duplicate"]);
+
+function FindingRow({ finding, hostId }: { finding: ComplianceFinding; hostId: string }) {
   const { t } = useLanguage();
   const failed = finding.passed === false;
   // A note (severity "info") is a suggestion, not an error: neutral icon instead of the red cross.
@@ -219,6 +222,12 @@ function FindingRow({ finding }: { finding: ComplianceFinding }) {
           </ul>
         )}
         {failed && <p className="mt-1 text-sm text-slate-500">{t(`security.checks.${finding.id}.fix`)}</p>}
+        {failed && CLEANUP_FINDINGS.has(finding.id) && (
+          <Link href={`/analysis?tab=cleanup&host=${hostId}`} className="mt-1 inline-flex items-center gap-1 text-sm text-brand-600 hover:underline">
+            {t("security.cleanupLink")}
+            <ArrowRight size={14} aria-hidden="true" />
+          </Link>
+        )}
       </div>
     </li>
   );

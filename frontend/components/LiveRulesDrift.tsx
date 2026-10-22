@@ -1,5 +1,6 @@
 "use client";
 
+import { HistoryTarget, RuleHistoryModal } from "@/components/RuleHistoryModal";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -8,7 +9,7 @@ import { api, Host, LiveRule } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { groupHostsByCluster } from "@/lib/clusters";
 import clsx from "clsx";
-import { Check, Network, X } from "lucide-react";
+import { Check, History, Network, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -40,6 +41,8 @@ interface DriftRow {
   fingerprint: string;
   sample: LiveRule;
   presentOn: Set<string>;
+  // The rule's id on each firewall (they differ between firewalls); the change history is kept per firewall and id.
+  uuids: Map<string, string>;
 }
 
 interface ClusterState {
@@ -61,18 +64,19 @@ async function computeClusterDrift(clusterHosts: Host[]): Promise<Omit<ClusterSt
   );
 
   const reachable = perHostRules.filter((r): r is { host: Host; rules: LiveRule[] } => r.rules !== null);
-  const byFingerprint = new Map<string, { sample: LiveRule; presentOn: Set<string> }>();
+  const byFingerprint = new Map<string, { sample: LiveRule; presentOn: Set<string>; uuids: Map<string, string> }>();
   for (const { host, rules } of reachable) {
     for (const rule of rules) {
       const fp = fingerprint(rule);
-      const entry = byFingerprint.get(fp) ?? { sample: rule, presentOn: new Set<string>() };
+      const entry = byFingerprint.get(fp) ?? { sample: rule, presentOn: new Set<string>(), uuids: new Map<string, string>() };
       entry.presentOn.add(host.id);
+      if (!entry.uuids.has(host.id)) entry.uuids.set(host.id, rule.uuid);
       byFingerprint.set(fp, entry);
     }
   }
 
   const allRows = Array.from(byFingerprint.entries())
-    .map(([fp, entry]) => ({ fingerprint: fp, sample: entry.sample, presentOn: entry.presentOn }))
+    .map(([fp, entry]) => ({ fingerprint: fp, sample: entry.sample, presentOn: entry.presentOn, uuids: entry.uuids }))
     .sort((a, b) => a.sample.description.localeCompare(b.sample.description));
   const driftedRows = allRows.filter((row) => row.presentOn.size < reachable.length);
 
@@ -85,6 +89,7 @@ export function LiveRulesDrift() {
   const [ungrouped, setUngrouped] = useState<Host[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [onlyDrift, setOnlyDrift] = useState(false);
+  const [historyOf, setHistoryOf] = useState<{ title: string; targets: HistoryTarget[] } | null>(null);
 
   useEffect(() => {
     api
@@ -178,6 +183,7 @@ export function LiveRulesDrift() {
                         {host.name}
                       </th>
                     ))}
+                    <th className="px-5 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -209,6 +215,22 @@ export function LiveRulesDrift() {
                           )}
                         </td>
                       ))}
+                      <td className="px-5 py-3 text-right">
+                        {!row.sample.is_automatic && (
+                          <button
+                            type="button"
+                            onClick={() => setHistoryOf({
+                              title: row.sample.description,
+                              targets: cluster.hosts.filter((h) => row.uuids.has(h.id)).map((h) => ({ hostId: h.id, hostName: h.name, uuid: row.uuids.get(h.id) as string })),
+                            })}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
+                            aria-label={t("ruleHistory.open", { rule: row.sample.description })}
+                          >
+                            <History size={14} aria-hidden="true" />
+                            {t("ruleHistory.action")}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -218,6 +240,8 @@ export function LiveRulesDrift() {
         </div>
         );
       })}
+
+      {historyOf && <RuleHistoryModal title={historyOf.title} targets={historyOf.targets} onClose={() => setHistoryOf(null)} />}
 
       {ungrouped.length > 0 && (
         <div>

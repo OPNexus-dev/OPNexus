@@ -61,6 +61,7 @@ from app.services import audit_export_service
 from app.services import overlay_service, variables_service
 from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
+from app.services import rule_history_service
 
 # Without this, Python's root logger defaults to WARNING with no handler,
 # so every logger.info() call in the 5 background loops below (CARP role
@@ -234,6 +235,9 @@ async def _resource_poll_loop():
                     deleted = await resource_monitor_service.prune_old_samples(db, settings.resource_sample_retention_days)
                     if deleted:
                         logger.info("Resource-Sample-Retention: %d alte Einträge gelöscht", deleted)
+                    pruned = await rule_history_service.prune(db)
+                    if pruned:
+                        logger.info("Regelverlauf-Retention: %d alte Einträge gelöscht", pruned)
         except Exception:
             logger.exception("Resource-Poll fehlgeschlagen")
         await asyncio.sleep(settings.resource_poll_interval_seconds)
@@ -322,6 +326,25 @@ async def _backup_poll_loop():
         await asyncio.sleep(_BACKUP_POLL_SECONDS)
 
 
+_RULE_OBSERVE_FIRST_RUN_SECONDS = 150
+
+
+async def _rule_observe_loop():
+    """Ninth background loop: reads the rules and their counters of every enabled firewall (two GETs each),
+    keeps the usage sampling current and records what changed since the last look (services/rule_history_service.py).
+    Writes only to the database. The first look at a firewall only stores the starting point."""
+    await asyncio.sleep(_RULE_OBSERVE_FIRST_RUN_SECONDS)
+    while True:
+        try:
+            async with SessionLocal() as db:
+                result = await rule_history_service.observe_all(db)
+            if result["events"] or result["failed"]:
+                logger.info("Regelverlauf: %s", result)
+        except Exception:
+            logger.exception("Regelverlauf fehlgeschlagen")
+        await asyncio.sleep(max(settings.rule_observe_interval_seconds, settings.rule_observe_min_interval_seconds))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     conflicts = settings.gui_origin_conflicts()
@@ -351,6 +374,7 @@ async def lifespan(app: FastAPI):
     compliance_task = asyncio.create_task(_compliance_poll_loop())
     audit_export_task = asyncio.create_task(_audit_export_poll_loop())
     backup_task = asyncio.create_task(_backup_poll_loop())
+    rule_observe_task = asyncio.create_task(_rule_observe_loop())
     try:
         yield
     finally:
@@ -362,7 +386,8 @@ async def lifespan(app: FastAPI):
         compliance_task.cancel()
         audit_export_task.cancel()
         backup_task.cancel()
-        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task, audit_export_task, backup_task):
+        rule_observe_task.cancel()
+        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task, audit_export_task, backup_task, rule_observe_task):
             try:
                 await task
             except asyncio.CancelledError:
