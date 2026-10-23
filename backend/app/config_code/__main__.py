@@ -74,7 +74,7 @@ REASONS_DE = {
 WARNINGS_DE = {
     "redeploy_needed": "{count} geänderte Objekte sind ausgerollt: danach über die Vorschau neu ausrollen",
     "targets_without_link": "{count} neue Objekte haben Ziele, aber keine Verknüpfung zu Objekten auf den Firewalls (Duplikate beim Ausrollen möglich)",
-    "unknown_alias_reference": "{value}: kein Alias dieses Namens",
+    "unknown_alias_reference": "{value}: kein zentraler Alias in OPNexus (auf der Firewall von Hand angelegt? dann in Ordnung)",
     "variable_removed_in_use": "Variable {name} von {host} wird entfernt, ein Objekt nutzt sie noch",
     "target_host_disabled": "Ziel-Host {host} ist deaktiviert",
 }

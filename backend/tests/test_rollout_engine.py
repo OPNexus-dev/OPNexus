@@ -621,6 +621,19 @@ def test_target_version_comes_from_the_core_package_not_product_latest():
     assert engine.target_of({"upgrade_major_version": "27.1"}, "major_update") == "27.1"
 
 
+def test_target_version_of_other_release_types_and_a_switched_core_package():
+    # Shape seen live on test-fw-1 (2026-10-23) after switching the release type community -> development.
+    switch = {"status": "update", "product": {"product_id": "opnsense", "product_version": "26.7.7", "product_latest": "26.7.7"},
+              "all_packages": {"opnsense-devel": {"new": "27.1.a_483", "reason": "new", "name": "opnsense-devel", "old": "N/A"}},
+              "upgrade_packages": [], "new_packages": [{"name": "opnsense-devel", "repository": "OPNsense", "version": "27.1.a_483"}]}
+    assert engine.target_of(switch, "update") == "27.1.a_483"
+    assert engine.target_of({**switch, "all_packages": {}}, "update") == "27.1.a_483"  # from new_packages
+    business = {"status": "update", "product": {"product_latest": "26.10"},
+                "all_packages": {"opnsense-business": {"old": "26.10", "new": "26.10.1", "reason": "upgrade"}}}
+    assert engine.target_of(business, "update") == "26.10.1"
+    assert engine.target_of({"all_packages": {"unrelated": {"new": "9"}}, "product": {"product_latest": "26.7.7"}}, "update") == "26.7.7"
+
+
 # ── 1.29 (S6): window exceptions in the fingerprint, stable account id ────────
 
 async def _activate(client, plan):

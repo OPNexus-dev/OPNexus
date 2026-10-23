@@ -4189,7 +4189,7 @@
     "warn": {
       "redeploy_needed": "{count} changed objects are deployed: redeploy them through the preview after applying.",
       "targets_without_link": "{count} new objects have targets but are not linked to objects on the firewalls: deploying may create duplicates. Link them first or restore from a full backup.",
-      "unknown_alias_reference": "\"{value}\" looks like an alias, but no such alias exists.",
+      "unknown_alias_reference": "\"{value}\" looks like an alias but is not a central alias in OPNexus. If it exists on the target firewalls (created by hand), that is fine; otherwise deploying fails.",
       "variable_removed_in_use": "Variable {name} of {host} is removed while an object still uses it (deploying to that host will then fail).",
       "target_host_disabled": "Target host {host} is disabled."
     },

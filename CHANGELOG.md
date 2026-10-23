@@ -31,6 +31,14 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Saker …
 
+## [1.32.1] "Merlin" — 2026-10-23
+
+- **Korrektur: Rollouts erkannten die Zielversion bei anderen Release-Typen falsch.** OPNexus las die neue Version nur am Kernpaket `opnsense`. Bei der
+  Business-Edition (`opnsense-business`) und beim Wechsel des Release-Typs (z. B. auf `opnsense-devel`, dann als neues Paket angeboten) fiel es auf
+  `product_latest` zurück; das Gate hielt den Rollout dann fälschlich mit „Version passt nicht“ an. Live gefunden und belegt (Rollout mit Cluster in einer Welle).
+- **Plan-Hinweis zu Alias-Namen ehrlich formuliert:** „kein zentraler Alias in OPNexus“ statt „kein Alias dieses Namens“ (von Hand auf der Firewall
+  angelegte Aliase sind in Ordnung; der Planer fragt bewusst keine Firewall).
+
 ## [1.32.0] "Merlin" — 2026-10-23
 
 - **Konfiguration als Code:** Unter **System › Konfiguration als Code** (und per `opnexus export` / `opnexus apply`) lassen sich Gerätegruppen, Hierarchiegruppen,

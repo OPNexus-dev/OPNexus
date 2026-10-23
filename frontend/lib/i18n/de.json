@@ -4189,7 +4189,7 @@
     "warn": {
       "redeploy_needed": "{count} geänderte Objekte sind ausgerollt: nach dem Übernehmen über die Vorschau neu ausrollen.",
       "targets_without_link": "{count} neue Objekte haben Ziele, sind aber nicht mit Objekten auf den Firewalls verknüpft: Ausrollen kann Duplikate anlegen. Besser vorher die Verknüpfung nutzen oder aus einer Vollsicherung wiederherstellen.",
-      "unknown_alias_reference": "„{value}“ sieht wie ein Alias aus, ein solcher Alias existiert aber nicht.",
+      "unknown_alias_reference": "„{value}“ sieht wie ein Alias aus, ist aber kein zentraler Alias in OPNexus. Existiert er auf den Ziel-Firewalls (von Hand angelegt), ist das in Ordnung; sonst schlägt das Ausrollen fehl.",
       "variable_removed_in_use": "Variable {name} von {host} wird entfernt, ein Objekt benutzt sie noch (Ausrollen auf diesen Host schlägt dann fehl).",
       "target_host_disabled": "Ziel-Host {host} ist deaktiviert."
     },

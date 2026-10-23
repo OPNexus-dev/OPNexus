@@ -950,6 +950,11 @@ solche von Hand. Deshalb gilt:
   wartet.
 - Nach dem Start Version prüfen und die Wartung abschließen. Ein Rollout macht **nie**
   von selbst einen Rückweg; bei einem fehlgeschlagenen Host hält er an, und du entscheidest.
+- Das verlassene Boot-Environment (der Stand nach dem Update) bleibt erhalten, damit du auch
+  wieder vorwärts kannst. Brauchst du es nicht mehr, lösche es unter Host-System › Snapshots.
+  Die Firewall läuft danach aus dem Boot-Environment mit dem Namen des Rückweg-Punkts.
+- Im Cluster gilt wie beim Neustart: nur auf dem BACKUP. Für den MASTER zuerst die
+  CARP-Übergabe ausführen.
 
 ### Update Center
 
@@ -1520,7 +1525,7 @@ in der Datei darfst du eigene vergeben (`allow-dns-lan`), der Import speichert s
 **Umbenennen** gilt als Entfernen und Neuanlegen, ein ausgerolltes Objekt blockiert
 dann mit Prune. Die Reihenfolge der Hierarchie-Regeln ist die Reihenfolge in der Datei.
 
-**Hinweise im Plan:** ein Alias-Name, den kein Alias hat; eine Variable, die entfernt
+**Hinweise im Plan:** ein Wert, der wie ein Alias aussieht, aber kein zentraler Alias in OPNexus ist (auf der Firewall von Hand angelegte Aliase sind in Ordnung; OPNexus fragt beim Planen keine Firewall); eine Variable, die entfernt
 wird, obwohl ein Objekt sie nutzt (das Ausrollen auf diesen Host scheitert dann sicher);
 ein deaktivierter Ziel-Host; neue Objekte mit Zielen ohne Verknüpfung zu bereits auf den
 Firewalls vorhandenen Objekten. Letzteres ist wichtig bei einem Import in eine **neue

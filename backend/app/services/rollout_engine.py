@@ -409,21 +409,30 @@ async def _handle_resuming(db: AsyncSession, run: RolloutRun) -> Decision | None
     return apply
 
 
+# The core package of each OPNsense release type (community, development, business edition). Switching the type
+# installs another core package: live 2026-10-23, community -> devel offered `opnsense-devel` 27.1.a_483 as a NEW
+# package while product_latest still said 26.7.7 (the rollout expected 26.7.7 and stopped at the gate).
+CORE_PACKAGES = ("opnsense", "opnsense-devel", "opnsense-business")
+
+
 def target_of(status: dict, action: str) -> str | None:
     """The version a firmware action will install, from core/firmware/status (read after a fresh check).
 
     Live finding (test-fw-3, 26.7.1_1, 2026-10-21): ``product.product_latest`` said 26.7.2 while the
     ``opnsense`` core package was offered as 26.7.7 — and the package is what gets installed. So the
-    core package's new version comes first; product_latest is only a fallback."""
+    core package's new version comes first (whichever release type it is, see CORE_PACKAGES, also when it
+    arrives as a new package); product_latest is only a fallback."""
     if action == "major_update":
         return status.get("upgrade_major_version") or None
     packages = status.get("all_packages") if isinstance(status.get("all_packages"), dict) else {}
-    core = packages.get("opnsense") if isinstance(packages.get("opnsense"), dict) else None
-    if core and core.get("new") and core.get("new") != "N/A":
-        return str(core["new"])
-    for row in status.get("upgrade_packages") or []:
-        if isinstance(row, dict) and row.get("name") == "opnsense" and row.get("new_version"):
-            return str(row["new_version"])
+    for name in CORE_PACKAGES:
+        core = packages.get(name) if isinstance(packages.get(name), dict) else None
+        if core and core.get("new") and core.get("new") != "N/A":
+            return str(core["new"])
+    for key, field in (("upgrade_packages", "new_version"), ("new_packages", "version")):
+        for row in status.get(key) or []:
+            if isinstance(row, dict) and row.get("name") in CORE_PACKAGES and row.get(field):
+                return str(row[field])
     product = status.get("product") if isinstance(status.get("product"), dict) else {}
     return product.get("product_latest") or status.get("product_latest") or None
 
