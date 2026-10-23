@@ -28,6 +28,7 @@ class FakeCluster:
         self.update = respx_mock.post(f"{A}/api/core/firmware/update").respond(200, json={"status": "ok"})
         self.reboot = respx_mock.post(f"{A}/api/core/system/reboot").respond(200, json={"status": "ok"})
         self.backup = respx_mock.get(f"{A}/api/core/backup/download/this").respond(200, content=b"<opnsense/>")
+        respx_mock.get(f"{A}/api/core/snapshots/isSupported").respond(200, json={"supported": False})
         for base in (A, B):
             respx_mock.get(f"{base}/api/diagnostics/interface/getVipStatus").mock(side_effect=lambda r, b=base: self._vip(b))
             respx_mock.get(f"{base}/api/core/firmware/info").respond(200, json={"product_version": "26.7.5"})

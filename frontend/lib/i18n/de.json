@@ -302,7 +302,8 @@
       "hostsystem-diagnostics": "Diagnose",
       "setup": "Einrichtung",
       "rollouts": "Rollouts",
-      "analysis": "Regel-Analyse"
+      "analysis": "Regel-Analyse",
+      "config": "Konfiguration als Code"
     }
   },
   "dashboard": {
@@ -892,7 +893,14 @@
     "BEREINIGUNG_AUSGANG_UNKLAR": "Die Firewall hat nicht eindeutig geantwortet; der Stand wurde nachgelesen.",
     "BEREINIGUNG_ABGEBROCHEN_VERWAIST": "Der Vorgang wurde unterbrochen (OPNexus neu gestartet?). Stand auf der Firewall mit „Erneut prüfen“ nachlesen.",
     "BEREINIGUNG_EINSTELLUNG_UNGUELTIG": "Ungültige Einstellung der Bereinigung ({field}: {reason}).",
-    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "Der Bestätigungstext dieser Seite ist veraltet. Seite neu laden und die Regeln erneut bestätigen."
+    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "Der Bestätigungstext dieser Seite ist veraltet. Seite neu laden und die Regeln erneut bestätigen.",
+    "CONFIG_INVALID": "Die Konfigurationsdatei ist ungültig. Details stehen in der Fehlerliste.",
+    "CONFIG_TOO_LARGE": "Die Konfigurationsdatei ist zu groß (höchstens 1 MiB).",
+    "CONFIG_UNSUPPORTED_VERSION": "Diese Version des Dateiformats kennt OPNexus nicht.",
+    "CONFIG_PLAN_STALE": "Seit dem Plan hat sich etwas geändert. Bitte neu planen.",
+    "CONFIG_BLOCKED": "Der Plan enthält blockierte Objekte und kann nicht übernommen werden.",
+    "CONFIG_APPLY_SELFCHECK": "Die Übernahme wurde zurückgenommen: die Datenbank entsprach danach nicht dem Plan. Nichts wurde geändert.",
+    "CONFIG_BUSY": "OPNexus prüft gerade eine andere Konfigurationsdatei. Bitte gleich noch einmal versuchen."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -1137,7 +1145,8 @@
       "update": "Firmware-Update",
       "major_update": "Major-Upgrade",
       "carp_enter": "CARP-Übergabe",
-      "carp_leave": "CARP-Normalbetrieb"
+      "carp_leave": "CARP-Normalbetrieb",
+      "firmware_rollback": "Firmware-Rückweg"
     },
     "reason": {
       "haOrder": "HA-Reihenfolge: Dieser Host ist MASTER. Zuerst den BACKUP aktualisieren, dann mit „CARP auf Partner umschalten“ die Rollen wechseln.",
@@ -1241,7 +1250,14 @@
     "autoVerifyHint": "Nach dem Auftrag prüft OPNexus selbst: Firmware wieder bereit, erwarteter Neustart erfolgt, Version lesbar. Dann ist die Wartung abgeschlossen und sperrt den Host nicht mehr. Ist etwas unklar, bleibt sie offen (Ausgang unklar) und du wirst benachrichtigt.",
     "rolloutBadge": "Rollout",
     "openRollout": "Zum Rollout",
-    "autoVerifiedBadge": "automatisch geprüft"
+    "autoVerifiedBadge": "automatisch geprüft",
+    "previewRollback": "Zur vorherigen Firmware",
+    "tipRollback": "Aktiviert den Rückweg-Punkt (Boot-Environment), den OPNexus vor dem letzten Firmware-Update angelegt hat, und startet die Firewall neu. Zeigt zuerst eine Vorschau.",
+    "rollbackWarn": "Die Firewall startet mit dem Stand vor dem letzten Update neu (Version {version}, Rückweg-Punkt {point}).",
+    "rollbackLoses": "Die Konfiguration wird mit zurückgesetzt: alles, was seit dem Rückweg-Punkt auf der Firewall geändert wurde, ist danach weg.",
+    "rollbackChanges": "{n} Ausrollvorgänge von OPNexus seit dem Punkt gehen verloren. Sie werden als unklar markiert. Danach die zentralen Objekte über die Vorschau neu ausrollen.",
+    "rollbackNoChanges": "OPNexus hat seit dem Rückweg-Punkt nichts auf diese Firewall ausgerollt.",
+    "rollbackBackup": "Vorher sichert OPNexus die aktuelle Konfiguration lokal."
   },
   "restore": {
     "handoffWarning": "OPNexus führt die Wiederherstellung NICHT selbst aus. Nach der Übergabe musst du die Sicherung manuell im OPNsense-Webinterface importieren. Solange dieser Vorgang offen ist, sind Regel-/Alias-/NAT-Pushes und Host-Wartung für diesen Host gesperrt.",
@@ -3148,7 +3164,8 @@
         "gateways": "Gateways",
         "services": "Dienste",
         "locks": "Sperren",
-        "compliance": "Sicherheitslage"
+        "compliance": "Sicherheitslage",
+        "probes": "Erreichbarkeitsproben"
       },
       "code": {
         "ok": "in Ordnung",
@@ -3172,7 +3189,9 @@
         "gateway_bad_before": "schon vorher gestört: {names}",
         "service_stopped": "läuft nicht mehr: {names}",
         "open_locks": "{count} offene Sperre(n) im Host/Cluster",
-        "score_lower": "Score {before} → {after}"
+        "score_lower": "Score {before} → {after}",
+        "probe_regressed": "nicht mehr erreichbar: {probes}",
+        "probe_was_failing": "schon vorher gestört: {probes}"
       }
     },
     "actions": {
@@ -3273,7 +3292,14 @@
       "deactivated": "Automatischer Start deaktiviert",
       "emptyWave": "keine Hosts",
       "disabledHost": "deaktiviert",
-      "cannotStart": "So nicht startbar – siehe Fehler oben."
+      "cannotStart": "So nicht startbar – siehe Fehler oben.",
+      "probes": "Erreichbarkeitsproben",
+      "probesHint": "Ping- oder TCP-Proben, die die Firewall selbst ausführt (Uplink, DNS, ein interner Server). Eine Probe, die vor der Welle klappte und danach nicht mehr, hält den Rollout an. Das prüft die Erreichbarkeit von der Firewall aus, nicht den Verkehr durch sie hindurch.",
+      "probeType": "Art der Probe",
+      "probeTarget": "Ziel (IP oder Name)",
+      "probePort": "Port",
+      "probeRemove": "Probe entfernen",
+      "addProbe": "Probe hinzufügen"
     },
     "issue": {
       "no_waves": "Keine Wellen",
@@ -4095,6 +4121,130 @@
       "tagged": "Markiert mit",
       "source_ports": "Quellport",
       "prio_group": "Gruppe/Priorität"
+    }
+  },
+  "configCode": {
+    "title": "Konfiguration als Code",
+    "intro": "Exportiert Regeln, NAT, Aliase, Gruppen, Hierarchie und Standort-Variablen als eine YAML-Datei – für Git, Reviews und die Wiederherstellung auf einer neuen Instanz. Der Import ändert nur die Entwürfe in OPNexus. Auf Firewalls kommt weiterhin nur etwas über Vorschau → Ausrollen → Bestätigen. Die Datei enthält keine Zugänge, Benutzer oder Schlüssel.",
+    "exported": "Konfiguration exportiert",
+    "exportFailed": "Export fehlgeschlagen",
+    "planFailed": "Die Datei konnte nicht geprüft werden",
+    "applyFailed": "Übernehmen fehlgeschlagen",
+    "tooLarge": "Die Datei ist größer als 1 MiB.",
+    "line": "Zeile {n}",
+    "moreErrors": "… und {n} weitere",
+    "export": {
+      "title": "Exportieren",
+      "text": "Alle zentralen Objekte als opnexus-config.yaml, sortiert und ohne Zeitstempel, damit Git nur echte Änderungen zeigt.",
+      "tip": "Auf dem Server: opnexus export --out /srv/opnexus-config. Per Cron oder Timer mit git commit ergibt das ein Änderungsprotokoll. Mit apply --dry-run lässt sich eine Datei in CI prüfen.",
+      "button": "YAML herunterladen"
+    },
+    "import": {
+      "title": "Datei prüfen und übernehmen",
+      "text": "Zuerst entsteht ein Plan: was neu wäre, sich ändert oder entfällt. Erst danach lässt sich die Datei in die Entwürfe übernehmen.",
+      "chooseFile": "Datei wählen",
+      "paste": "oder YAML einfügen",
+      "prune": "Nicht enthaltene Objekte entfernen (Prune)",
+      "pruneTip": "Gleicht jede Art, die in der Datei steht, vollständig ab: Objekte, die in der Datei fehlen, werden aus OPNexus entfernt. Ausgerollte oder noch verwendete Objekte werden nie entfernt, sie blockieren den Plan.",
+      "plan": "Plan erstellen",
+      "apply": "Übernehmen",
+      "adminOnly": "Nur Administratoren dürfen übernehmen."
+    },
+    "summary": "Zusammenfassung des Plans",
+    "action": {
+      "create": "neu",
+      "update": "geändert",
+      "delete": "entfernt",
+      "unchanged": "unverändert",
+      "blocked": "blockiert"
+    },
+    "all": "Alle",
+    "colKind": "Art",
+    "colKey": "Schlüssel",
+    "colAction": "Aktion",
+    "colChange": "Änderung",
+    "kind": {
+      "device_groups": "Gerätegruppen",
+      "policy_hierarchy_groups": "Hierarchiegruppen",
+      "aliases": "Aliase",
+      "rules": "Regeln",
+      "port_forwards": "Port-Forwards",
+      "one_to_one": "1:1-NAT",
+      "outbound_nat": "Outbound-NAT",
+      "policy_hierarchy_rules": "Hierarchie-Regeln",
+      "variables": "Variablen"
+    },
+    "noDifferences": "Keine Unterschiede",
+    "noDifferencesText": "Die Datei entspricht dem aktuellen Stand in OPNexus.",
+    "blockedHint": "Der Plan enthält blockierte Objekte und lässt sich so nicht übernehmen. Die Ursache beheben oder die Objekte aus der Datei nehmen und neu planen.",
+    "deployedOn": "Auf {n} Firewall(s) ausgerollt: danach über die Vorschau neu ausrollen.",
+    "implicit": "Folge der Reihenfolge oder Mitgliedschaft, steht nicht in der Datei.",
+    "showAll": "{n} weitere anzeigen",
+    "warnings": "Hinweise",
+    "reason": {
+      "busy_deployment": "Offenes Deployment: erst bestätigen oder zurückrollen",
+      "prune_deployed": "Ist ausgerollt: zuerst in der Oberfläche entfernen",
+      "prune_referenced": "Wird noch verwendet"
+    },
+    "warn": {
+      "redeploy_needed": "{count} geänderte Objekte sind ausgerollt: nach dem Übernehmen über die Vorschau neu ausrollen.",
+      "targets_without_link": "{count} neue Objekte haben Ziele, sind aber nicht mit Objekten auf den Firewalls verknüpft: Ausrollen kann Duplikate anlegen. Besser vorher die Verknüpfung nutzen oder aus einer Vollsicherung wiederherstellen.",
+      "unknown_alias_reference": "„{value}“ sieht wie ein Alias aus, ein solcher Alias existiert aber nicht.",
+      "variable_removed_in_use": "Variable {name} von {host} wird entfernt, ein Objekt benutzt sie noch (Ausrollen auf diesen Host schlägt dann fehl).",
+      "target_host_disabled": "Ziel-Host {host} ist deaktiviert."
+    },
+    "confirm": {
+      "title": "Plan übernehmen?",
+      "text": "{create} neu, {update} geändert, {delete} entfernt.",
+      "nothingOnFirewalls": "Es wird nichts auf Firewalls geschrieben. Die Änderungen erscheinen als Entwürfe und werden wie immer über Vorschau → Ausrollen → Bestätigen ausgerollt.",
+      "prune": "{n} Objekte werden aus OPNexus entfernt."
+    },
+    "applied": "Übernommen: {create} neu, {update} geändert, {delete} entfernt",
+    "appliedNext": "Es wurde nichts auf Firewalls geschrieben. Die Entwürfe jetzt je Objekt über Vorschau → Ausrollen → Bestätigen ausrollen.",
+    "viewDrafts": "Entwürfe ansehen",
+    "err": {
+      "yaml_alias_forbidden": "Aliase (*name) sind nicht erlaubt",
+      "yaml_anchor_forbidden": "Anker (&name) sind nicht erlaubt",
+      "yaml_merge_forbidden": "Merge-Schlüssel (<<) sind nicht erlaubt",
+      "yaml_tag_forbidden": "Explizite Tags (!, !!) sind nicht erlaubt",
+      "yaml_directive_forbidden": "Direktiven (%YAML, %TAG) sind nicht erlaubt",
+      "yaml_multiple_documents": "Mehr als ein YAML-Dokument",
+      "yaml_empty": "Die Datei ist leer",
+      "yaml_syntax": "YAML-Syntaxfehler",
+      "duplicate_key": "Doppelter Schlüssel",
+      "non_string_key": "Der Schlüssel muss Text sein",
+      "too_deep": "Zu tief verschachtelt",
+      "too_many_nodes": "Zu viele Elemente",
+      "scalar_too_long": "Wert zu lang",
+      "too_many_objects": "Zu viele Objekte",
+      "too_many_entries": "Zu viele Einträge",
+      "too_many_variables": "Zu viele Variablen für diesen Host",
+      "too_large": "Datei zu groß",
+      "bad_encoding": "Kein gültiges UTF-8",
+      "bad_request": "Ungültige Anfrage",
+      "unknown_kind": "Unbekannte Art",
+      "not_a_mapping": "Die Datei muss ein Mapping sein",
+      "missing_version": "opnexus_config: 1 fehlt",
+      "unsupported_version": "Diese Version des Dateiformats ist unbekannt",
+      "unknown_field": "Unbekanntes Feld",
+      "missing_field": "Pflichtfeld fehlt",
+      "bad_type": "Falscher Typ",
+      "bad_value": "Ungültiger Wert",
+      "bad_format": "Falsches Format",
+      "too_short": "Zu kurz",
+      "too_long": "Zu lang",
+      "control_character": "Steuerzeichen sind nicht erlaubt",
+      "surrounding_whitespace": "Leerzeichen am Rand sind nicht erlaubt",
+      "bad_variable_name": "Ungültiger Variablenname",
+      "bad_variable_value": "Ungültiger Variablenwert",
+      "duplicate_object_key": "Dieser Schlüssel kommt zweimal in der Datei vor",
+      "duplicate_entry": "Eintrag kommt doppelt vor",
+      "unknown_host": "Unbekannter Host",
+      "unknown_group": "Unbekannte Gerätegruppe",
+      "unknown_hierarchy_group": "Unbekannte Hierarchiegruppe",
+      "hierarchy_cycle": "Zyklus im Hierarchiebaum",
+      "host_in_two_hierarchy_groups": "Host steht in zwei Hierarchiegruppen",
+      "placeholder_not_supported": "Platzhalter {{…}} sind in Hierarchie-Regeln nicht möglich"
     }
   }
 }

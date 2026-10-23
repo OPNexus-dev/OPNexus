@@ -22,7 +22,7 @@ export const WAVE_TONE: Record<string, BadgeTone> = {
 
 export const RESULT_TONE: Record<RolloutCheckResult["result"], BadgeTone> = { ok: "success", warn: "warning", fail: "danger", skip: "neutral" };
 
-export const CHECKS = ["online", "version", "carp", "gateways", "services", "locks", "compliance"] as const;
+export const CHECKS = ["online", "version", "carp", "gateways", "services", "locks", "compliance", "probes"] as const;
 
 function stringParams(params: Record<string, unknown> | null | undefined): TranslationParams {
   const out: TranslationParams = {};

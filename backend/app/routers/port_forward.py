@@ -50,6 +50,7 @@ def _to_read(rule: PortForwardRule, hosts: list[OpnsenseHost], deployments: list
         workflow_state=state,
         workflow_counts=counts,
         id=rule.id,
+        config_key=rule.config_key,
         description=rule.description,
         interface=rule.interface,
         ipprotocol=rule.ipprotocol,

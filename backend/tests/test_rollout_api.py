@@ -1,4 +1,6 @@
 """Rollout plans: CRUD, wave resolution, preview token, activation, roles."""
+import uuid
+
 import pytest
 
 from tests.test_maintenance_windows import _WEEKLY
@@ -145,3 +147,27 @@ async def test_role_matrix_for_plans(client):
             assert (await ro.post(path, json={})).json()["detail"]["code"] == "READ_ONLY_ACCESS"
     finally:
         await ro.aclose()
+
+
+@pytest.mark.asyncio
+async def test_gate_probes_are_validated_stored_and_frozen_into_the_fingerprint(client):
+    """1.32 (B5): probes per plan; a plan without probes keeps the fingerprint of earlier versions."""
+    from app.database import SessionLocal
+    from app.models.rollout import RolloutPlan
+    from app.services import rollout_service
+
+    _hosts, groups = await _fleet(client)
+    plain = (await client.post("/api/rollouts/plans", json=_plan_body(groups))).json()
+    assert plain["gate_probes"] == []
+    async with SessionLocal() as db:
+        assert "gate_probes" not in rollout_service.definition(await db.get(RolloutPlan, uuid.UUID(plain["id"])))
+    probes = [{"type": "ping", "target": "1.1.1.1"}, {"type": "tcp", "target": "intranet.example", "port": 443},
+              {"type": "ping", "target": "1.1.1.1"}]
+    resp = await client.put(f"/api/rollouts/plans/{plain['id']}", json=_plan_body(groups, gate_probes=probes))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["gate_probes"] == [{"type": "ping", "target": "1.1.1.1", "port": None},
+                                          {"type": "tcp", "target": "intranet.example", "port": 443}]
+    for bad in ([{"type": "tcp", "target": "x"}], [{"type": "ping", "target": "x", "port": 1}],
+                [{"type": "ping", "target": "-rf"}], [{"type": "ping", "target": "a b"}], [{"type": "udp", "target": "x"}],
+                [{"type": "ping", "target": f"h{i}"} for i in range(11)]):
+        assert (await client.put(f"/api/rollouts/plans/{plain['id']}", json=_plan_body(groups, gate_probes=bad))).status_code == 422, bad

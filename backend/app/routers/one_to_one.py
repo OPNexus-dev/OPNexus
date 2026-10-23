@@ -50,6 +50,7 @@ def _to_read(rule: OneToOneRule, hosts: list[OpnsenseHost], deployments: list[On
         workflow_state=state,
         workflow_counts=counts,
         id=rule.id,
+        config_key=rule.config_key,
         description=rule.description,
         interface=rule.interface,
         source_net=rule.source_net,

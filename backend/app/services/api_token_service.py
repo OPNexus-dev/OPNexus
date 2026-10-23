@@ -45,8 +45,9 @@ _SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-tick
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
 _ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/|^/api/overlay/peers/[^/]+/instructions$")
-# The MCP endpoint is POST (JSON-RPC) but its tools only ever read.
-_MCP_PATH = "/api/mcp"
+# The MCP endpoint is POST (JSON-RPC) but its tools only ever read; so does the configuration-as-code plan (1.32):
+# it compares a posted file with the database and writes nothing.
+_READ_ONLY_POSTS = ("/api/mcp", "/api/config/import/plan")
 _ADMIN_ONLY_WRITES = re.compile(
     r"^/api/(users|settings|system|notifications|overlay)(/|$)"
     r"|^/api/logs/settings$"
@@ -54,6 +55,8 @@ _ADMIN_ONLY_WRITES = re.compile(
     r"|^/api/hosts/[^/]+/gui-ticket$"
     # The per-gateway alert switch is a notification setting (same rights as PUT /api/notifications/settings).
     r"|^/api/hosts/[^/]+/gateways/[^/]+/alert$"
+    # Configuration as code (1.32): a bulk change incl. prune and host hierarchy membership (host writes are admin-only).
+    r"|^/api/config/import/apply$"
 )
 
 
@@ -76,7 +79,7 @@ def denies(scope: str, method: str, path: str) -> bool:
     """True if a token with this scope must not make this request."""
     if _SESSION_ONLY.match(path):
         return True
-    if path == _MCP_PATH:
+    if path in _READ_ONLY_POSTS:
         return False
     if method in _SAFE_METHODS:
         return scope != "admin" and bool(_ADMIN_SCOPE_READS.match(path))

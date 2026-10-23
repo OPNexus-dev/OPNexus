@@ -18,12 +18,18 @@ the configuration like the 6-hourly security check does):
 * locks      — no open maintenance operation, restore or unconfirmed deployment in the host/cluster.
 * compliance — security score not lower than before: warn (default) or fail. A weak signal: an
                update may legitimately change defaults.
+* probes     — optional per plan (1.32): ping/TCP probes run FROM the firewall (uplink, DNS, an internal
+               server). A probe that worked in the baseline and fails now fails the gate; one that failed
+               already before only warns. This is reachability from the firewall, not traffic through it.
 
 A reading that cannot be taken is never "ok": unreadable now but readable in the baseline fails,
 unreadable in both is "skip" (nothing to compare; e.g. an API key without that permission).
 """
 import asyncio
+import uuid
 from collections import defaultdict
+
+from fastapi import HTTPException
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +47,8 @@ DEFAULT_CHECKS = {"online": True, "version": True, "carp": True, "gateways": Tru
                   "compliance": False}
 ALWAYS_ON = ("online", "version", "locks")  # a rollout without these would be blind
 _RANK = {"skip": 0, "ok": 0, "warn": 1, "fail": 2}
+MAX_PROBES = 10
+PROBE_PING_COUNT = 3
 
 
 def _r(result: str, code: str, **params) -> dict:
@@ -64,7 +72,55 @@ async def _services(host) -> dict | None:
     return None if listing is None else _services_compact(listing)
 
 
-async def baseline(db: AsyncSession, host: OpnsenseHost) -> dict:
+def _probe_key(probe: dict) -> str:
+    return f"{probe['type']} {probe['target']}" + (f":{probe['port']}" if probe.get("port") else "")
+
+
+async def run_probes(host: OpnsenseHost, probes: list[dict] | None) -> list[dict]:
+    """Every probe from the firewall, one after the other; a probe that cannot run counts as failed. Audited by
+    diagnostics_service like a probe from the host page, as `system:rollout` when no request context exists."""
+    from app.services import audit_service, diagnostics_service
+
+    if not probes:
+        return []
+    token = None
+    if audit_service.context.get() is None:
+        token = audit_service.context.set({"actor": "system:rollout", "id": str(uuid.uuid4()), "action": "probe"})
+    try:
+        async def one(probe: dict) -> dict:
+            ipproto = "inet6" if ":" in probe["target"] else "inet"
+            try:
+                if probe["type"] == "ping":
+                    result = await diagnostics_service.ping(host, probe["target"], ipproto, PROBE_PING_COUNT, None, None)
+                    ok = int(result.get("received") or 0) > 0
+                else:
+                    result = await diagnostics_service.portprobe(host, probe["target"], int(probe["port"]), ipproto, None)
+                    ok = bool(result.get("open"))
+            except (HTTPException, client.OpnsenseAPIError):
+                ok = False
+            return {"key": _probe_key(probe), "ok": ok}
+
+        # Concurrently (diagnostics_service caps it at a few at a time per process), results in plan order.
+        return list(await asyncio.gather(*(one(p) for p in probes[:MAX_PROBES])))
+    finally:
+        if token is not None:
+            audit_service.context.reset(token)
+
+
+def _check_probes(before: list | None, now: list | None) -> dict:
+    if now is None:
+        return _r("fail", "unreadable")
+    was = {p["key"]: p["ok"] for p in (before or [])}
+    regressed = [p["key"] for p in now if not p["ok"] and was.get(p["key"], True)]
+    still = [p["key"] for p in now if not p["ok"] and was.get(p["key"]) is False]
+    if regressed:
+        return _r("fail", "probe_regressed", probes=", ".join(regressed))
+    if still:
+        return _r("warn", "probe_was_failing", probes=", ".join(still))
+    return _r("ok", "ok", count=len(now))
+
+
+async def baseline(db: AsyncSession, host: OpnsenseHost, probes: list[dict] | None = None) -> dict:
     info, gateways, services = await asyncio.gather(
         _optional(client.get_firmware_info(host)), _gateways(host), _services(host))
     score = await db.scalar(select(ComplianceResult.score).where(ComplianceResult.host_id == host.id))
@@ -73,6 +129,7 @@ async def baseline(db: AsyncSession, host: OpnsenseHost) -> dict:
         "gateways": gateways,
         "services": services,
         "compliance_score": score,
+        "probes": await run_probes(host, probes) if probes else None,
     }
 
 
@@ -137,7 +194,7 @@ async def _check_carp(db: AsyncSession, fleet: list[OpnsenseHost], statuses: dic
 
 
 async def evaluate(db: AsyncSession, hosts: list[OpnsenseHost], baselines: dict, *, target_version: str | None,
-                   checks: dict | None = None, compliance_mode: str = "warn") -> dict:
+                   checks: dict | None = None, compliance_mode: str = "warn", probes: list[dict] | None = None) -> dict:
     """{"hosts": {host_id: {check: result}}, "verdict": ok|warn|fail}. ``baselines`` is keyed by str(host.id)."""
     enabled = {**DEFAULT_CHECKS, **(checks or {})}
     for name in ALWAYS_ON:
@@ -189,6 +246,10 @@ async def evaluate(db: AsyncSession, hosts: list[OpnsenseHost], baselines: dict,
             row["gateways"] = _check_gateways(before.get("gateways"), await _gateways(host) if reachable else None)
         if enabled["services"]:
             row["services"] = _check_services(before.get("services"), await _services(host) if reachable else None)
+
+        if probes:
+            # A probe new since the baseline (plan edited mid-run) has nothing to compare with: treated as "worked before".
+            row["probes"] = _check_probes(before.get("probes"), await run_probes(host, probes) if reachable else None)
 
         blockers = await _shared_change_blockers(db, fleets[hid])
         row["locks"] = _r("fail", "open_locks", count=len(blockers)) if blockers else _r("ok", "ok")

@@ -62,6 +62,7 @@ class PolicyHierarchyRuleRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    config_key: str
     hierarchy_group_id: uuid.UUID
     rulebase: Literal["pre", "post"]
     sequence: int

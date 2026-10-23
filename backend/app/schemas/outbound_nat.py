@@ -37,6 +37,7 @@ class OutboundNatRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    config_key: str
     description: str
     interface: str
     source_net: str

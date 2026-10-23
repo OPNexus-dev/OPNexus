@@ -31,6 +31,7 @@ class Fw:
         self.gateways = [{"name": "WAN_GW", "status": "none", "loss": "0.0 %", "delay": "1 ms", "stddev": "0.1 ms"}]
         r, b = fleet.mock, self.base
         self.update = r.post(f"{b}/api/core/firmware/update").mock(side_effect=self._update)
+        r.get(f"{b}/api/core/snapshots/isSupported").mock(side_effect=lambda q: self._ok({"supported": False}))
         self.check = r.post(f"{b}/api/core/firmware/check").mock(side_effect=lambda q: self._ok({"status": "ok"}))
         self.toggles = r.post(f"{b}/api/diagnostics/interface/carp_status/maintenance").mock(side_effect=self._toggle)
         r.get(f"{b}/api/core/backup/download/this").mock(side_effect=lambda q: self._raw(b"<opnsense/>"))
@@ -711,3 +712,28 @@ async def test_rows_without_an_account_id_still_work_by_name(client, respx_mock,
         assert await engine.may_roll_out(db, "admin") is True
         assert await engine.may_roll_out(db, "nobody-here") is False
         assert await engine.may_roll_out(db, "admin", uuid.uuid4()) is False  # a given id that does not exist is final
+
+
+@pytest.mark.asyncio
+async def test_a_probe_that_breaks_after_the_update_stops_the_rollout(client, respx_mock, clock, monkeypatch):
+    """1.32 (B5): the plan's probes are frozen into the run, taken in the baseline and compared in the gate."""
+    from app.services import diagnostics_service
+
+    reachable = {"ok": True}
+    calls = []
+
+    async def portprobe(host, target, port, ipproto, source):
+        calls.append(host.name)
+        return {"open": reachable["ok"] or host.name != "c1"}
+
+    monkeypatch.setattr(diagnostics_service, "portprobe", portprobe)
+    fleet, _hosts, _groups, plan = await _setup(client, respx_mock, gate_probes=[{"type": "tcp", "target": "10.0.0.5", "port": 443}])
+    run = await _start(client, plan)
+    assert (await _run(run["id"])).plan_snapshot["gate_probes"] == [{"type": "tcp", "target": "10.0.0.5", "port": 443}]
+    await _until(fleet, clock, run["id"], lambda r: r.status == "soaking")
+    assert "c1" in calls  # baseline
+    reachable["ok"] = False  # the update broke the path to the server
+    paused = await _until(fleet, clock, run["id"], lambda r: r.status == "paused")
+    assert paused.pause_reason == "gate_failed"
+    assert paused.waves[0].gate_result["hosts"][str(_host(paused, "c1").host_id)]["probes"]["code"] == "probe_regressed"
+    assert fleet.fw["ha-b"].update.call_count == 0

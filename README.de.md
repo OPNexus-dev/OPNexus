@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.31.1` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.32.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -21,7 +21,8 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 - **Alarme** — Gateway-/WAN-Ausfall (down, Paketverlust, Latenz), Schwellen für Platte, Speicher, Swap und CPU sowie ausgefallene Dienste; über mehrere Messungen entprellt, damit Einzelspitzen und flackernde Verbindungen schweigen. Zustellung per E-Mail, Webhook, ntfy, Gotify, Telegram, Microsoft Teams oder Matrix, jedes Ereignis einzeln schaltbar.
 - **Firewall-Oberfläche über OPNexus** — die Weboberfläche einer Firewall in einem eigenen Browser-Tab über OPNexus öffnen, auch hinter NAT; nur für Admins, Einmal-Ticket, eigene Origin, Zeitlimits und Audit (standardmäßig aus).
 - **Logs & Audit** — zentrale Log-Suche mit Korrelation, Dashboards und lückenloser Deploy-Verlauf.
-- **Update-Center und Rollouts** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus; Rollouts in Wellen (Canary → Pilot → Prod) mit wiederkehrenden Wartungsfenstern, Gesundheitsprüfung zwischen den Wellen und automatischem Halt bei jeder Auffälligkeit.
+- **Update-Center und Rollouts** — Firmware-Updates für die Flotte, mit Blick auf HA-Reihenfolge und Wartungsmodus; Rollouts in Wellen (Canary → Pilot → Prod) mit wiederkehrenden Wartungsfenstern, Gesundheitsprüfung zwischen den Wellen (auf Wunsch mit Erreichbarkeitsproben, die die Firewall selbst ausführt) und automatischem Halt bei jeder Auffälligkeit. Vor jedem Update legt OPNexus ein ZFS-Boot-Environment als Rückweg-Punkt an; „Zur vorherigen Firmware“ stellt es geführt wieder her.
+- **Konfiguration als Code** — Regeln, Aliase, NAT, Gruppen, Policy-Hierarchie und Standort-Variablen als eine YAML-Datei exportieren (für Git und Review) und wieder importieren: erst ein Plan (neu / geändert / entfernt / blockiert), dann das Übernehmen in einer Transaktion, das nur die Entwürfe in OPNexus ändert (nie eine Firewall). `opnexus export` / `opnexus apply --dry-run` für Konsole und CI.
 - **Einrichtungsassistent** — geführter Erststart nach der Installation: eigenes Passwort, Zwei-Faktor und die erste Firewall verbinden.
 - **Selbst-Update** — OPNexus aktualisiert sich auf Wunsch aus der eigenen Oberfläche, mit Fortschritt und automatischem Rollback (optional).
 - **Automatisierung** — persönliche API-Tokens (Lesen / Ausrollen / Admin), Prometheus-Metriken, ein nur lesender MCP-Endpunkt für KI-Assistenten und ein OpenAPI-Schema.
@@ -65,7 +66,7 @@ Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelie
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.31.1
+OPNEXUS_VERSION=1.32.0
 ```
 
 ```bash

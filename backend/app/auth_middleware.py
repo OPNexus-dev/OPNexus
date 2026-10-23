@@ -43,6 +43,8 @@ _READ_ONLY_ALLOWED_WRITES = {
     "/api/settings",
     # Read-only JSON-RPC tools (see routers/mcp.py).
     "/api/mcp",
+    # Configuration as code: the plan only compares a file with the database (routers/config_code.py).
+    "/api/config/import/plan",
     # Self-scoped: a user managing their own second factor.
     "/api/auth/2fa/setup",
     "/api/auth/2fa/enable",
@@ -121,7 +123,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 )
             if user is not None:
                 parts = request.url.path.strip("/").split("/")
-                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system", "backups": "backup", "maintenance-windows": "maintenance_window"}
+                kinds = {"rules": "rule", "aliases": "alias", "port-forward": "port_forward", "one-to-one": "one_to_one", "outbound-nat": "outbound_nat", "hosts": "host", "users": "user", "system": "system", "backups": "backup", "maintenance-windows": "maintenance_window", "groups": "group", "config": "config"}
                 writing = request.method in ("POST", "PUT", "PATCH", "DELETE")
                 if len(parts) > 1 and parts[1] in _SECURITY_KINDS:
                     event = {**_security_event(parts, request.method), "details": {"method": request.method, "path": request.url.path}}
@@ -131,10 +133,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if len(parts) > 2 and parts[1] == "settings":
                         kind = "settings"  # where OPNexus stores/sends things (own prefs at /api/settings stay unaudited)
                     action = ("delete" if request.method == "DELETE" else parts[-1] if len(parts) > 3 else "edit" if request.method in ("PUT", "PATCH") else "create")
-                    event = {"kind": kind, "action": action, "entity_id": parts[2] if len(parts) > 2 else None,
+                    entity = parts[2] if len(parts) > 2 and kind != "config" else None
+                    event = {"kind": kind, "action": action, "entity_id": entity,
                              "host_id": parts[2] if kind == "host" and len(parts) > 2 else None,
                              "details": {"method": request.method, "path": request.url.path}}
-                tracked = kind and writing and not request.url.path.endswith(("/preview", "/carp-preview", "/revisions"))
+                tracked = kind and writing and not request.url.path.endswith(("/preview", "/carp-preview", "/revisions", "/import/plan"))
 
                 if (
                     user.role == "read_only"

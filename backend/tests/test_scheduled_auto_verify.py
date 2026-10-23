@@ -25,6 +25,7 @@ class FakeHost:
     def __init__(self, respx_mock, *, firmware="update", reboot_flag="1", version="26.7.5"):
         self.job, self.boot, self.version = "ready", "Mon Oct 5 10:00:00 UTC 2026", version
         self.update = respx_mock.post(f"{H}/api/core/firmware/update").respond(200, json={"status": "ok"})
+        respx_mock.get(f"{H}/api/core/snapshots/isSupported").respond(200, json={"supported": False})
         self.reboot = respx_mock.post(f"{H}/api/core/system/reboot").respond(200, json={"status": "ok"})
         respx_mock.get(f"{H}/api/core/backup/download/this").respond(200, content=b"<opnsense/>")
         respx_mock.get(f"{H}/api/diagnostics/interface/getVipStatus").mock(side_effect=self._vip)

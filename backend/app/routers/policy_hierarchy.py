@@ -75,6 +75,7 @@ def _to_read(rule: PolicyHierarchyRule, all_groups: list[PolicyHierarchyGroup]) 
         workflow_state=state,
         workflow_counts=counts,
         id=rule.id,
+        config_key=rule.config_key,
         hierarchy_group_id=rule.hierarchy_group_id,
         rulebase=rule.rulebase,
         sequence=rule.sequence,

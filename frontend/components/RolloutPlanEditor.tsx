@@ -5,7 +5,7 @@ import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { useLanguage } from "@/components/LanguageProvider";
-import { api, DeviceGroup, MaintenanceWindow, RolloutCheck, RolloutPlan, RolloutPlanWrite, RolloutWaveWrite } from "@/lib/api";
+import { api, DeviceGroup, MaintenanceWindow, RolloutCheck, RolloutPlan, RolloutPlanWrite, RolloutProbe, RolloutWaveWrite } from "@/lib/api";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
@@ -22,9 +22,9 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
   const { t, errorMessage } = useLanguage();
   const [form, setForm] = useState<RolloutPlanWrite>(() => plan ? {
     name: plan.name, description: plan.description, action: plan.action, window_id: plan.window_id, auto_start: plan.auto_start,
-    gate_checks: { ...DEFAULT_CHECKS, ...plan.gate_checks }, compliance_mode: plan.compliance_mode,
+    gate_checks: { ...DEFAULT_CHECKS, ...plan.gate_checks }, gate_probes: plan.gate_probes ?? [], compliance_mode: plan.compliance_mode,
     waves: plan.waves.map((w) => ({ label: w.label, group_ids: w.group_ids, soak_minutes: w.soak_minutes, carp_handover: w.carp_handover, require_approval: w.require_approval })),
-  } : { name: "", description: "", action: "update", window_id: null, auto_start: false, gate_checks: DEFAULT_CHECKS, compliance_mode: "warn", waves: [newWave(0)] });
+  } : { name: "", description: "", action: "update", window_id: null, auto_start: false, gate_checks: DEFAULT_CHECKS, gate_probes: [], compliance_mode: "warn", waves: [newWave(0)] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const set = (patch: Partial<RolloutPlanWrite>) => setForm((f) => ({ ...f, ...patch }));
@@ -34,6 +34,9 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
     [waves[i], waves[i + dir]] = [waves[i + dir], waves[i]];
     set({ waves });
   };
+  const probes = form.gate_probes ?? [];
+  const setProbe = (i: number, patch: Partial<RolloutProbe>) => set({ gate_probes: probes.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
+  const probeValid = (p: RolloutProbe) => /^[A-Za-z0-9]([A-Za-z0-9.:_-]{0,251}[A-Za-z0-9])?$/.test(p.target) && (p.type === "ping" ? p.port === null : !!p.port && p.port >= 1 && p.port <= 65535);
   const autoStartPossible = form.action === "update" && !!form.window_id;
 
   async function save() {
@@ -49,7 +52,7 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
     }
   }
 
-  const valid = form.name.trim() && form.waves.length > 0 && form.waves.every((w) => w.label.trim() && w.group_ids.length > 0);
+  const valid = form.name.trim() && form.waves.length > 0 && form.waves.every((w) => w.label.trim() && w.group_ids.length > 0) && probes.every(probeValid);
   return (
     <Modal title={plan ? t("rollouts.plan.edit") : t("rollouts.plan.new")} onClose={() => !busy && onClose()}>
       <div className="space-y-4 text-sm">
@@ -153,6 +156,35 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
               </FieldGroup>
             </div>
           )}
+        </fieldset>
+        <fieldset>
+          <legend className="mb-1 flex items-center gap-1 font-medium text-slate-700">{t("rollouts.plan.probes")}<InfoTip text={t("rollouts.plan.probesHint")} size={13} /></legend>
+          <div className="space-y-2">
+            {probes.map((probe, i) => (
+              <div key={i} className="flex flex-wrap items-center gap-2">
+                <div className="w-28 shrink-0">
+                  <Select aria-label={t("rollouts.plan.probeType")} value={probe.type} onChange={(e) => setProbe(i, { type: e.target.value as RolloutProbe["type"], port: e.target.value === "tcp" ? (probe.port ?? 443) : null })}>
+                    <option value="ping">Ping</option>
+                    <option value="tcp">TCP</option>
+                  </Select>
+                </div>
+                <div className="min-w-[10rem] flex-1">
+                  <Input aria-label={t("rollouts.plan.probeTarget")} value={probe.target} maxLength={253} placeholder="1.1.1.1" onChange={(e) => setProbe(i, { target: e.target.value.trim() })} />
+                </div>
+                {probe.type === "tcp" && (
+                  <div className="w-24 shrink-0">
+                    <Input aria-label={t("rollouts.plan.probePort")} type="number" min={1} max={65535} value={probe.port ?? ""} placeholder="443" onChange={(e) => setProbe(i, { port: e.target.value ? Number(e.target.value) : null })} />
+                  </div>
+                )}
+                <Button variant="dangerSubtle" aria-label={t("rollouts.plan.probeRemove")} title={t("rollouts.plan.probeRemove")} onClick={() => set({ gate_probes: probes.filter((_, j) => j !== i) })}>
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ))}
+            <Button variant="outline" disabled={probes.length >= 10} onClick={() => set({ gate_probes: [...probes, { type: "ping", target: "", port: null }] })}>
+              <Plus size={14} />{t("rollouts.plan.addProbe")}
+            </Button>
+          </div>
         </fieldset>
         {error && <p role="alert" className="text-red-600">{error}</p>}
         <div className="flex justify-end gap-2">

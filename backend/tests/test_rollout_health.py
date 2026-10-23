@@ -193,3 +193,47 @@ async def test_lower_compliance_score_warns_or_fails(client, respx_mock, monkeyp
 def datetime_now():
     from datetime import datetime, timezone
     return datetime.now(timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_probes_from_the_firewall_compare_against_the_baseline(client, respx_mock, monkeypatch):
+    """1.32 (B5): reachability probes. Worked before and fails now = fail; failed already before = warn."""
+    from app.services import audit_service, diagnostics_service
+
+    reachable = {"ping 1.1.1.1": True, "tcp 10.0.0.5:443": True, "ping 192.0.2.1": False}
+    actors = []
+
+    async def ping(host, target, ipproto, count, packetsize, source):
+        actors.append((audit_service.context.get() or {}).get("actor"))
+        return {"received": count if reachable[f"ping {target}"] else 0}
+
+    async def portprobe(host, target, port, ipproto, source):
+        if target == "broken":
+            raise diagnostics_service.OpnsenseAPIError("job failed")
+        return {"open": reachable[f"tcp {target}:{port}"]}
+
+    monkeypatch.setattr(diagnostics_service, "ping", ping)
+    monkeypatch.setattr(diagnostics_service, "portprobe", portprobe)
+    Fw(respx_mock, A)
+    a, _ = await _hosts(client, cluster=False)
+    probes = [{"type": "ping", "target": "1.1.1.1", "port": None}, {"type": "tcp", "target": "10.0.0.5", "port": 443},
+              {"type": "ping", "target": "192.0.2.1", "port": None}]
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, uuid.UUID(a["id"]))
+        base = {a["id"]: await rh.baseline(db, host, probes)}
+    assert [p["ok"] for p in base[a["id"]]["probes"]] == [True, True, False] and set(actors) == {"system:rollout"}
+    gate, _ = await _eval([a["id"]], base, probes=probes)
+    assert gate["hosts"][a["id"]]["probes"] == {"result": "warn", "code": "probe_was_failing", "params": {"probes": "ping 192.0.2.1"}}
+    reachable["tcp 10.0.0.5:443"] = False
+    gate, _ = await _eval([a["id"]], base, probes=probes)
+    assert gate["verdict"] == "fail"
+    assert gate["hosts"][a["id"]]["probes"] == {"result": "fail", "code": "probe_regressed", "params": {"probes": "tcp 10.0.0.5:443"}}
+    broken = probes + [{"type": "tcp", "target": "broken", "port": 22}]  # cannot run = failed; new since the baseline = worked before
+    gate, _ = await _eval([a["id"]], base, probes=broken)
+    assert "tcp broken:22" in gate["hosts"][a["id"]]["probes"]["params"]["probes"]
+    gate, _ = await _eval([a["id"]], base)
+    assert "probes" not in gate["hosts"][a["id"]]  # a plan without probes runs none
+    fw_down = Fw(respx_mock, A)
+    fw_down.up = False
+    gate, _ = await _eval([a["id"]], base, probes=probes)
+    assert gate["hosts"][a["id"]]["probes"]["code"] == "unreadable"

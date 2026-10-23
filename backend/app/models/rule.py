@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.config_key import config_key_column, register_config_key
 from app.models.rule_target import rule_targets
 from app.models.policy import rule_groups
 
@@ -18,6 +19,7 @@ class FirewallRule(Base):
     __tablename__ = "firewall_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    config_key: Mapped[str] = config_key_column()
     description: Mapped[str] = mapped_column(String(255))
     interface: Mapped[str] = mapped_column(String(64))
     direction: Mapped[str] = mapped_column(String(8))
@@ -44,3 +46,6 @@ class FirewallRule(Base):
     deployments: Mapped[list["RuleDeployment"]] = relationship(
         "RuleDeployment", back_populates="rule", cascade="all, delete-orphan"
     )
+
+
+register_config_key(FirewallRule, "r")

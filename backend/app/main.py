@@ -54,6 +54,7 @@ from app.routers import maintenance_windows as maintenance_windows_router
 from app.routers import rollouts as rollouts_router
 from app.routers import rule_analysis as rule_analysis_router
 from app.routers import rule_cleanup as rule_cleanup_router
+from app.routers import config_code as config_code_router
 from app.routers import gui_access as gui_access_router
 from app.services import scheduled_maintenance_service
 from app.services import rollout_engine
@@ -571,5 +572,6 @@ app.include_router(maintenance_windows_router.router, prefix="/api")
 app.include_router(rollouts_router.router, prefix="/api")
 app.include_router(rule_analysis_router.router, prefix="/api")
 app.include_router(rule_cleanup_router.router, prefix="/api")
+app.include_router(config_code_router.router, prefix="/api")
 app.include_router(gui_access_router.router, prefix="/api")
 app.include_router(gui_access_router.internal_router)

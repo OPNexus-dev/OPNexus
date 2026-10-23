@@ -1,0 +1,933 @@
+{
+  "$defs": {
+    "AliasDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "default": "host",
+          "enum": [
+            "host",
+            "network",
+            "port",
+            "networkgroup",
+            "mac",
+            "asn"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 255,
+          "title": "Description",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "entries": {
+          "items": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Entries",
+          "type": "array"
+        },
+        "targets": {
+          "$ref": "#/$defs/TargetsWithHierarchy"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "AliasDoc",
+      "type": "object"
+    },
+    "DeviceGroupDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Description",
+          "type": "string"
+        },
+        "hosts": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "DeviceGroupDoc",
+      "type": "object"
+    },
+    "HierarchyGroupDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent"
+        },
+        "description": {
+          "default": "",
+          "maxLength": 2000,
+          "title": "Description",
+          "type": "string"
+        },
+        "hosts": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "HierarchyGroupDoc",
+      "type": "object"
+    },
+    "HierarchyRuleDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "group": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Group",
+          "type": "string"
+        },
+        "rulebase": {
+          "default": "pre",
+          "enum": [
+            "pre",
+            "post"
+          ],
+          "title": "Rulebase",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "direction": {
+          "default": "in",
+          "enum": [
+            "in",
+            "out"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "ipprotocol": {
+          "default": "inet",
+          "enum": [
+            "inet",
+            "inet6"
+          ],
+          "title": "Ipprotocol",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "any",
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Protocol",
+          "type": "string"
+        },
+        "action": {
+          "default": "pass",
+          "enum": [
+            "pass",
+            "block",
+            "reject"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "source_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Net",
+          "type": "string"
+        },
+        "source_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Port"
+        },
+        "destination_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Destination Net",
+          "type": "string"
+        },
+        "destination_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Port"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "key",
+        "group",
+        "description",
+        "interface"
+      ],
+      "title": "HierarchyRuleDoc",
+      "type": "object"
+    },
+    "OneToOneDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "type": {
+          "default": "binat",
+          "enum": [
+            "binat",
+            "nat"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "external": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "External",
+          "type": "string"
+        },
+        "source_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Net",
+          "type": "string"
+        },
+        "destination_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Destination Net",
+          "type": "string"
+        },
+        "source_not": {
+          "default": false,
+          "title": "Source Not",
+          "type": "boolean"
+        },
+        "destination_not": {
+          "default": false,
+          "title": "Destination Not",
+          "type": "boolean"
+        },
+        "natreflection": {
+          "default": "",
+          "enum": [
+            "",
+            "enable",
+            "disable"
+          ],
+          "title": "Natreflection",
+          "type": "string"
+        },
+        "log": {
+          "default": false,
+          "title": "Log",
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "targets": {
+          "$ref": "#/$defs/TargetsWithHierarchy"
+        }
+      },
+      "required": [
+        "key",
+        "description",
+        "interface",
+        "external"
+      ],
+      "title": "OneToOneDoc",
+      "type": "object"
+    },
+    "OutboundNatDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "ipprotocol": {
+          "default": "inet",
+          "enum": [
+            "inet",
+            "inet6"
+          ],
+          "title": "Ipprotocol",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "any",
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Protocol",
+          "type": "string"
+        },
+        "source_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Net",
+          "type": "string"
+        },
+        "source_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Port"
+        },
+        "destination_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Destination Net",
+          "type": "string"
+        },
+        "destination_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Port"
+        },
+        "source_not": {
+          "default": false,
+          "title": "Source Not",
+          "type": "boolean"
+        },
+        "destination_not": {
+          "default": false,
+          "title": "Destination Not",
+          "type": "boolean"
+        },
+        "target": {
+          "default": "",
+          "maxLength": 128,
+          "title": "Target",
+          "type": "string"
+        },
+        "target_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Port"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "targets": {
+          "$ref": "#/$defs/TargetsWithHierarchy"
+        }
+      },
+      "required": [
+        "key",
+        "description",
+        "interface"
+      ],
+      "title": "OutboundNatDoc",
+      "type": "object"
+    },
+    "PortForwardDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "ipprotocol": {
+          "default": "inet",
+          "enum": [
+            "inet",
+            "inet6"
+          ],
+          "title": "Ipprotocol",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "tcp",
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Protocol",
+          "type": "string"
+        },
+        "source_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Net",
+          "type": "string"
+        },
+        "source_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Port"
+        },
+        "destination_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Destination Net",
+          "type": "string"
+        },
+        "destination_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Port"
+        },
+        "target": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        },
+        "local_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Local Port"
+        },
+        "natreflection": {
+          "default": "",
+          "enum": [
+            "",
+            "purenat",
+            "disable"
+          ],
+          "title": "Natreflection",
+          "type": "string"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "targets": {
+          "$ref": "#/$defs/TargetsWithHierarchy"
+        }
+      },
+      "required": [
+        "key",
+        "description",
+        "interface",
+        "target"
+      ],
+      "title": "PortForwardDoc",
+      "type": "object"
+    },
+    "RuleDoc": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "interface": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Interface",
+          "type": "string"
+        },
+        "direction": {
+          "default": "in",
+          "enum": [
+            "in",
+            "out"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "ipprotocol": {
+          "default": "inet",
+          "enum": [
+            "inet",
+            "inet6"
+          ],
+          "title": "Ipprotocol",
+          "type": "string"
+        },
+        "protocol": {
+          "default": "any",
+          "maxLength": 16,
+          "minLength": 1,
+          "title": "Protocol",
+          "type": "string"
+        },
+        "action": {
+          "default": "pass",
+          "enum": [
+            "pass",
+            "block",
+            "reject"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "source_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Source Net",
+          "type": "string"
+        },
+        "source_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Port"
+        },
+        "destination_net": {
+          "default": "any",
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Destination Net",
+          "type": "string"
+        },
+        "destination_port": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Destination Port"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "log": {
+          "default": false,
+          "title": "Log",
+          "type": "boolean"
+        },
+        "targets": {
+          "$ref": "#/$defs/Targets"
+        }
+      },
+      "required": [
+        "key",
+        "description",
+        "interface"
+      ],
+      "title": "RuleDoc",
+      "type": "object"
+    },
+    "Targets": {
+      "additionalProperties": false,
+      "properties": {
+        "hosts": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        },
+        "groups": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Groups",
+          "type": "array"
+        }
+      },
+      "title": "Targets",
+      "type": "object"
+    },
+    "TargetsWithHierarchy": {
+      "additionalProperties": false,
+      "properties": {
+        "hosts": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Hosts",
+          "type": "array"
+        },
+        "groups": {
+          "items": {
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Groups",
+          "type": "array"
+        },
+        "hierarchy_group": {
+          "anyOf": [
+            {
+              "maxLength": 120,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hierarchy Group"
+        }
+      },
+      "title": "TargetsWithHierarchy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Eine Datei. Ein fehlender Abschnitt lässt die Art unberührt (None); ein leerer Abschnitt ist ein leerer Sollzustand.",
+  "properties": {
+    "opnexus_config": {
+      "const": 1,
+      "title": "Opnexus Config",
+      "type": "integer"
+    },
+    "device_groups": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/DeviceGroupDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Device Groups"
+    },
+    "policy_hierarchy_groups": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/HierarchyGroupDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Hierarchy Groups"
+    },
+    "aliases": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/AliasDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Aliases"
+    },
+    "rules": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/RuleDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Rules"
+    },
+    "port_forwards": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/PortForwardDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Port Forwards"
+    },
+    "one_to_one": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/OneToOneDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "One To One"
+    },
+    "outbound_nat": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/OutboundNatDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Outbound Nat"
+    },
+    "policy_hierarchy_rules": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/HierarchyRuleDoc"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Policy Hierarchy Rules"
+    },
+    "variables": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "propertyNames": {
+            "maxLength": 120,
+            "minLength": 1
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Variables"
+    }
+  },
+  "required": [
+    "opnexus_config"
+  ],
+  "title": "OPNexus-Konfiguration (Schema v1)",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

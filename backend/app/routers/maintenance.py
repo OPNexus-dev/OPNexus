@@ -9,14 +9,14 @@ from app.errors import ErrorCode, api_error
 from app.database import get_db
 from app.models import OpnsenseHost
 from app.models.host_operation import HostOperation
-from app.services import opnsense_client as client, audit_service, carp_maintenance_window_service
+from app.services import opnsense_client as client, audit_service, backup_store, carp_maintenance_window_service, snapshot_service
 from app.services.host_maintenance_service import inspect_host, inspect_carp_switch, fingerprint, peers, ACTIVE
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/hosts/{host_id}/maintenance", tags=["host-maintenance"])
 
 class Preview(BaseModel):
-    action: Literal['reboot','update','major_update']
+    action: Literal['reboot','update','major_update','firmware_rollback']
 
 class Execute(BaseModel):
     preview_id: uuid.UUID
@@ -41,9 +41,68 @@ async def host_or_404(db, host_id):
 def read_operation(op):
     return {"id":op.id,"host_id":op.host_id,"action":op.action,"status":op.status,"created_at":op.created_at,"expires_at":op.expires_at,"actor":op.actor,"message":op.message}
 
-async def snapshot_or_502(db, host):
-    try: return await inspect_host(db,host)
+async def snapshot_or_502(db, host, action=None):
+    try:
+        state=await inspect_host(db,host)
+        if action=='firmware_rollback':
+            # Read only for this action, so every other preview/status keeps its exact set of firewall calls.
+            rollback=await snapshot_service.rollback_state(host)
+            rollback['changes_since']=await _changes_since(db,host,rollback.get('target'))
+            state['rollback']=rollback
+            state['actions']['firmware_rollback']=state['actions']['reboot']+(
+                [] if rollback['supported'] else ['Die Firewall hat keine ZFS-Snapshots (Boot-Environments).'])+(
+                [] if rollback.get('target') else ['Kein Rückweg-Punkt vorhanden: OPNexus legt ihn vor jedem Firmware-Update an.'])
+        return state
     except client.OpnsenseAPIError as exc: raise api_error(502, ErrorCode.UPSTREAM_REQUEST_FAILED) from exc
+
+
+async def _changes_since(db, host, target):
+    """OPNexus' own pushes to this host after the rollback point: going back removes them from the firewall."""
+    if not target:
+        return []
+    since=_point_time(target)
+    if since is None:
+        return []
+    out=[]
+    for kind,model in _DEPLOYMENT_MODELS():
+        rows=(await db.scalars(select(model).where(model.host_id==host.id, model.deployed_at>since))).all()
+        out+=[{'kind':kind,'status':r.status,'deployed_at':r.deployed_at.isoformat()} for r in rows]
+    return sorted(out,key=lambda r:r['deployed_at'])[:50]
+
+
+def _point_time(target):
+    try:
+        return datetime.strptime(target['stamp'],'%Y%m%d-%H%M%S').replace(tzinfo=timezone.utc)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _DEPLOYMENT_MODELS():
+    from app.models import (AliasDeployment, OneToOneDeployment, OutboundNatDeployment, PolicyHierarchyRuleDeployment,
+                            PortForwardDeployment, RuleDeployment)
+    from app.models.ipsec_tunnel_deployment import IpsecTunnelDeployment
+    from app.models.openvpn_instance_deployment import OpenVpnInstanceDeployment
+    from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
+    return (('rule',RuleDeployment),('alias',AliasDeployment),('port_forward',PortForwardDeployment),
+            ('one_to_one',OneToOneDeployment),('outbound_nat',OutboundNatDeployment),('policy_hierarchy',PolicyHierarchyRuleDeployment),
+            ('ipsec_tunnel',IpsecTunnelDeployment),('openvpn_instance',OpenVpnInstanceDeployment),('wireguard_tunnel',WireguardTunnelDeployment))
+
+
+async def _mark_rolled_back(db, host, target):
+    """After going back, what OPNexus pushed since the point is no longer on the firewall. A redeploy with an unchanged
+    payload only re-affirms (writes nothing), so the remembered payload is cleared and the row marked: the next deploy
+    really writes, and the UI shows the object as not in sync."""
+    since=_point_time(target)
+    if since is None:
+        return 0
+    count=0
+    note=f"Firmware-Rückweg auf {target['name']}: Stand auf der Firewall unklar. Live-Stand prüfen und neu ausrollen."
+    for _kind,model in _DEPLOYMENT_MODELS():
+        for row in (await db.scalars(select(model).where(model.host_id==host.id, model.deployed_at>since))).all():
+            row.status='error'; row.message=note[:500]; row.last_payload=None
+            if hasattr(model,'revert_deadline'): row.revert_deadline=None
+            count+=1
+    return count
 
 async def carp_snapshot_or_502(db, host):
     try: return await inspect_carp_switch(db,host)
@@ -62,7 +121,7 @@ async def status(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 async def preview(host_id: uuid.UUID, payload: Preview, request: Request, db: AsyncSession = Depends(get_db)):
     await policy_lock(db)
     host=await host_or_404(db,host_id)
-    state=await snapshot_or_502(db,host)
+    state=await snapshot_or_502(db,host,payload.action)
     if state['actions'][payload.action]: raise api_error(409, ErrorCode.ACTION_NOT_ALLOWED, reason=' '.join(state['actions'][payload.action]))
     op=HostOperation(host_id=host.id,host_name=host.name,actor=request.state.user.username,action=payload.action,
                      expires_at=datetime.now(timezone.utc)+timedelta(minutes=5),fingerprint=fingerprint(state),snapshot=state)
@@ -77,17 +136,52 @@ async def execute(host_id: uuid.UUID, payload: Execute, request: Request, db: As
     if not op or op.host_id!=host_id or op.actor!=request.state.user.username: raise api_error(404, ErrorCode.WARTUNGSVORSCHAU_NICHT_GEFUNDEN)
     if op.status!='preview' or op.expires_at <= datetime.now(timezone.utc): raise api_error(409, ErrorCode.VORSCHAU_ABGELAUFEN_ODER_BEREITS_VERWENDET)
     if payload.confirm_name != host.name: raise api_error(409, ErrorCode.HOSTNAMEN_EXAKT_EINGEBEN)
-    state=await snapshot_or_502(db,host)
+    if op.action not in ('reboot','update','major_update','firmware_rollback'): raise api_error(404, ErrorCode.WARTUNGSVORSCHAU_NICHT_GEFUNDEN)
+    state=await snapshot_or_502(db,host,op.action)
     if state['actions'][op.action]: raise api_error(409, ErrorCode.ACTION_NOT_ALLOWED, reason=' '.join(state['actions'][op.action]))
     if fingerprint(state)!=op.fingerprint: raise api_error(409, ErrorCode.HOSTZUSTAND_WURDE_VERAENDERT_VORSCHAU_ERNEUT_OEFFNEN)
     # Consume durably BEFORE the remote request. A timeout is ambiguous, and
     # replaying a reboot/update automatically could interrupt recovery.
     op.status='starting'; op.started_at=datetime.now(timezone.utc); await db.commit()
     await audit_service.persist(kind='host',action=op.action,status='requested',host_id=str(host.id),host_name=host.name,entity_id=str(op.id),details={'snapshot':state})
-    action_fn={'reboot':client.reboot_host,'update':client.update_firmware,'major_update':client.upgrade_firmware}[op.action]
+    if op.action in ('update','major_update'):
+        # Way back first (1.32, B5): a boot environment of the running system. Fail closed: no point, no update.
+        try:
+            point=await snapshot_service.create_rollback_point(host,state.get('version'))
+        except client.OpnsenseAPIError as exc:
+            op.status='cancelled';op.message='Rückweg-Punkt (Boot-Environment) nicht angelegt: '+str(exc)[:500]+'. Update nicht gestartet.'
+            await db.commit()
+            await audit_service.persist(kind='host',action=op.action,status='cancelled',host_id=str(host.id),host_name=host.name,entity_id=str(op.id),message=op.message,details={})
+            return read_operation(op)
+        op.snapshot={**op.snapshot,'rollback_point':point}
+        await db.commit()
+    if op.action=='firmware_rollback':
+        # Going back discards every change on the firewall since the point: keep a copy of the current config first.
+        # Fail closed, like the backup before an update.
+        try:
+            backup_store.save_snapshot(host.id, await client.download_backup(host))
+        except client.OpnsenseAPIError as exc:
+            op.status='cancelled';op.message='Sicherung der aktuellen Konfiguration fehlgeschlagen: '+str(exc)[:500]+'. Rückweg nicht gestartet.'
+            await db.commit()
+            await audit_service.persist(kind='host',action=op.action,status='cancelled',host_id=str(host.id),host_name=host.name,entity_id=str(op.id),message=op.message,details={})
+            return read_operation(op)
+        rollback=state['rollback']
+        action_fn=lambda h: snapshot_service.activate_and_reboot(h,rollback)
+        done=(f"Boot-Environment {rollback['target']['name']} aktiviert, Neustart übergeben. Nach dem Start Version prüfen "
+              f"(erwartet {rollback['target']['version']}) und Wartung abschließen. Alles, was seit dem Rückweg-Punkt auf der "
+              "Firewall geändert wurde, ist danach nicht mehr vorhanden: zentrale Objekte über die Vorschau neu ausrollen.")
+    else:
+        action_fn={'reboot':client.reboot_host,'update':client.update_firmware,'major_update':client.upgrade_firmware}[op.action]
+        done='An Firewall übergeben. Abschluss und Erreichbarkeit prüfen; anschließend Wartung abschließen.'
+        if op.action in ('update','major_update') and not (op.snapshot or {}).get('rollback_point'):
+            done+=' Kein Rückweg-Punkt: die Firewall hat keine ZFS-Snapshots.'
     try:
         result=await action_fn(host)
-        op.status='submitted';op.message='An Firewall übergeben. Abschluss und Erreichbarkeit prüfen; anschließend Wartung abschließen.'
+        op.status='submitted';op.message=done
+        if op.action=='firmware_rollback':
+            marked=await _mark_rolled_back(db,host,rollback['target'])
+            if marked:
+                op.message+=f' {marked} Deployment(s) als unklar markiert.'
     except client.OpnsenseAPIError as exc:
         op.status='unknown';op.message='Ausgang unklar: '+str(exc)[:800]+'. Nicht automatisch wiederholen.'
         result={}

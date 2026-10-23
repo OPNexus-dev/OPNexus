@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.config_key import config_key_column, register_config_key
 from app.models.outbound_nat_target import outbound_nat_targets
 from app.models.policy import outbound_nat_groups
 
@@ -14,6 +15,7 @@ class OutboundNatRule(Base):
     __tablename__ = "outbound_nat_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    config_key: Mapped[str] = config_key_column()
     description: Mapped[str] = mapped_column(String(255))
     interface: Mapped[str] = mapped_column(String(64))
     source_net: Mapped[str] = mapped_column(String(128))
@@ -44,3 +46,6 @@ class OutboundNatRule(Base):
     deployments: Mapped[list["OutboundNatDeployment"]] = relationship(
         "OutboundNatDeployment", back_populates="outbound_nat", cascade="all, delete-orphan"
     )
+
+
+register_config_key(OutboundNatRule, "out")

@@ -42,6 +42,8 @@ class RolloutPlan(Base):
     # is activated AND unchanged since (activated_fingerprint).
     auto_start: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     gate_checks: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Reachability probes run FROM the firewall in the health gate (1.32): [{type: ping|tcp, target, port}].
+    gate_probes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     compliance_mode: Mapped[str] = mapped_column(String(8), nullable=False, default="warn", server_default="warn")
     activated_by: Mapped[str | None] = mapped_column(String(150), nullable=True)
     # Stable id of that account (1.29, no foreign key on purpose: a deleted account stays gone, a new one with the same name is someone else).

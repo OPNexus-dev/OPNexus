@@ -17,6 +17,15 @@
 #                             und Geheimnisse dieser Installation; --yes: ohne Rückfrage)
 #   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
 #                             anzeigen (--yes: ohne Rückfrage)
+#   opnexus export [--out VERZEICHNIS] [--kinds a,b]
+#                             Konfiguration als Code: alle zentralen Objekte als
+#                             YAML (opnexus-config.yaml), ohne Zugänge/Schlüssel.
+#   opnexus apply DATEI [--dry-run] [--prune] [--yes] [--json]
+#                             Datei prüfen und in die Entwürfe übernehmen. Zeigt
+#                             zuerst den Plan. Schreibt nie auf Firewalls; ausgerollt
+#                             wird danach wie immer über Vorschau → Ausrollen.
+#                             Exit: 0 ok/keine Unterschiede, 2 Unterschiede (--dry-run),
+#                             3 Datei ungültig, 4 blockiert/veraltet, 1 Fehler.
 #   opnexus status --porcelain  Zustand als key=value-Zeilen (für den Updater)
 #
 # Läuft im Verzeichnis mit docker-compose.yml und .env (oder OPNEXUS_DIR=...).
@@ -32,6 +41,7 @@
 #   OPNEXUS_PHASE_FILE=PATH  hängt bei jedem Schritt eine Zeile "phase" an.
 set -euo pipefail
 
+START_DIR="$PWD"   # relative paths of arguments (export --out, apply DATEI) mean "from where the user stands"
 here="$(dirname "$(readlink -f "$0")")"
 # Im Release-Bundle liegt das Skript neben docker-compose.yml, im Repo in scripts/.
 if [ -f "$here/docker-compose.yml" ]; then default_dir="$here"; else default_dir="$here/.."; fi
@@ -470,6 +480,79 @@ cmd_password() {
   c exec -T backend python -m app.reset_password ${user:+"$user"}
 }
 
+# Konfiguration als Code (1.32). Die Datei geht über stdin ins Backend (es öffnet nie selbst eine Datei).
+from_here() {
+  local p
+  case "$1" in /*) p="$1" ;; .) p="$START_DIR" ;; *) p="$START_DIR/${1#./}" ;; esac
+  printf '%s' "${p%/}"
+}
+
+cmd_export() {
+  local out="$START_DIR" kinds="" arg
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --out) [ $# -ge 2 ] || die "--out braucht ein Verzeichnis."; out="$(from_here "$2")"; shift ;;
+      --kinds) [ $# -ge 2 ] || die "--kinds braucht eine Liste."; kinds="$2"; shift ;;
+      *) die "Unbekannte Option: $1" ;;
+    esac
+    shift
+  done
+  c ps --status running --services 2>/dev/null | grep -qx backend \
+    || die "Das Backend läuft nicht. Erst starten: docker compose up -d"
+  mkdir -p "$out"
+  local target="$out/opnexus-config.yaml"
+  ( umask 077
+    c exec -T backend python -m app.config_code export ${kinds:+--kinds "$kinds"} > "$target.partial" ) \
+    || { rm -f "$target.partial"; die "Export fehlgeschlagen."; }
+  mv "$target.partial" "$target"
+  say "Geschrieben: $target"
+}
+
+cmd_apply() {
+  local file="" dry=0 prune=0 yes=0 json=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) dry=1 ;; --prune) prune=1 ;; --yes|-y) yes=1 ;; --json) json=1 ;;
+      -*) die "Unbekannte Option: $arg" ;;
+      *) [ -z "$file" ] || die "Nur eine Datei erlaubt."; file="$(from_here "$arg")" ;;
+    esac
+  done
+  [ -n "$file" ] && [ -f "$file" ] || die "Aufruf: opnexus apply DATEI [--dry-run] [--prune] [--yes] [--json]"
+  c ps --status running --services 2>/dev/null | grep -qx backend \
+    || die "Das Backend läuft nicht. Erst starten: docker compose up -d"
+  local flags=(); [ "$prune" = 1 ] && flags+=(--prune)
+  local out code
+  set +e
+  out="$(c exec -T backend python -m app.config_code plan "${flags[@]}" $([ "$json" = 1 ] && echo --json) < "$file")"
+  code=$?
+  set -e
+  if [ "$json" = 1 ]; then
+    [ "$dry" = 1 ] || die "--json geht nur zusammen mit --dry-run."
+    printf '%s\n' "$out"
+    exit "$code"
+  fi
+  # Der Plan trägt in seiner letzten Zeile das Token; die Anzeige davor.
+  local token; token="$(printf '%s\n' "$out" | sed -n 's/^# plan-token: //p')"
+  printf '%s\n' "$out" | grep -v '^# plan-token: '
+  if [ "$code" = 3 ] || [ "$code" = 1 ] || [ "$code" = 4 ]; then
+    [ "$code" != 4 ] || printf '\033[31mBlockiert:\033[0m Der Plan lässt sich nicht übernehmen.\n' >&2
+    exit "$code"
+  fi
+  [ "$dry" = 1 ] && exit "$code"
+  if [ "$code" = 0 ]; then say "Keine Unterschiede. Nichts zu übernehmen."; exit 0; fi
+  if [ "$yes" != 1 ]; then
+    [ -t 0 ] || die "Ohne Terminal nur mit --yes."
+    [ "$prune" != 1 ] || printf '\033[33mAchtung:\033[0m --prune entfernt Objekte, die nicht in der Datei stehen.\n' >&2
+    read -r -p "Diesen Plan in die Entwürfe übernehmen? Auf Firewalls wird nichts geschrieben. [j/N] " answer
+    case "$answer" in j|J|y|Y) ;; *) die "Abgebrochen." ;; esac
+  fi
+  set +e
+  c exec -T backend python -m app.config_code apply "${flags[@]}" --plan-token "$token" < "$file"
+  code=$?
+  set -e
+  exit "$code"
+}
+
 # Interner Neustart durch refresh_cli: Marker setzen und die eigene Temp-Datei aufräumen (bash hat sie offen).
 if [ "${1:-}" = __refreshed ]; then
   CLI_REFRESHED=1; shift
@@ -478,10 +561,12 @@ fi
 
 case "${1:-}" in
   password) shift; cmd_password "$@" ;;
+  export)   shift; cmd_export "$@" ;;
+  apply)    shift; cmd_apply "$@" ;;
   status)   if [ "${2:-}" = "--porcelain" ]; then cmd_status_porcelain; else cmd_status; fi ;;
   update)   shift; cmd_update "${1:-}" ;;
   rollback) cmd_rollback ;;
   backup)   if [ "${2:-}" = "--full" ]; then shift 2; cmd_backup_full "$@"; else cmd_backup; fi ;;
   restore)  shift; cmd_restore "$@" ;;
-  *) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

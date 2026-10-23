@@ -911,11 +911,45 @@ Updates** und **Major-Upgrades**. Jede Aktion läuft über dieselben Schutzschri
 - Gesperrt, solange Deployments, Rollbacks, Wiederherstellungen oder andere
   Wartungen offen sind.
 
+**Rückweg-Punkt:** Vor jedem stabilen Update und Major-Upgrade (manuell, geplant, im
+Rollout und bei der CARP-Übergabe) legt OPNexus auf der Firewall einen **Rückweg-Punkt**
+an: ein ZFS-Boot-Environment des laufenden Systems, benannt
+`opnexus-pre-<Version>-<Zeit>`. Gelingt das nicht, startet das Update **nicht**. Hat die
+Firewall kein ZFS (UFS-Installation), läuft das Update, und die Meldung sagt, dass es
+keinen Rückweg gibt. Je Firewall bleiben die zwei neuesten Punkte von OPNexus erhalten;
+Boot-Environments von Hand werden nie angefasst. Manuell angelegte Snapshots dürfen den
+Präfix `opnexus-pre-` nicht tragen.
+
 „An Firewall übergeben“ bestätigt nur die Annahme. Nach einem Timeout bleibt der
 Ausgang unklar und wird **nie** automatisch wiederholt. Prüfe Erreichbarkeit,
 Version und Dienste und dokumentiere den Abschluss. Hängt ein Vorgang, schließt
 **Vorgang abbrechen** ihn mit Begründung. Offene Wartung sperrt neue Pushes auf dem
 betroffenen Host oder Cluster.
+
+### Zurück zur vorherigen Firmware
+
+**Zur vorherigen Firmware** (Host-Wartung) macht ein Update rückgängig: OPNexus
+aktiviert den neuesten Rückweg-Punkt und startet die Firewall neu. Die Aktion läuft über
+dieselben Schutzschritte wie ein Neustart (Vorschau, Hostname, Downtime-Bestätigung, im
+Cluster nur auf dem BACKUP, gesperrt bei offenen Vorgängen). Die Vorschau zeigt die
+Zielversion, den Punkt und **was verloren geht**.
+
+**Wichtig:** Ein Boot-Environment enthält auch die Konfiguration (`/conf`). Der Rückweg
+setzt also Firmware **und alle Konfigurationsänderungen seit dem Punkt** zurück, auch
+solche von Hand. Deshalb gilt:
+
+- Vor dem Rückweg sichert OPNexus die aktuelle Konfiguration lokal (scheitert das, startet
+  er nicht).
+- Alle Ausrollvorgänge von OPNexus auf diese Firewall seit dem Punkt (Regeln, Aliase,
+  NAT, VPN) werden als „unklar“ markiert. Das nächste Ausrollen schreibt sie wirklich neu,
+  statt „unverändert“ anzunehmen. Danach die zentralen Objekte über Vorschau → Ausrollen
+  → Bestätigen neu ausrollen.
+- OPNexus aktiviert den Punkt, prüft, dass er für den nächsten Start vorgemerkt ist, und
+  erst dann folgt der Neustart. Scheitert eines davon, schaltet OPNexus das vorherige
+  Boot-Environment wieder ein, damit kein alter Stand auf den nächsten ungeplanten Neustart
+  wartet.
+- Nach dem Start Version prüfen und die Wartung abschließen. Ein Rollout macht **nie**
+  von selbst einen Rückweg; bei einem fehlgeschlagenen Host hält er an, und du entscheidest.
 
 ### Update Center
 
@@ -1009,10 +1043,19 @@ als Ringe anlegt, zum Beispiel `ring-canary` (eine unwichtige Firewall), `ring-p
    aktualisierten Hosts: erreichbar und Firmware bereit, Zielversion installiert, CARP
    gesund, Gateways und Dienste, die vorher liefen, laufen wieder (vorher schon gestörte
    nur als Hinweis), keine offenen Sperren, optional Sicherheits-Score nicht gesunken
-   (Hinweis oder Halt). Ist etwas rot, prüft OPNexus zwei Minuten später noch einmal
+   (Hinweis oder Halt) und optional die **Erreichbarkeitsproben** des Plans. Ist etwas rot, prüft OPNexus zwei Minuten später noch einmal
    (langsamer Start nach dem Neustart) und hält dann an.
 4. **Freigabe** (optional je Welle): Die Welle beginnt erst, wenn jemand auf „Welle
    freigeben“ klickt.
+
+**Erreichbarkeitsproben:** Im Plan lassen sich bis zu zehn Proben eintragen (Ping oder TCP
+auf einen Port, Ziel als IP oder Name), zum Beispiel der Uplink, ein DNS-Server oder ein
+interner Server. Die **Firewall selbst** führt sie aus: einmal vor der Welle (Ausgangslage)
+und nach der Beobachtungszeit. Eine Probe, die vorher klappte und jetzt nicht mehr, hält den
+Rollout an; eine, die schon vorher scheiterte, ist nur ein Hinweis. Ehrlich benannt: Das
+prüft die Erreichbarkeit **von der Firewall aus**, nicht den Verkehr, der durch sie
+hindurchläuft. Jede Probe steht im Audit (Akteur `system:rollout`). Vor jedem Update
+legt OPNexus auch hier den [Rückweg-Punkt](#host-wartung) an.
 
 **Angehalten** wird bei jeder Unklarheit, nie wird etwas von selbst wiederholt: Gate rot,
 Host fehlgeschlagen oder ungewöhnlich lange unterwegs, Host in der Vorprüfung nicht bereit,
@@ -1405,6 +1448,9 @@ Passwort-Reset des Kontos widerruft alle seine Tokens. Höchstens 50 Tokens je B
 | **Ausrollen** | Zusätzlich ausrollen und warten: Regeln, Aliase, NAT, VPN, Zertifikate, Wartung, Sicherheitsprüfung. Nicht: Benutzer, Einstellungen, Benachrichtigungen, Hosts anlegen oder löschen, OPNexus-Update. |
 | **Admin** | Alles, was dein Konto darf, einschließlich der Dinge oben. |
 
+Plan und Export der [Konfiguration als Code](#konfiguration-als-code-yaml-git-ci) gehen
+schon mit „Lesen“, das Übernehmen nur mit „Admin“.
+
 Für jeden Bereich gilt: Tokens verwalten und das eigene Konto (Passwort, Zwei-Faktor)
 geht nur in einer normalen Anmeldung, nie mit einem Token. Ein Nur-Lese-Konto kann
 nur „Lesen“-Tokens anlegen; wird das Konto zurückgestuft, sind alle seine Tokens
@@ -1414,6 +1460,125 @@ sofort nur noch lesend. Im Audit steht bei Änderungen per Token „Benutzer (AP
 Anmeldung oder Token abrufbar) und lässt sich in Postman, einen Code-Generator oder
 einen Assistenten laden. Eine interaktive Seite gibt es nicht. Fehler kommen als
 `{"detail": {"code": "…", "params": {…}}}` mit stabilem `code`.
+
+### Konfiguration als Code (YAML, Git, CI)
+
+Unter **System › Konfiguration als Code** (oder per `opnexus export` / `opnexus apply`)
+lassen sich alle **zentral gepflegten Objekte** als eine YAML-Datei **exportieren** und
+wieder **importieren**: Gerätegruppen, Hierarchiegruppen, Aliase, Filterregeln,
+Port-Forwards, 1:1-NAT, Outbound-NAT, Hierarchie-Regeln und die Werte der
+[Standort-Variablen](#standort-variablen). Für Git-Verwaltung, Reviews, CI-Prüfungen und
+die Wiederherstellung auf einer neuen Instanz.
+
+**Was nicht dazugehört:** Hosts selbst (Adresse, API-Schlüssel, Pinning), Benutzer,
+Tokens, SSO, Einstellungen, Benachrichtigungen, Wartungsfenster und Rollouts,
+Netzwerkobjekte, VPN und Zertifikate. In der Datei stehen keine Zugänge, Schlüssel oder
+Passwörter; Hosts erscheinen nur mit ihrem Namen.
+
+**Der Import ändert nur die Entwürfe in OPNexus.** Auf Firewalls kommt weiterhin nichts
+ohne Vorschau → Ausrollen → Bestätigen. Der Import-Code ruft kein Firewall-Kommando auf
+(ein Test erzwingt das) und löscht nie ein Objekt, das schon einmal ausgerollt wurde.
+
+**Ablauf:**
+
+1. **Plan:** OPNexus vergleicht die Datei mit dem aktuellen Stand und zeigt je Objekt
+   *neu*, *geändert* (mit Feldern vorher/nachher), *entfernt* oder *unverändert*,
+   dazu Hinweise. Der Plan schreibt nichts und darf auch von Nur-Lese-Konten
+   und mit „Lesen“-Token abgerufen werden (zum Beispiel für eine Prüfung in einem Pull Request).
+2. **Übernehmen:** nur **Administratoren** (Sitzung oder Admin-Token). Das Übernehmen
+   schreibt alles in **einer** Transaktion oder nichts. Es verlangt das Token genau dieses Plans: hat sich seit dem Plan
+   etwas geändert (auch nur ein Gruppenmitglied oder ein neues Objekt in der Oberfläche),
+   antwortet OPNexus mit „veraltet“ und du planst neu. Zum Schluss prüft OPNexus, dass
+   die Datenbank genau dem Plan entspricht; sonst wird alles zurückgenommen.
+3. **Danach** erscheinen die Änderungen als Entwürfe und werden wie immer je Objekt
+   ausgerollt. Geänderte Objekte, die schon ausgerollt sind, nennt der Plan („auf N
+   Firewalls ausgerollt“).
+
+**Teil-Dateien:** Fehlt ein Abschnitt in der Datei, bleibt diese Art unberührt. Steht ein
+Abschnitt drin, auch ein leerer, und ist **Prune** an, wird diese Art vollständig
+abgeglichen: was in der Datei fehlt, wird aus OPNexus entfernt. Ohne Prune wird nur
+angelegt und geändert. Prune ist mächtig und deshalb ein ausdrücklicher Schalter
+(`--prune`, in der Oberfläche mit Bestätigung).
+
+**Blockiert** (der Plan lässt sich nicht übernehmen, nichts wird geändert):
+
+- Ein Objekt mit **offenem Deployment** (wartet auf Bestätigung oder Rückrollen) soll
+  geändert oder entfernt werden.
+- Prune eines Objekts, das **schon ausgerollt** wurde (auch zurückgerollt oder
+  fehlgeschlagen). Erst in der Oberfläche entfernen, dort mit Vorschau und Rückbau.
+- Prune einer Gruppe, eines Aliasnamens oder einer Hierarchiegruppe, die nach dem
+  Import **noch verwendet** wird (von Regeln, VPN, Rollout-Wellen, Hosts, Kindgruppen).
+- Fehler in der Datei selbst (unbekannter Host, Gruppe oder Hierarchiegruppe, doppelter
+  Schlüssel, Zyklus im Hierarchiebaum, ein Host in zwei Hierarchiegruppen, Platzhalter
+  `{{…}}` in Hierarchie-Regeln) lehnen schon den Plan mit Zeile und Pfad ab.
+
+**Schlüssel:** Aliase, Gruppen und Hierarchiegruppen werden über ihren **Namen**
+erkannt, Regeln, NAT-Objekte und Hierarchie-Regeln über einen **`key`**
+(Kleinbuchstaben, Ziffern, `.` `_` `-`, höchstens 64 Zeichen, eindeutig je Art). Bestehende
+Objekte bekamen beim Update automatisch einen (`r-…`, `pf-…`, `nat1-…`, `out-…`, `ph-…`);
+in der Datei darfst du eigene vergeben (`allow-dns-lan`), der Import speichert sie. Ein
+**Umbenennen** gilt als Entfernen und Neuanlegen, ein ausgerolltes Objekt blockiert
+dann mit Prune. Die Reihenfolge der Hierarchie-Regeln ist die Reihenfolge in der Datei.
+
+**Hinweise im Plan:** ein Alias-Name, den kein Alias hat; eine Variable, die entfernt
+wird, obwohl ein Objekt sie nutzt (das Ausrollen auf diesen Host scheitert dann sicher);
+ein deaktivierter Ziel-Host; neue Objekte mit Zielen ohne Verknüpfung zu bereits auf den
+Firewalls vorhandenen Objekten. Letzteres ist wichtig bei einem Import in eine **neue
+Instanz** mit denselben Firewalls: Ausrollen legt dort Duplikate an. Besser eine
+Vollsicherung (`opnexus backup --full`) zurückspielen oder die Objekte vorher über
+„Mit vorhandenem zentralem Objekt verknüpfen“ zuordnen.
+
+**Format:** eine Datei `opnexus-config.yaml`, `opnexus_config: 1`, feste Reihenfolge der
+Abschnitte, Objekte nach Schlüssel sortiert, alle Felder immer, kein Zeitstempel: Git
+zeigt nur echte Änderungen. Das JSON-Schema liegt in
+`backend/app/config_code/opnexus-config-v1.schema.json` (für Editor-Prüfung). Beschreibungen
+dürfen mehrzeilig sein, Namen und Schlüssel nicht; Ports dürfen als Zahl oder Text stehen.
+Die Datei darf höchstens 1 MiB groß sein (je Art 5000 Objekte, je Host 200 Variablen).
+
+**Strenge Prüfung:** Die Datei wird nur als Daten gelesen. Anker und Aliase (`&`, `*`),
+Merge-Schlüssel (`<<`), explizite Tags (`!!python/…`, `!!binary`), Direktiven, mehrere
+Dokumente, doppelte Schlüssel, Steuerzeichen und ungültiges UTF-8 werden abgelehnt.
+`on`, `yes`, Datumsangaben und `1:30` bleiben Text (kein „YAML 1.1“-Verhalten). Fehler
+nennen Zeile und Pfad (`rules[3].destination_port`).
+
+**Auf dem Server (CLI):**
+
+```
+opnexus export [--out VERZEICHNIS] [--kinds rules,aliases]
+opnexus apply DATEI [--dry-run] [--prune] [--yes] [--json]
+```
+
+`apply` zeigt zuerst den Plan und fragt `[j/N]` (ohne Terminal nur mit `--yes`). Mit
+`--dry-run` wird nichts übernommen. Exit-Codes für CI: `0` übernommen bzw. keine
+Unterschiede, `2` Unterschiede (nur `--dry-run`), `3` Datei ungültig, `4`
+blockiert oder veraltet, `1` sonstiger Fehler. Wer die Konsole des Servers bedient, braucht
+kein Token; im Audit steht `cli (Host-Konsole)`.
+
+**Git-Rezept** (Cron oder systemd-Timer auf dem OPNexus-Server):
+
+```
+opnexus export --out /srv/opnexus-config \
+  && git -C /srv/opnexus-config add -A \
+  && git -C /srv/opnexus-config commit -m "OPNexus-Stand $(date -u +%F)" \
+  && git -C /srv/opnexus-config push
+```
+
+OPNexus selbst verbindet sich nie mit einem Git-Server und braucht dafür keine Zugänge.
+
+**CI ohne Zugriff auf den Server:** per API mit einem Token. Der Plan genügt für
+Prüfungen in Pull Requests (Token „Lesen“), das Übernehmen braucht „Admin“:
+
+```
+curl -s -H "Authorization: Bearer opx_…" -H "Content-Type: application/json" \
+  -d "$(jq -n --rawfile y opnexus-config.yaml '{yaml:$y, prune:false}')" \
+  https://opnexus.example/api/config/import/plan
+```
+
+Die Antwort enthält `summary`, `items`, `warnings`, `applicable` und `token`; dieses
+Token gehört zu `POST /api/config/import/apply` (`{"yaml", "prune", "plan_token"}`). Export:
+`GET /api/config/export` (`?kinds=rules,aliases`). Im Audit steht bei jedem Übernehmen ein
+Sammeleintrag (SHA-256 der Datei, Zähler, Prune) und je geändertem Objekt ein Eintrag; der Inhalt
+der Datei steht nicht darin.
 
 ### Prometheus
 
@@ -1678,6 +1843,9 @@ laufende Version steht im Footer, in den Einstellungen und auf der About-Seite; 
   Im Verlauf und im Audit stehen nie Klartext-Geheimnisse.
 - **Audit:** lückenlos und per Trigger gegen Änderungen geschützt.
 - **Rollen:** der Nur-Lesen-Schutz gilt serverseitig, nicht nur in der Oberfläche.
+- **Fremde Dateien:** Der Import von Konfigurationsdateien liest YAML nur als Daten
+  (keine Anker, Tags, Merge-Schlüssel oder Mehrfach-Dokumente), begrenzt Größe und
+  Tiefe, prüft jedes Feld streng und ist Admins vorbehalten.
 - **Keine Telemetrie.** OPNexus verbindet sich nur mit deinen Firewalls und mit den
   Benachrichtigungszielen, die du einrichtest; der Versionshinweis ist optional.
 - **Fehlerdetails:** Rohe Antworttexte der Firewalls bei Verbindungsfehlern werden nicht
@@ -1730,8 +1898,10 @@ nach einem Neustart erhalten. Alternativ legt ihn OPNexus unter
 
 - **Keine Mehrmandantenfähigkeit**, keine Organisationen.
 - **Kein IP-Allowlisting, keine Passkeys/WebAuthn;** die Sitzungsdauer beträgt 30 Tage.
-- **Regeln:** kein Export und Import von Regeldefinitionen, keine Konfigurations-
-  Templates oder Policy-Pakete mit atomarem Commit. Der Regel-Drift-Abgleich nutzt
+- **Regeln:** Export und Import als YAML gibt es für die zentralen Objekte
+  ([Konfiguration als Code](#konfiguration-als-code-yaml-git-ci)); nicht dabei sind
+  Hosts, VPN, Netzwerkobjekte und Zertifikate. Keine Konfigurations-Templates oder
+  Policy-Pakete mit atomarem Commit auf den Firewalls. Der Regel-Drift-Abgleich nutzt
   einen Fingerabdruck und ist kein vollständiger Feld-für-Feld-Vergleich.
 - **Rollback:** nur für Regeln, Aliase und NAT (Deploys). Löschen, VPN- und
   Netzwerkänderungen haben keinen automatischen Rollback.
@@ -1740,10 +1910,13 @@ nach einem Neustart erhalten. Alternativ legt ihn OPNexus unter
 - **Logs:** kein Live-Streaming (Polling im Sekundenbereich), die Freitextsuche ist
   eine einfache Teilstring-Suche ohne Index.
 - **Geplante Wartung und Rollouts:** Rollouts kennen keine Zielversion „von außen“
-  (OPNsense installiert immer die neueste angebotene) und keinen automatischen Rückweg zur
-  alten Version. Major-Upgrade-Rollouts sind nur gegen eine nachgestellte Firewall getestet.
-  Die Gesundheitsprüfung sieht die Firewall aus Sicht der Verwaltung; ob der Nutzverkehr
-  durchgeht, prüft sie nicht.
+  (OPNsense installiert immer die neueste angebotene). Den Rückweg zur alten Version gibt es
+  nur auf Firewalls mit ZFS und nur geführt von Hand ([Rückweg](#zurück-zur-vorherigen-firmware)),
+  er setzt auch die Konfiguration zurück; ein Rollout macht ihn nie von selbst.
+  Major-Upgrade-Rollouts sind nur gegen eine nachgestellte Firewall getestet. Die
+  Gesundheitsprüfung sieht die Firewall aus Sicht der Verwaltung; die optionalen
+  Erreichbarkeitsproben prüfen, was die Firewall selbst erreicht, nicht den Verkehr
+  durch sie hindurch.
 - **Dienste:** keine Auswahlliste, alle Dienste sind steuerbar.
 - **VPN:** Umfang je Verfahren siehe [VPN](#vpn-ipsec-openvpn-wireguard).
 - **Zertifikate:** kein Push auf mehrere Hosts, keine Verwaltung von DNS-Providern

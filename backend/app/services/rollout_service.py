@@ -110,6 +110,8 @@ def definition(plan: RolloutPlan) -> dict:
     return {
         "id": str(plan.id), "name": plan.name, "action": plan.action, "window_id": str(plan.window_id) if plan.window_id else None,
         "auto_start": plan.auto_start, "gate_checks": effective_checks(plan.gate_checks), "compliance_mode": plan.compliance_mode,
+        # Only when set: an activated plan from before 1.32 must keep its fingerprint (else its automatic start stops).
+        **({"gate_probes": list(plan.gate_probes)} if plan.gate_probes else {}),
         "waves": [{"position": w.position, "label": w.label, "soak_minutes": w.soak_minutes, "carp_handover": w.carp_handover,
                    "require_approval": w.require_approval, "group_ids": sorted(str(g.id) for g in w.groups)} for w in plan.waves],
     }

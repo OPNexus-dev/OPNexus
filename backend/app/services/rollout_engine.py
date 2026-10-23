@@ -196,6 +196,7 @@ async def create_run(db: AsyncSession, plan: RolloutPlan, resolved: dict, *, sta
         "plan_id": str(plan.id), "name": plan.name, "action": plan.action,
         "window_id": str(plan.window_id) if plan.window_id else None,
         "gate_checks": rollout_service.effective_checks(plan.gate_checks), "compliance_mode": plan.compliance_mode,
+        "gate_probes": list(plan.gate_probes or []),
         "waves": [{k: w[k] for k in ("label", "soak_minutes", "carp_handover", "require_approval", "groups")} for w in resolved["waves"]],
     }
     run = RolloutRun(plan_id=plan.id, plan_name=plan.name, plan_snapshot=snapshot, action=plan.action, status="preflight",
@@ -381,7 +382,8 @@ async def _handle_resuming(db: AsyncSession, run: RolloutRun) -> Decision | None
             baselines.update((w.baseline or {}))
         gate = await rollout_health.evaluate(db, hosts, baselines, target_version=run.target_version,
                                              checks=run.plan_snapshot.get("gate_checks"),
-                                             compliance_mode=run.plan_snapshot.get("compliance_mode", "warn"))
+                                             compliance_mode=run.plan_snapshot.get("compliance_mode", "warn"),
+                                             probes=run.plan_snapshot.get("gate_probes"))
 
     async def apply(db, run):
         if gate["verdict"] == "fail":
@@ -537,7 +539,7 @@ async def _handle_preflight(db: AsyncSession, run: RolloutRun) -> Decision | Non
     versions = {}
     for rh_id in offers:
         host = usable[rh_id]
-        baselines[str(host.id)] = await rollout_health.baseline(db, host)
+        baselines[str(host.id)] = await rollout_health.baseline(db, host, run.plan_snapshot.get("gate_probes"))
         versions[rh_id] = baselines[str(host.id)].get("version")
     roles = await get_statuses([usable[i] for i in offers])
     rank = {"BACKUP": 0, None: 1, "MASTER": 2}
@@ -630,6 +632,7 @@ async def _handle_wave_running(db: AsyncSession, run: RolloutRun) -> Decision | 
         # must pass their checks again (BACKUP updated -> now it may carry the traffic for the MASTER).
         gate = await rollout_health.evaluate(
             db, done_peers + [host], baselines, target_version=run.target_version,
+            # No probes here: the peers' probes were checked in their own gate, and this runs on every tick.
             checks={**(run.plan_snapshot.get("gate_checks") or {}), "carp": True, "compliance": False})
         # The node itself is not updated yet: only its reachability, the cluster and the locks count for it.
         failed = [f"{hid}:{c}" for hid, row in gate["hosts"].items() for c, r in row.items()
@@ -718,7 +721,8 @@ async def _handle_gate(db: AsyncSession, run: RolloutRun) -> Decision | None:
     hosts = [h for h in [await db.get(OpnsenseHost, d.host_id) for d in done] if h is not None]
     gate = await rollout_health.evaluate(db, hosts, w.baseline or {}, target_version=run.target_version,
                                          checks=run.plan_snapshot.get("gate_checks"),
-                                         compliance_mode=run.plan_snapshot.get("compliance_mode", "warn"))
+                                         compliance_mode=run.plan_snapshot.get("compliance_mode", "warn"),
+                                         probes=run.plan_snapshot.get("gate_probes"))
 
     async def apply(db, run):
         w = wave_row(run, index)

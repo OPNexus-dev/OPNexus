@@ -29,7 +29,26 @@ in der App auf der Login-Seite, im Footer jeder Seite, auf `/about` und in
 den Einstellungen.
 
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
-ansteht): Merlin …
+ansteht): Saker …
+
+## [1.32.0] "Merlin" — 2026-10-23
+
+- **Konfiguration als Code:** Unter **System › Konfiguration als Code** (und per `opnexus export` / `opnexus apply`) lassen sich Gerätegruppen, Hierarchiegruppen,
+  Aliase, Filterregeln, Port-Forwards, 1:1-NAT, Outbound-NAT, Hierarchie-Regeln und Standort-Variablen als **eine YAML-Datei exportieren** (sortiert, ohne Zeitstempel,
+  ohne Zugänge oder Schlüssel, für Git und Reviews) und wieder **importieren**: erst ein **Plan** (neu, geändert, entfernt, unverändert, blockiert, mit Hinweisen), dann
+  das **Übernehmen** durch einen Administrator in einer Transaktion mit dem Token genau dieses Plans. **Der Import ändert nur die Entwürfe in OPNexus, nie eine Firewall**;
+  ausgerollt wird wie immer über Vorschau → Ausrollen → Bestätigen. Ausgerollte oder noch verwendete Objekte entfernt er nie (Prune blockiert den Plan). Die Datei wird
+  nur als Daten gelesen (keine Anker, Tags, Merge-Schlüssel, Mehrfach-Dokumente; 1 MiB, strenges Schema mit Zeile und Pfad bei Fehlern). Plan und Export gehen auch mit „Lesen“-Token
+  und Nur-Lese-Konten, `opnexus apply --dry-run` liefert Exit-Codes für CI (0 / 2 / 3 / 4). Regeln und NAT-Objekte tragen dafür einen stabilen `key` (Migration, wird für
+  Bestand automatisch vergeben). Gruppenänderungen stehen jetzt im Audit.
+- **Rückweg zur vorherigen Firmware:** Vor jedem Firmware-Update und Major-Upgrade (manuell, geplant, Rollout, CARP-Übergabe) legt OPNexus auf der Firewall ein
+  **ZFS-Boot-Environment** `opnexus-pre-<Version>-<Zeit>` als Rückweg-Punkt an (ohne den Punkt startet das Update nicht; ohne ZFS mit Hinweis). Neue Aktion **Zur vorherigen Firmware**
+  (Host-Wartung): Vorschau, Hostname, Downtime-Bestätigung, vorher lokale Sicherung der Konfiguration, dann Aktivieren, Prüfung und Neustart (scheitert ein Schritt, wird das
+  vorherige Boot-Environment wieder eingeschaltet). **Der Rückweg setzt auch die Konfiguration zurück** (live belegt): Ausrollvorgänge seit dem Punkt werden als unklar markiert,
+  damit das nächste Ausrollen wirklich schreibt. Ein Rollout macht nie von selbst einen Rückweg.
+- **Rollout-Gate: Erreichbarkeitsproben.** Bis zu zehn Ping-/TCP-Proben je Plan, von der Firewall selbst ausgeführt, vor der Welle und nach der Beobachtungszeit:
+  vorher ok und jetzt nicht mehr hält den Rollout an, schon vorher gestört ist nur ein Hinweis. (Erreichbarkeit von der Firewall aus, nicht der Verkehr durch sie hindurch.)
+- Migrationen 0030 (`config_key`) und 0031 (`gate_probes`).
 
 ## [1.31.1] "Vulture" — 2026-10-22
 

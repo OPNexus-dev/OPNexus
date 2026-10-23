@@ -14,6 +14,7 @@ def mock_reads(mock,base='https://fw1.test',carp=None,status='none',running='rea
     mock.get(f'{base}/api/core/firmware/info').respond(200,json={'product_version':version})
     mock.get(f'{base}/api/core/firmware/status').respond(200,json={'status':status,'all_packages':{},'status_msg':'cached result'})
     mock.get(f'{base}/api/core/firmware/running').respond(200,json={'status':running})
+    mock.get(f'{base}/api/core/snapshots/isSupported').respond(200,json={'supported':False})  # UFS: no rollback point (1.32)
 
 async def preview(client,h,action='reboot'):
     return await client.post(f"/api/hosts/{h['id']}/maintenance/preview",json={'action':action})

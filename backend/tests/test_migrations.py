@@ -450,4 +450,49 @@ async def test_0029_creates_the_rule_cleanup_tables_and_settings_and_is_idempote
     assert not {"cleanup_max_rules", "cleanup_delete_min_days", "cleanup_management_sources", "cleanup_management_ports"} & cols
     await _alembic(scratch, "upgrade", "head")
     await _alembic(scratch, "upgrade", "head")  # second run: nothing to do
-    assert await _version(scratch) == _head() == "0029" and await _schema_diff(scratch) == []
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+async def test_0030_backfills_config_keys_and_is_idempotent(scratch):
+    """1.31 -> 1.32: every rule/NAT table gets a unique, readable key derived from the UUID; the downgrade drops it."""
+    await _alembic(scratch, "upgrade", "0029")
+    rule_id = "3f2a9c1d-0000-4000-8000-000000000001"
+    async with scratch.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO firewall_rules (id, description, interface, direction, ipprotocol, protocol, action, "
+            "source_net, destination_net, enabled, log, created_at, updated_at) VALUES "
+            f"('{rule_id}', 'r', 'lan', 'in', 'inet', 'any', 'pass', 'any', 'any', true, false, now(), now())"))
+
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+    async with scratch.connect() as conn:
+        key = (await conn.execute(text("SELECT config_key FROM firewall_rules"))).scalar_one()
+        nullable = (await conn.execute(text(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_name = 'port_forward_rules' AND column_name = 'config_key'"))).scalar_one()
+    assert key == "r-3f2a9c1d0000" and nullable == "NO"
+
+    await _alembic(scratch, "downgrade", "0029")
+    async with scratch.connect() as conn:
+        cols = set((await conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'firewall_rules'"))).scalars().all())
+    assert "config_key" not in cols
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+async def test_0031_adds_gate_probes_to_existing_plans_and_is_idempotent(scratch):
+    await _alembic(scratch, "upgrade", "0030")
+    async with scratch.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO rollout_plans (id, name, description, action, auto_start, gate_checks, compliance_mode, created_by, created_at, updated_at) "
+            "VALUES (gen_random_uuid(), 'p', '', 'update', false, '{}', 'warn', 'admin', now(), now())"))
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT gate_probes::text FROM rollout_plans"))).scalar_one() == "[]"
+    await _alembic(scratch, "downgrade", "0030")
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []

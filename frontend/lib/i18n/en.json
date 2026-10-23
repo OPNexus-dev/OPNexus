@@ -302,7 +302,8 @@
       "hostsystem-diagnostics": "Diagnostics",
       "setup": "Setup",
       "rollouts": "Rollouts",
-      "analysis": "Rule analysis"
+      "analysis": "Rule analysis",
+      "config": "Configuration as code"
     }
   },
   "dashboard": {
@@ -892,7 +893,14 @@
     "BEREINIGUNG_AUSGANG_UNKLAR": "The firewall did not answer clearly; the state was read back.",
     "BEREINIGUNG_ABGEBROCHEN_VERWAIST": "The run was interrupted (OPNexus restarted?). Read the firewall's state with “Check again”.",
     "BEREINIGUNG_EINSTELLUNG_UNGUELTIG": "Invalid cleanup setting ({field}: {reason}).",
-    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "The acknowledgement text of this page is outdated. Reload the page and acknowledge the rules again."
+    "BEREINIGUNG_BESTAETIGUNGSTEXT_VERALTET": "The acknowledgement text of this page is outdated. Reload the page and acknowledge the rules again.",
+    "CONFIG_INVALID": "The configuration file is invalid. See the list of errors.",
+    "CONFIG_TOO_LARGE": "The configuration file is too large (at most 1 MiB).",
+    "CONFIG_UNSUPPORTED_VERSION": "OPNexus does not know this version of the file format.",
+    "CONFIG_PLAN_STALE": "Something changed since the plan was made. Please plan again.",
+    "CONFIG_BLOCKED": "The plan contains blocked objects and cannot be applied.",
+    "CONFIG_APPLY_SELFCHECK": "The import was rolled back: the database did not match the plan afterwards. Nothing was changed.",
+    "CONFIG_BUSY": "OPNexus is checking another configuration file right now. Please try again shortly."
   },
   "workflow": {
     "attention": "Check errors",
@@ -1137,7 +1145,8 @@
       "update": "Firmware update",
       "major_update": "Major upgrade",
       "carp_enter": "CARP handover",
-      "carp_leave": "CARP normal operation"
+      "carp_leave": "CARP normal operation",
+      "firmware_rollback": "Firmware rollback"
     },
     "reason": {
       "haOrder": "HA order: this host is MASTER. Update the BACKUP first, then switch the roles with “Switch CARP to partner”.",
@@ -1241,7 +1250,14 @@
     "autoVerifyHint": "After the job OPNexus checks by itself: firmware idle again, the expected reboot happened, version readable. Then the maintenance is closed and no longer locks the host. If anything is unclear it stays open (outcome unclear) and you are notified.",
     "rolloutBadge": "Rollout",
     "openRollout": "Open rollout",
-    "autoVerifiedBadge": "checked automatically"
+    "autoVerifiedBadge": "checked automatically",
+    "previewRollback": "Back to previous firmware",
+    "tipRollback": "Activates the rollback point (boot environment) OPNexus created before the last firmware update and reboots the firewall. Shows a preview first.",
+    "rollbackWarn": "The firewall restarts with the state from before the last update (version {version}, rollback point {point}).",
+    "rollbackLoses": "The configuration is rolled back too: everything changed on the firewall since the rollback point is gone afterwards.",
+    "rollbackChanges": "{n} deployments by OPNexus since the point are lost. They are marked as unclear. Afterwards, redeploy the central objects through the preview.",
+    "rollbackNoChanges": "OPNexus has not deployed anything to this firewall since the rollback point.",
+    "rollbackBackup": "OPNexus saves the current configuration locally first."
   },
   "restore": {
     "handoffWarning": "OPNexus does NOT perform the restore itself. After the handover you must import the backup manually in the OPNsense web interface. While this operation is open, rule/alias/NAT pushes and host maintenance are blocked for this host.",
@@ -3148,7 +3164,8 @@
         "gateways": "Gateways",
         "services": "Services",
         "locks": "Locks",
-        "compliance": "Compliance"
+        "compliance": "Compliance",
+        "probes": "Reachability probes"
       },
       "code": {
         "ok": "fine",
@@ -3172,7 +3189,9 @@
         "gateway_bad_before": "already bad before: {names}",
         "service_stopped": "no longer running: {names}",
         "open_locks": "{count} open lock(s) in host/cluster",
-        "score_lower": "score {before} → {after}"
+        "score_lower": "score {before} → {after}",
+        "probe_regressed": "no longer reachable: {probes}",
+        "probe_was_failing": "already failing before: {probes}"
       }
     },
     "actions": {
@@ -3273,7 +3292,14 @@
       "deactivated": "Automatic start deactivated",
       "emptyWave": "no hosts",
       "disabledHost": "disabled",
-      "cannotStart": "Cannot start like this – see the errors above."
+      "cannotStart": "Cannot start like this – see the errors above.",
+      "probes": "Reachability probes",
+      "probesHint": "Ping or TCP probes the firewall itself runs (uplink, DNS, an internal server). A probe that worked before the wave and fails afterwards stops the rollout. This checks reachability from the firewall, not traffic through it.",
+      "probeType": "Probe type",
+      "probeTarget": "Target (IP or name)",
+      "probePort": "Port",
+      "probeRemove": "Remove probe",
+      "addProbe": "Add probe"
     },
     "issue": {
       "no_waves": "No waves",
@@ -4095,6 +4121,130 @@
       "tagged": "Tagged",
       "source_ports": "Source port",
       "prio_group": "Group/priority"
+    }
+  },
+  "configCode": {
+    "title": "Configuration as code",
+    "intro": "Exports rules, NAT, aliases, groups, hierarchy and site variables as one YAML file – for Git, reviews and restoring onto a new instance. Importing only changes the drafts in OPNexus. Firewalls still only receive something through preview → deploy → confirm. The file contains no firewall credentials, users or keys.",
+    "exported": "Configuration exported",
+    "exportFailed": "Export failed",
+    "planFailed": "The file could not be checked",
+    "applyFailed": "Import failed",
+    "tooLarge": "The file is larger than 1 MiB.",
+    "line": "line {n}",
+    "moreErrors": "… and {n} more",
+    "export": {
+      "title": "Export",
+      "text": "All central objects as opnexus-config.yaml, sorted and without a timestamp, so Git shows real changes only.",
+      "tip": "On the server: opnexus export --out /srv/opnexus-config. With cron or a timer plus git commit this becomes a change log. apply --dry-run checks a file in CI.",
+      "button": "Download YAML"
+    },
+    "import": {
+      "title": "Check and apply a file",
+      "text": "A plan comes first: what would be new, change or be removed. Only then can the file be taken over into the drafts.",
+      "chooseFile": "Choose file",
+      "paste": "or paste YAML",
+      "prune": "Remove objects not in the file (prune)",
+      "pruneTip": "Reconciles every kind that appears in the file completely: objects missing from the file are removed from OPNexus. Deployed or still-referenced objects are never removed, they block the plan.",
+      "plan": "Create plan",
+      "apply": "Apply",
+      "adminOnly": "Only administrators can apply."
+    },
+    "summary": "Plan summary",
+    "action": {
+      "create": "new",
+      "update": "changed",
+      "delete": "removed",
+      "unchanged": "unchanged",
+      "blocked": "blocked"
+    },
+    "all": "All",
+    "colKind": "Kind",
+    "colKey": "Key",
+    "colAction": "Action",
+    "colChange": "Change",
+    "kind": {
+      "device_groups": "Device groups",
+      "policy_hierarchy_groups": "Hierarchy groups",
+      "aliases": "Aliases",
+      "rules": "Rules",
+      "port_forwards": "Port forwards",
+      "one_to_one": "1:1 NAT",
+      "outbound_nat": "Outbound NAT",
+      "policy_hierarchy_rules": "Hierarchy rules",
+      "variables": "Variables"
+    },
+    "noDifferences": "No differences",
+    "noDifferencesText": "The file matches the current state in OPNexus.",
+    "blockedHint": "The plan contains blocked objects and cannot be applied as it is. Fix the cause, or take the objects out of the file and plan again.",
+    "deployedOn": "Deployed on {n} firewall(s): redeploy through the preview afterwards.",
+    "implicit": "Follows from order or membership, not in the file.",
+    "showAll": "Show {n} more",
+    "warnings": "Notes",
+    "reason": {
+      "busy_deployment": "Open deployment: confirm or roll it back first",
+      "prune_deployed": "Is deployed: remove it in the interface first",
+      "prune_referenced": "Still in use"
+    },
+    "warn": {
+      "redeploy_needed": "{count} changed objects are deployed: redeploy them through the preview after applying.",
+      "targets_without_link": "{count} new objects have targets but are not linked to objects on the firewalls: deploying may create duplicates. Link them first or restore from a full backup.",
+      "unknown_alias_reference": "\"{value}\" looks like an alias, but no such alias exists.",
+      "variable_removed_in_use": "Variable {name} of {host} is removed while an object still uses it (deploying to that host will then fail).",
+      "target_host_disabled": "Target host {host} is disabled."
+    },
+    "confirm": {
+      "title": "Apply the plan?",
+      "text": "{create} new, {update} changed, {delete} removed.",
+      "nothingOnFirewalls": "Nothing is written to firewalls. The changes appear as drafts and are deployed as usual through preview → deploy → confirm.",
+      "prune": "{n} objects will be removed from OPNexus."
+    },
+    "applied": "Applied: {create} new, {update} changed, {delete} removed",
+    "appliedNext": "Nothing was written to firewalls. Now deploy the drafts object by object through preview → deploy → confirm.",
+    "viewDrafts": "View drafts",
+    "err": {
+      "yaml_alias_forbidden": "Aliases (*name) are not allowed",
+      "yaml_anchor_forbidden": "Anchors (&name) are not allowed",
+      "yaml_merge_forbidden": "Merge keys (<<) are not allowed",
+      "yaml_tag_forbidden": "Explicit tags (!, !!) are not allowed",
+      "yaml_directive_forbidden": "Directives (%YAML, %TAG) are not allowed",
+      "yaml_multiple_documents": "More than one YAML document",
+      "yaml_empty": "The file is empty",
+      "yaml_syntax": "YAML syntax error",
+      "duplicate_key": "Duplicate key",
+      "non_string_key": "The key must be text",
+      "too_deep": "Nested too deeply",
+      "too_many_nodes": "Too many elements",
+      "scalar_too_long": "Value too long",
+      "too_many_objects": "Too many objects",
+      "too_many_entries": "Too many entries",
+      "too_many_variables": "Too many variables for this host",
+      "too_large": "File too large",
+      "bad_encoding": "Not valid UTF-8",
+      "bad_request": "Invalid request",
+      "unknown_kind": "Unknown kind",
+      "not_a_mapping": "The file must be a mapping",
+      "missing_version": "opnexus_config: 1 is missing",
+      "unsupported_version": "This version of the file format is unknown",
+      "unknown_field": "Unknown field",
+      "missing_field": "Required field missing",
+      "bad_type": "Wrong type",
+      "bad_value": "Invalid value",
+      "bad_format": "Wrong format",
+      "too_short": "Too short",
+      "too_long": "Too long",
+      "control_character": "Control characters are not allowed",
+      "surrounding_whitespace": "Surrounding whitespace is not allowed",
+      "bad_variable_name": "Invalid variable name",
+      "bad_variable_value": "Invalid variable value",
+      "duplicate_object_key": "This key appears twice in the file",
+      "duplicate_entry": "Entry appears twice",
+      "unknown_host": "Unknown host",
+      "unknown_group": "Unknown device group",
+      "unknown_hierarchy_group": "Unknown hierarchy group",
+      "hierarchy_cycle": "Cycle in the hierarchy tree",
+      "host_in_two_hierarchy_groups": "Host is in two hierarchy groups",
+      "placeholder_not_supported": "Placeholders {{…}} are not possible in hierarchy rules"
     }
   }
 }

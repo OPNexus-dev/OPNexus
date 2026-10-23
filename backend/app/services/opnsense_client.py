@@ -1454,6 +1454,13 @@ async def create_snapshot(host: OpnsenseHost, name: str, note: str = "") -> None
         raise OpnsenseAPIError(f"Snapshot anlegen von Firewall nicht bestätigt: {redact_data(data)}")
 
 
+async def activate_snapshot(host: OpnsenseHost, uuid: str) -> None:
+    """Boot environment for every following start (bectl activate, not -t); takes effect at the next reboot."""
+    data = await _request(host, "POST", f"/core/snapshots/activate/{uuid}")
+    if isinstance(data, dict) and (data.get("validations") or str(data.get("status", "")).lower() == "failed"):
+        raise OpnsenseAPIError(f"Snapshot aktivieren von Firewall nicht bestätigt: {redact_data(data)}")
+
+
 async def delete_snapshot(host: OpnsenseHost, uuid: str) -> None:
     data = await _request(host, "POST", f"/core/snapshots/del/{uuid}")
     if isinstance(data, dict) and (data.get("validations") or str(data.get("status", "")).lower() == "failed"):

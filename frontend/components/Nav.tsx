@@ -37,6 +37,7 @@ import {
   Users,
   Waypoints,
   Waves,
+  FileCode2,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -180,6 +181,12 @@ export const navGroups: NavGroup[] = [
         label: "Management-Tunnel",
         icon: Link2,
         keywords: ["Overlay", "WireGuard", "NAT", "CGNAT", "Hub", "hinter NAT", "Fernzugriff", "Außenstelle", "Filiale", "ohne öffentliche IP"],
+      },
+      {
+        href: "/config",
+        label: "Konfiguration als Code",
+        icon: FileCode2,
+        keywords: ["YAML", "GitOps", "Git", "Export", "Import", "IaC", "Infrastructure as Code", "CI", "Sicherung", "Wiederherstellung", "Configuration as code", "apply", "dry-run", "Prune"],
       },
       {
         href: "/tokens",

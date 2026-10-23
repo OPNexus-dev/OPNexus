@@ -1349,7 +1349,7 @@ export const api = {
   carpEvents: (clusterName?: string) => request<CarpEvent[]>(`/cluster/carp-events${clusterName ? `?cluster_name=${encodeURIComponent(clusterName)}` : ""}`),
   changePassword: (current_password:string,new_password:string) => request<{ok:boolean}>("/auth/change-password",{method:"POST",body:JSON.stringify({current_password,new_password})}),
   hostMaintenance: (id:string) => request<MaintenanceRead>(`/hosts/${id}/maintenance`),
-  previewMaintenance: (id:string, action:"reboot"|"update"|"major_update") => request<MaintenancePreview>(`/hosts/${id}/maintenance/preview`,{method:"POST",body:JSON.stringify({action})}),
+  previewMaintenance: (id:string, action:"reboot"|"update"|"major_update"|"firmware_rollback") => request<MaintenancePreview>(`/hosts/${id}/maintenance/preview`,{method:"POST",body:JSON.stringify({action})}),
   executeMaintenance: (id:string, preview_id:string, confirm_name:string, acknowledge_downtime:boolean) => request<HostOperation>(`/hosts/${id}/maintenance/execute`,{method:"POST",body:JSON.stringify({preview_id,confirm_name,acknowledge_downtime})}),
   acknowledgeMaintenance: (id:string, operationId:string, confirm_name:string) => request<HostOperation>(`/hosts/${id}/maintenance/${operationId}/acknowledge`,{method:"POST",body:JSON.stringify({confirm_name})}),
   cancelMaintenance: (id:string, operationId:string, confirm_name:string, reason:string) => request<HostOperation>(`/hosts/${id}/maintenance/${operationId}/cancel`,{method:"POST",body:JSON.stringify({confirm_name,reason})}),
@@ -1481,6 +1481,11 @@ export const api = {
   testBackupOffsite: () => request<{ success: boolean }>("/settings/backups/test-offsite", { method: "POST" }),
   runBackupsNow: () => request<{ hosts: number; taken: number; failed: number; pruned: number; uploaded: number }>("/backups/run", { method: "POST" }),
   downloadHostBackup: (id: string, backupId: string) => requestBlob(`/hosts/${id}/backups/${backupId}`),
+  // Configuration as code (1.32)
+  exportConfig: () => requestBlob("/config/export"),
+  planConfig: (yaml: string, prune: boolean) => request<ConfigPlan>("/config/import/plan", { method: "POST", body: JSON.stringify({ yaml, prune }) }),
+  applyConfig: (yaml: string, prune: boolean, plan_token: string) =>
+    request<{ summary: ConfigPlan["summary"]; sha256: string; kinds: string[] }>("/config/import/apply", { method: "POST", body: JSON.stringify({ yaml, prune, plan_token }) }),
 
   previewRestore: (id: string, backupId: string) =>
     request<RestoreOperation>(`/hosts/${id}/restore/preview`, { method: "POST", body: JSON.stringify({ backup_id: backupId }) }),
@@ -1840,9 +1845,16 @@ export interface MaintenanceState {
   backup: {created_at:string;id:string;size:number} | null;
   backup_fresh?: boolean;
   peers?: {id:string;name:string;enabled:boolean;status:string|null;carp_status:string|null;carp_maintenance_mode:boolean}[];
-  actions: {reboot:string[];update:string[];major_update:string[]};
+  actions: {reboot:string[];update:string[];major_update:string[];firmware_rollback?:string[]};
+  // Only in the preview of the action firmware_rollback (1.32).
+  rollback?: {
+    supported: boolean;
+    target: {uuid:string;name:string;version:string;stamp:string;active:string;created:string} | null;
+    current: {uuid:string;name:string} | null;
+    changes_since: {kind:string;status:string;deployed_at:string}[];
+  };
 }
-export interface HostOperation { id:string; host_id:string; action:"reboot"|"update"|"major_update"|"carp_enter"|"carp_leave"; status:string; created_at:string; expires_at:string; actor:string; message:string|null; }
+export interface HostOperation { id:string; host_id:string; action:"reboot"|"update"|"major_update"|"firmware_rollback"|"carp_enter"|"carp_leave"; status:string; created_at:string; expires_at:string; actor:string; message:string|null; }
 export interface OpnsenseService { id:string; name:string; description:string; locked:boolean|number; running:boolean|number; }
 export interface HostResourceSample { id:string; sampled_at:string; mem_used_pct:number|null; load_avg_1m:number|null; disk_used_pct:number|null; raw:Record<string,unknown>; }
 export interface ScheduledMaintenanceItem { id:string; host_id:string; action:"reboot"|"update"|"major_update"; run_at:string; status:"pending"|"running"|"succeeded"|"failed"|"cancelled"; actor:string; created_at:string; result:{error?:string;response?:unknown;handover?:boolean;auto_verified?:boolean;version_before?:string|null;version_after?:string|null;reboot_required?:boolean}; host_operation_id:string|null; carp_handover:boolean; phase:"handover_wait"|"job_wait"|"verify"|"leave"|"leave_wait"|null; auto_verify?:boolean; origin?:"manual"|"rollout"; rollout_run_id?:string|null; }
@@ -1859,12 +1871,13 @@ export interface MaintenanceWindow extends MaintenanceWindowWrite {
   exceptions: { id: string; occurrence_date: string; kind: "skip" | "move"; moved_start: string | null; reason: string; actor: string; created_at: string }[];
   used_by: { id: string; name: string; auto_start: boolean; active: boolean }[];
 }
-export type RolloutCheck = "online" | "version" | "carp" | "gateways" | "services" | "locks" | "compliance";
+export type RolloutCheck = "online" | "version" | "carp" | "gateways" | "services" | "locks" | "compliance" | "probes";
+export interface RolloutProbe { type: "ping" | "tcp"; target: string; port: number | null; }
 export interface RolloutIssue { code: string; params: Record<string, string | number | boolean | null>; }
 export interface RolloutWaveWrite { label: string; group_ids: string[]; soak_minutes: number; carp_handover: boolean; require_approval: boolean; }
 export interface RolloutPlanWrite {
   name: string; description: string; action: "update" | "major_update"; window_id: string | null; auto_start: boolean;
-  gate_checks: Partial<Record<RolloutCheck, boolean>>; compliance_mode: "warn" | "fail"; waves: RolloutWaveWrite[];
+  gate_checks: Partial<Record<RolloutCheck, boolean>>; gate_probes?: RolloutProbe[]; compliance_mode: "warn" | "fail"; waves: RolloutWaveWrite[];
 }
 export interface RolloutPlan extends Omit<RolloutPlanWrite, "waves"> {
   id: string;
@@ -1902,7 +1915,7 @@ export interface RolloutRunDetail extends RolloutRunSummary {
 }
 export interface RolloutStatus { active: RolloutRunSummary | null; host_ids: string[]; current_host_ids: string[]; }
 export interface MaintenanceRead {state:MaintenanceState|null;error:string|null;operations:HostOperation[];}
-export interface MaintenancePreview {preview_id:string;expires_at:string;action:"reboot"|"update"|"major_update";state:MaintenanceState;}
+export interface MaintenancePreview {preview_id:string;expires_at:string;action:"reboot"|"update"|"major_update"|"firmware_rollback";state:MaintenanceState;}
 export interface CarpSwitchState {
   host_id:string;
   host_name:string;
@@ -2225,3 +2238,29 @@ export interface RuleHistoryEvent {
   audit_id: string | null; managed_rule_id?: string;
 }
 export interface RuleHistory { host_id: string; rule_uuid: string; watching_since: string | null; events: RuleHistoryEvent[]; }
+
+// Configuration as code (1.32)
+export interface ConfigFileError { code: string; path: string; line: number | null; params: Record<string, string | number | null>; }
+export interface ConfigChange { field: string; before: unknown; after: unknown; }
+export type ConfigAction = "create" | "update" | "delete" | "unchanged" | "blocked";
+export interface ConfigPlanItem {
+  kind: string;
+  key: string;
+  action: ConfigAction;
+  planned_action: Exclude<ConfigAction, "blocked">;
+  changes: ConfigChange[];
+  deployed_hosts: number;
+  reasons: string[];
+  implicit: boolean;
+}
+export interface ConfigWarning { code: string; path: string; params: Record<string, string | number | null>; }
+export interface ConfigPlan {
+  token: string;
+  sha256: string;
+  prune: boolean;
+  kinds: string[];
+  summary: { create: number; update: number; delete: number; unchanged: number; blocked: number };
+  items: ConfigPlanItem[];
+  warnings: ConfigWarning[];
+  applicable: boolean;
+}

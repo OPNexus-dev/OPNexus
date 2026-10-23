@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.31.1` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.32.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -21,7 +21,8 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 - **Alerts** — gateway/WAN outage (down, packet loss, latency), disk/memory/swap/CPU thresholds and stopped services, debounced over several measurements so spikes and flapping links stay quiet; delivered by email, webhook, ntfy, Gotify, Telegram, Microsoft Teams or Matrix, all switchable per event.
 - **Firewall interface through OPNexus** — open a firewall's own web interface in a separate browser tab through OPNexus, even behind NAT; admins only, one-time ticket, isolated origin, time limits and audit (off by default).
 - **Logs & audit** — central log search with correlation, dashboards and a complete deploy audit trail.
-- **Update center & rollouts** — firmware updates for the fleet, aware of HA order and maintenance mode; rollouts in waves (canary → pilot → prod) with recurring maintenance windows, a health gate between the waves and an automatic stop on anything unusual.
+- **Update center & rollouts** — firmware updates for the fleet, aware of HA order and maintenance mode; rollouts in waves (canary → pilot → prod) with recurring maintenance windows, a health gate between the waves (including optional reachability probes run from the firewall) and an automatic stop on anything unusual. Before every update OPNexus creates a ZFS boot environment as a rollback point, and a guided "back to previous firmware" restores it.
+- **Configuration as code** — export rules, aliases, NAT, groups, the policy hierarchy and site variables as one YAML file for Git and review, and import it again: a plan first (new / changed / removed / blocked), then a one-transaction apply that only changes OPNexus' drafts (never a firewall). `opnexus export` / `opnexus apply --dry-run` for the console and CI.
 - **Setup assistant** — a guided first run after installation: your own password, two-factor, and connecting the first firewall.
 - **Self-update** — OPNexus can update itself from its web interface, with progress and automatic rollback (opt-in).
 - **Automation** — personal API tokens (read / deploy / admin), Prometheus metrics, a read-only MCP endpoint for AI assistants and an OpenAPI schema.
@@ -67,7 +68,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.31.1
+OPNEXUS_VERSION=1.32.0
 ```
 
 ```bash

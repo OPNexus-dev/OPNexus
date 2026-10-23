@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+from app.models.config_key import config_key_column, register_config_key
 from app.models.port_forward_target import port_forward_targets
 from app.models.policy import port_forward_groups
 
@@ -20,6 +21,7 @@ class PortForwardRule(Base):
     __tablename__ = "port_forward_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    config_key: Mapped[str] = config_key_column()
     description: Mapped[str] = mapped_column(String(255))
     interface: Mapped[str] = mapped_column(String(64))
     ipprotocol: Mapped[str] = mapped_column(String(8), default="inet")
@@ -49,3 +51,6 @@ class PortForwardRule(Base):
     deployments: Mapped[list["PortForwardDeployment"]] = relationship(
         "PortForwardDeployment", back_populates="port_forward", cascade="all, delete-orphan"
     )
+
+
+register_config_key(PortForwardRule, "pf")

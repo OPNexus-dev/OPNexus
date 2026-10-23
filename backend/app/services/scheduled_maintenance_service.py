@@ -40,7 +40,7 @@ from app.models.host_operation import HostOperation
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from contextlib import contextmanager
 
-from app.services import audit_service, backup_store, opnsense_client as client
+from app.services import audit_service, backup_store, opnsense_client as client, snapshot_service
 from app.services.host_maintenance_service import ACTIVE, ensure_no_maintenance, inspect_carp_switch, inspect_host, peers
 from app.services.host_status_service import get_statuses
 
@@ -202,6 +202,17 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
         await db.commit()
         logger.warning("Geplante Wartung %s blockiert: %s", sched.id, sched.result["error"])
         return
+    if sched.action in _BACKUP_BEFORE:
+        # Way back (1.32, B5): a boot environment of the running system, after every other check passed.
+        # Fail closed like the backup: no rollback point on a ZFS firewall, no update.
+        try:
+            state["rollback_point"] = await snapshot_service.create_rollback_point(host, state.get("version"))
+        except client.OpnsenseAPIError as exc:
+            sched.status = "failed"
+            sched.result = {"error": f"Rückweg-Punkt (Boot-Environment) vor dem Update nicht angelegt: {str(exc)[:300]}"}
+            await db.commit()
+            logger.warning("Geplante Wartung %s: Rückweg-Punkt fehlgeschlagen", sched.id)
+            return
 
     boot_before = await _boot_time(host) if sched.auto_verify else None
     op = HostOperation(
@@ -302,6 +313,9 @@ async def _start_handover(db: AsyncSession, sched: ScheduledMaintenance, host: O
             backup_store.save_snapshot(host.id, await client.download_backup(host))
             state = await inspect_host(db, host, skip_role_checks=True)
         blocked = list(dict.fromkeys(blocked + state["actions"][sched.action]))
+        if not blocked and sched.action in _BACKUP_BEFORE:
+            # Way back (1.32, B5) while nothing has been toggled yet; a failure ends here like a failed backup.
+            state["rollback_point"] = await snapshot_service.create_rollback_point(host, state.get("version"))
     except client.OpnsenseAPIError as exc:
         await fail(f"Vorbereitung der CARP-Übergabe fehlgeschlagen, nichts wurde verändert: {str(exc)[:300]}")
         return

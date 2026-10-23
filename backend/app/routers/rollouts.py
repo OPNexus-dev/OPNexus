@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +20,7 @@ from app.models.maintenance_window import MaintenanceWindow
 from app.models.policy import DeviceGroup
 from app.models.rollout import RolloutPlan, RolloutPlanWave, RolloutRun
 from app.models.scheduled_maintenance import ScheduledMaintenance
-from app.services import audit_service, rollout_engine, rollout_health, rollout_service
+from app.services import audit_service, diagnostics_service, rollout_engine, rollout_health, rollout_service
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/rollouts", tags=["rollouts"])
@@ -36,6 +36,19 @@ class WaveIn(BaseModel):
     require_approval: bool = False
 
 
+class ProbeIn(BaseModel):
+    """A reachability probe run FROM the firewall in the health gate (same target rules as the host diagnostics)."""
+    type: Literal["ping", "tcp"]
+    target: str = Field(min_length=1, max_length=253, pattern=diagnostics_service.TARGET.pattern)
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def _port_only_for_tcp(self):
+        if (self.type == "tcp") != (self.port is not None):
+            raise ValueError("port_required_for_tcp_only")
+        return self
+
+
 class PlanIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=2000)
@@ -43,6 +56,7 @@ class PlanIn(BaseModel):
     window_id: uuid.UUID | None = None
     auto_start: bool = False
     gate_checks: dict[str, bool] = Field(default_factory=dict)
+    gate_probes: list[ProbeIn] = Field(default_factory=list, max_length=rollout_health.MAX_PROBES)
     compliance_mode: Literal["warn", "fail"] = "warn"
     waves: list[WaveIn] = Field(min_length=1, max_length=rollout_service.MAX_WAVES)
 
@@ -64,6 +78,7 @@ async def read_plan(db: AsyncSession, plan: RolloutPlan, resolved: dict | None =
     last_run = await db.scalar(select(RolloutRun).where(RolloutRun.plan_id == plan.id).order_by(RolloutRun.created_at.desc()).limit(1))
     return {
         **rollout_service.definition(plan),
+        "gate_probes": list(plan.gate_probes or []),
         "description": plan.description,
         "waves": [{"id": str(w.id), "position": w.position, "label": w.label, "soak_minutes": w.soak_minutes,
                    "carp_handover": w.carp_handover, "require_approval": w.require_approval,
@@ -79,6 +94,15 @@ async def read_plan(db: AsyncSession, plan: RolloutPlan, resolved: dict | None =
         "last_run": {"id": str(last_run.id), "status": last_run.status, "created_at": last_run.created_at} if last_run else None,
         "created_by": plan.created_by, "created_at": plan.created_at, "updated_at": plan.updated_at,
     }
+
+
+def _unique_probes(probes: list[ProbeIn]) -> list[dict]:
+    out: list[dict] = []
+    for probe in probes:
+        value = {"type": probe.type, "target": probe.target, "port": probe.port}
+        if value not in out:
+            out.append(value)
+    return out
 
 
 async def _apply(db: AsyncSession, plan: RolloutPlan, payload: PlanIn) -> None:
@@ -99,6 +123,7 @@ async def _apply(db: AsyncSession, plan: RolloutPlan, payload: PlanIn) -> None:
     plan.name, plan.description, plan.action = name, payload.description.strip(), payload.action
     plan.window_id, plan.auto_start = payload.window_id, payload.auto_start
     plan.gate_checks = {k: bool(v) for k, v in payload.gate_checks.items()}
+    plan.gate_probes = _unique_probes(payload.gate_probes)
     plan.compliance_mode = payload.compliance_mode
     plan.waves = [
         RolloutPlanWave(position=i, label=w.label.strip() or f"{i + 1}", soak_minutes=w.soak_minutes, carp_handover=w.carp_handover,
