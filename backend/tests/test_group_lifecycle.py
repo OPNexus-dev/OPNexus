@@ -218,3 +218,18 @@ async def test_rejected_draft_can_be_corrected_then_pushed(client, respx_mock):
     respx_mock.post('https://fw1.test/api/firewall/filter/apply').mock(return_value=httpx.Response(200, json={'status':'OK\n'}))
     pushed = await client.post(f"/api/rules/{r['id']}/deploy")
     assert pushed.json()['deployments'][0]['status'] == 'pending'
+
+
+async def test_a_group_that_targets_a_vpn_object_cannot_be_deleted(client, respx_mock):
+    """B15: the VPN link tables cascade, so the delete used to succeed and the VPN silently lost its targets."""
+    from tests.test_ipsec import _tunnel_payload
+
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw-vpn", "https://fw-vpn.test")
+    target = await group(client, [host["id"]], name="VPN-Ziel")
+    resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([], target_group_ids=[target["id"]]))
+    assert resp.status_code == 201, resp.text
+    refused = await client.delete(f"/api/groups/{target['id']}")
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "GRUPPE_WIRD_NOCH_VON_VPN_VERWENDET"
+    assert (await client.delete(f"/api/ipsec/tunnels/{resp.json()['id']}")).status_code == 204
+    assert (await client.delete(f"/api/groups/{target['id']}")).status_code == 204

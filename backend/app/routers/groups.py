@@ -99,6 +99,12 @@ async def delete_group(group_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     for assignment in (port_forward_groups, one_to_one_groups, outbound_nat_groups):
         if await db.scalar(select(assignment.c.group_id).where(assignment.c.group_id == group_id).limit(1)):
             raise api_error(409, ErrorCode.GRUPPE_WIRD_NOCH_VON_NAT_REGELN_VERWENDET)
+    # VPN objects target groups too; their link rows are ON DELETE CASCADE, so without this check the group would
+    # vanish and the VPN would silently lose its targets (B15, found while designing the config import).
+    from app.models.policy import ipsec_tunnel_groups, openvpn_instance_groups, wireguard_tunnel_groups
+    for assignment in (ipsec_tunnel_groups, openvpn_instance_groups, wireguard_tunnel_groups):
+        if await db.scalar(select(assignment.c.group_id).where(assignment.c.group_id == group_id).limit(1)):
+            raise api_error(409, ErrorCode.GRUPPE_WIRD_NOCH_VON_VPN_VERWENDET)
     from app.models.rollout import rollout_wave_groups
     if await db.scalar(select(rollout_wave_groups.c.group_id).where(rollout_wave_groups.c.group_id == group_id).limit(1)):
         raise api_error(409, ErrorCode.ROLLOUT_GROUP_IN_USE)

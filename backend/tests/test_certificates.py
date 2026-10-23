@@ -166,3 +166,35 @@ async def test_delete_in_use_certificate_returns_stable_error_code(client, respx
     assert detail["code"] == "UPSTREAM_REJECTED"
     assert "Item in use by" in detail["params"]["reason"]
     assert "roadwarrior" in detail["params"]["reason"]
+
+
+async def test_a_ca_cannot_be_requested_through_the_managed_certificate_api(client, respx_mock):
+    """T3 (1.31.0 test run): cert_type=v3_ca created a certificate with the CA extension, not a usable CA."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw-ca", "https://fw-ca.test")
+    resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"], cert_type="v3_ca"))
+    assert resp.status_code == 422
+    for allowed in ("usr_cert", "server_cert", "combined_server_client"):
+        assert (await client.post("/api/certificates/managed", json=_cert_payload(host["id"], cert_type=allowed))).status_code == 201
+
+
+@pytest.mark.asyncio
+async def test_target_host_of_a_deployed_certificate_is_fixed_but_free_before_the_first_push(client, respx_mock):
+    """Audit AUD-03: re-pointing a deployed certificate reported success for a host that never received it."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    a = await _create_host(client, "fix-a", "https://fix-a.test")
+    b = await _create_host(client, "fix-b", "https://fix-b.test")
+    cert = (await client.post("/api/certificates/managed", json=_cert_payload(a["id"]))).json()
+    moved = await client.put(f"/api/certificates/managed/{cert['id']}", json=_cert_payload(b["id"], expected_updated_at=cert["updated_at"]))
+    assert moved.status_code == 200 and moved.json()["host_id"] == b["id"]  # never pushed: still free to move
+
+    add = respx_mock.post("https://fix-b.test/api/trust/cert/add").mock(return_value=httpx.Response(200, json={"result": "saved", "uuid": "uuid-on-b"}))
+    pushed = (await client.post(f"/api/certificates/managed/{cert['id']}/push")).json()
+    assert pushed["status"] == "success" and add.call_count == 1
+
+    calls = len(respx_mock.calls)
+    refused = await client.put(f"/api/certificates/managed/{cert['id']}", json=_cert_payload(a["id"], expected_updated_at=pushed["updated_at"]))
+    assert refused.status_code == 409 and refused.json()["detail"]["code"] == "ZIEL_HOST_NACH_AUSROLLEN_FEST"
+    assert len(respx_mock.calls) == calls  # nothing was sent anywhere
+    same_host = await client.put(f"/api/certificates/managed/{cert['id']}", json=_cert_payload(b["id"], description="renamed", expected_updated_at=pushed["updated_at"]))
+    assert same_host.status_code == 200  # everything else stays editable

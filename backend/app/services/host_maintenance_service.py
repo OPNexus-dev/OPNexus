@@ -12,6 +12,7 @@ from app.models import OpnsenseHost, RuleDeployment, AliasDeployment, PortForwar
 from app.models.host_operation import HostOperation
 from app.models.restore_operation import RestoreOperation
 from app.services import opnsense_client as client, backup_store, carp_maintenance_window_service
+from app.services.deploy_flow import unsettled
 from app.services.host_status_service import get_statuses
 
 DEPLOYMENTS = (RuleDeployment, AliasDeployment, PortForwardDeployment, OneToOneDeployment, OutboundNatDeployment)
@@ -70,7 +71,7 @@ async def _shared_change_blockers(db, fleet):
     blocked = []
     fleet_ids = [h.id for h in fleet]
     for model in DEPLOYMENTS:
-        if await db.scalar(select(model.id).where(model.host_id.in_(fleet_ids), model.status.in_(("pending", "revert_failed"))).limit(1)):
+        if await db.scalar(select(model.id).where(model.host_id.in_(fleet_ids), unsettled(model)).limit(1)):
             blocked.append("Offene Bestätigung oder fehlgeschlagener Rollback im Host/Cluster.")
             break
     operations = list((await db.scalars(select(HostOperation).where(HostOperation.host_id.in_(fleet_ids), HostOperation.status.in_(ACTIVE)))).all())

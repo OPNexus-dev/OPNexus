@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { useToast } from "@/components/ui/Toast";
-import { api, Host, HostCreate, HostUpdate, PolicyHierarchyGroup } from "@/lib/api";
+import { api, ApiError, Host, HostCreate, HostUpdate, PolicyHierarchyGroup } from "@/lib/api";
 import { useNotAdmin } from "@/lib/useReadOnly";
 import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -41,6 +41,11 @@ export default function HostsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [editHost, setEditHost] = useState<Host | null>(null);
   const [tlsPin, setTlsPin] = useState<TlsPinValue>({ pem: null, insecure: false, clear: false });
+  // After a failed connection check the user may still save the host (behind NAT, tunnel not up yet).
+  const [connectionFailed, setConnectionFailed] = useState(false);
+  const [createAnyway, setCreateAnyway] = useState(false);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [deleteName, setDeleteName] = useState("");
 
   async function load() {
     try {
@@ -62,26 +67,31 @@ export default function HostsPage() {
     setSaving(true);
     setFormError(null);
     try {
-      await api.createHost({ ...form, verify_tls: !tlsPin.insecure, tls_ca_pem: tlsPin.pem, cluster_name: form.cluster_name || null, policy_hierarchy_group_id: form.policy_hierarchy_group_id || null });
+      await api.createHost({ ...form, verify_tls: !tlsPin.insecure, tls_ca_pem: tlsPin.pem, cluster_name: form.cluster_name || null, policy_hierarchy_group_id: form.policy_hierarchy_group_id || null, verify_connection: !createAnyway });
       setShowModal(false);
+      setConnectionFailed(false);
+      setCreateAnyway(false);
       toast.show(t("hosts.created", { name: form.name }), "success");
       setForm(emptyForm);
       setTlsPin({ pem: null, insecure: false, clear: false });
       await load();
     } catch (e) {
+      setConnectionFailed(e instanceof ApiError && e.code === "HOST_CONNECTION_FAILED");
       setFormError(errorMessage(e, "hosts.createFailed"));
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id: string, name: string) {
-    if (!confirm(t("hosts.deleteConfirm"))) return;
+  async function handleDelete() {
+    if (!deleting) return;
     try {
-      await api.deleteHost(id);
+      await api.deleteHost(deleting.id, deleteName);
+      setDeleting(null);
       await load();
-      toast.show(t("hosts.deleted", { name }), "success");
+      toast.show(t("hosts.deleted", { name: deleting.name }), "success");
     } catch (e) {
+      setDeleting(null);
       setError(errorMessage(e, "common.requestFailed"));
     }
   }
@@ -90,7 +100,7 @@ export default function HostsPage() {
     <fieldset disabled={readOnly} className="contents">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-slate-900">Hosts</h1>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={() => { setConnectionFailed(false); setCreateAnyway(false); setFormError(null); setShowModal(true); }}>
           <Plus size={16} />
           {t("hosts.add")}
         </Button>
@@ -216,7 +226,7 @@ export default function HostsPage() {
                       <Pencil size={14} />
                       {t("hosts.edit")}
                     </Button>
-                    <Button variant="dangerSubtle" onClick={() => handleDelete(host.id, host.name)}>
+                    <Button variant="dangerSubtle" onClick={() => { setDeleting({ id: host.id, name: host.name }); setDeleteName(""); }}>
                       <Trash2 size={14} />
                       {t("hosts.delete")}
                     </Button>
@@ -281,7 +291,13 @@ export default function HostsPage() {
               </Select>
             </FieldGroup>
             <TlsPinControl baseUrl={form.base_url} value={tlsPin} onChange={setTlsPin} />
-            {formError && <p className="text-sm text-red-600">{formError}</p>}
+            {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
+            {connectionFailed && (
+              <label className="flex items-start gap-2 text-sm text-slate-700">
+                <input type="checkbox" className="mt-1" checked={createAnyway} onChange={(e) => setCreateAnyway(e.target.checked)} />
+                <span>{t("hosts.createAnyway")}</span>
+              </label>
+            )}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>
                 {t("common.cancel")}
@@ -305,6 +321,23 @@ export default function HostsPage() {
             toast.show(t("hosts.saved", { name: editHost.name }), "success");
           }}
         />
+      )}
+      {deleting && (
+        <Modal title={t("hosts.deleteTitle")} onClose={() => setDeleting(null)}>
+          <div className="space-y-4 text-sm">
+            <p className="text-slate-700">{t("hosts.deleteConfirm")}</p>
+            <label className="block">
+              <span className="block">{t("hosts.deleteTypeName", { name: deleting.name })}</span>
+              <Input className="mt-1" autoFocus autoComplete="off" spellCheck={false} value={deleteName} placeholder={deleting.name} aria-label={t("hosts.deleteTypeNameAria")}
+                onChange={(e) => setDeleteName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && deleteName === deleting.name) void handleDelete(); }} />
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDeleting(null)}>{t("common.cancel")}</Button>
+              <Button variant="danger" disabled={deleteName !== deleting.name} onClick={handleDelete}>{t("hosts.delete")}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </fieldset>
   );

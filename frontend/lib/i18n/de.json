@@ -406,7 +406,18 @@
     "create": "Host anlegen",
     "editTitle": "Host bearbeiten: {name}",
     "active": "Aktiv",
-    "baseUrlEditHint": "Neue Adresse eintragen, wenn die Firewall eine andere IP bekommen hat (z. B. nach einer Änderung der Verwaltungs-Schnittstelle). Verlauf und Zuordnungen bleiben erhalten."
+    "baseUrlEditHint": "Neue Adresse eintragen, wenn die Firewall eine andere IP bekommen hat (z. B. nach einer Änderung der Verwaltungs-Schnittstelle). Verlauf und Zuordnungen bleiben erhalten.",
+    "connection": {
+      "credentials": "API-Schlüssel oder -Geheimnis wurden abgelehnt (401)",
+      "forbidden": "der API-Schlüssel hat nicht genug Rechte (403)",
+      "tls": "das TLS-Zertifikat passt nicht (Zertifikat festsetzen oder prüfen)",
+      "unreachable": "keine Verbindung (Adresse, Port, Netz und Regeln prüfen)",
+      "other": "unerwartete Antwort"
+    },
+    "createAnyway": "Trotzdem anlegen, ohne Verbindungsprüfung (zum Beispiel, wenn die Firewall hinter NAT noch nicht erreichbar ist).",
+    "deleteTitle": "Host löschen",
+    "deleteTypeName": "Zur Bestätigung den Hostnamen eingeben: {name}",
+    "deleteTypeNameAria": "Hostnamen zur Bestätigung eingeben"
   },
   "rules": {
     "title": "Firewall-Regeln",
@@ -900,7 +911,13 @@
     "CONFIG_PLAN_STALE": "Seit dem Plan hat sich etwas geändert. Bitte neu planen.",
     "CONFIG_BLOCKED": "Der Plan enthält blockierte Objekte und kann nicht übernommen werden.",
     "CONFIG_APPLY_SELFCHECK": "Die Übernahme wurde zurückgenommen: die Datenbank entsprach danach nicht dem Plan. Nichts wurde geändert.",
-    "CONFIG_BUSY": "OPNexus prüft gerade eine andere Konfigurationsdatei. Bitte gleich noch einmal versuchen."
+    "CONFIG_BUSY": "OPNexus prüft gerade eine andere Konfigurationsdatei. Bitte gleich noch einmal versuchen.",
+    "GRUPPE_WIRD_NOCH_VON_VPN_VERWENDET": "Gruppe wird noch von VPN-Verbindungen verwendet",
+    "HOST_URL_EXISTS": "Diese Adresse gehört schon zum Host „{host}“.",
+    "HOST_CONNECTION_FAILED": "Die Firewall konnte mit diesen Angaben nicht erreicht werden: {reason}",
+    "ZIEL_HOST_NACH_AUSROLLEN_FEST": "Der Ziel-Host lässt sich nach dem Ausrollen nicht mehr ändern. Lösche den Eintrag (das entfernt ihn auch von der Firewall) und lege ihn für den neuen Host neu an.",
+    "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "Dieses ACME-Konto wird von Zertifikatsanfragen verwendet; den Host kannst du erst ändern, wenn keine Anfrage es mehr nutzt.",
+    "VPN_DEPLOY_LAEUFT_BEREITS": "Für dieses VPN läuft gerade ein Ausrollen oder Entfernen. Warte einen Moment und versuche es erneut."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -2906,7 +2923,9 @@
       "time": "Zeit",
       "open": "Port {port} offen",
       "closed": "Port {port} nicht erreichbar",
-      "noRecords": "Keine Antwort für „{name}“."
+      "noRecords": "Keine Antwort für „{name}“.",
+      "noHops": "Keine Station auf dem Weg hat geantwortet (oder das Ziel ist nicht erreichbar). Das ist kein Fehler der Firewall: viele Router antworten nicht auf Traceroute.",
+      "silentHop": "* keine Antwort"
     }
   },
   "setup": {
@@ -3831,7 +3850,10 @@
       "portsHint": "TCP-Ports, auf denen die Firewalls zusätzlich verwaltet werden (z. B. SSH oder Weboberfläche auf einem anderen Port). API-Port, 443, 80 und 22 sind immer geschützt.",
       "portsPlaceholder": "z. B. 2222, 8443",
       "portsInvalid": "Kein gültiger Port: {value} (1–65535).",
-      "portsTooMany": "Höchstens 20 Ports."
+      "portsTooMany": "Höchstens 20 Ports.",
+      "yourAddress": "Deine Adresse, wie OPNexus sie sieht: {address}",
+      "addYourAddress": "Hinzufügen",
+      "yourAddressHint": "Ein Vorschlag: Die Firewalls können deinen Arbeitsplatz unter einer anderen Adresse sehen (NAT, VPN). Die Adresse von OPNexus selbst ermittelt die Bereinigung automatisch je Firewall."
     },
     "mgmt": {
       "title": "Bereinigung gesperrt: Verwaltungsquellen fehlen",
@@ -3876,7 +3898,12 @@
       "confirmNameHint": "Geben Sie den Namen der Firewall genau so ein. Das verhindert, dass versehentlich die falsche Firewall geändert wird.",
       "confirmNameAria": "Name der Firewall zur Bestätigung eingeben: {host}",
       "deployDisabledName": "Der Name muss genau dem der Firewall entsprechen.",
-      "deployNotAdmin": "Nur Administratoren dürfen ausrollen. Eine Vorschau gehört dem, der sie erstellt hat: ein Administrator muss selbst eine neue Vorschau öffnen."
+      "deployNotAdmin": "Nur Administratoren dürfen ausrollen. Eine Vorschau gehört dem, der sie erstellt hat: ein Administrator muss selbst eine neue Vorschau öffnen.",
+      "opnexusSource": {
+        "added": "OPNexus erreicht diese Firewall von {address} aus: diese Adresse ist zusätzlich geschützt.",
+        "configured": "OPNexus erreicht diese Firewall von {address} aus (schon in den Verwaltungsquellen).",
+        "unknown": "Von welcher Adresse OPNexus diese Firewall erreicht, ließ sich nicht ermitteln (API-Recht „Diagnose: Zustände“ oder Weg über den Management-Tunnel). Stelle sicher, dass sie in den Verwaltungsquellen steht."
+      }
     },
     "ack": {
       "title": "Diese Befunde beruhen auf einer Annahme. Bestätigen Sie jede Regel einzeln.",

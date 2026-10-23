@@ -115,6 +115,15 @@ export function CleanupSettings({ compact = false, onSaved }: { compact?: boolea
           )}
         />
         {touched && sourceError && <p id={errorId} role="alert" className="mt-1 text-xs text-red-600">{sourceError}</p>}
+        {settings?.your_address && !parsed.entries.some((e) => e === settings.your_address || e === `${settings.your_address}/32` || e === `${settings.your_address}/128`) && (
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            {t("cleanup.settings.yourAddress", { address: settings.your_address })}
+            <Button type="button" variant="outline" className="px-2 py-0.5 text-xs" onClick={() => { setSources((s) => (s.trim() ? `${s.trim()}\n${settings.your_address}` : settings.your_address ?? "")); setTouched(true); }}>
+              {t("cleanup.settings.addYourAddress")}
+            </Button>
+            <InfoTip text={t("cleanup.settings.yourAddressHint")} size={13} />
+          </p>
+        )}
       </div>
       {!compact && (
         <div>

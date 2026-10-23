@@ -10,6 +10,7 @@ from app.services import variables_service as vs
 from tests.test_aliases import _alias_payload
 from tests.test_port_forward import _pf_payload
 from tests.test_rules import _create_host, _rule_payload
+from tests.helpers import delete_host
 
 
 def _host(name="fw", **values):
@@ -206,7 +207,7 @@ async def test_variables_follow_the_host_and_operators_may_set_them(client, resp
         assert (await ro.put(f"/api/hosts/{host['id']}/variables", json={"variables": {}})).status_code == 403
     finally:
         await ro.aclose()
-    await client.delete(f"/api/hosts/{host['id']}")  # variables go with the host
+    await delete_host(client, host['id'])  # variables go with the host
     from app.database import SessionLocal
     from sqlalchemy import select
     async with SessionLocal() as db:

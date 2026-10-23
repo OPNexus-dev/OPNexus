@@ -27,6 +27,7 @@ from app.config_code import schema
 from app.config_code.export import canonical
 from app.config_code.loader import MAX_VARIABLES_PER_HOST, ConfigError, Parsed, _line_for, _path, display
 from app.database import Base
+from app.services.deploy_flow import is_unsettled
 from app.models.alias import FirewallAlias
 from app.models.host import OpnsenseHost
 from app.models.one_to_one import OneToOneRule
@@ -44,7 +45,6 @@ from app.schemas.port_forward import PortForwardCreate
 from app.schemas.rule import RuleCreate
 from app.services.variables_service import names_in
 
-BUSY = ("pending", "revert_failed")
 DEPLOYED = ("success", "pending", "revert_failed")
 
 
@@ -405,7 +405,7 @@ async def build_plan(db: AsyncSession, parsed: Parsed, prune: bool) -> Plan:
                 item.db_id = row.id
                 deployments = getattr(row, "deployments", None) or []
                 item.deployed_hosts = sum(1 for d in deployments if d.status in DEPLOYED)
-                if item.action in ("update", "delete") and any(d.status in BUSY for d in deployments):
+                if item.action in ("update", "delete") and any(is_unsettled(d) for d in deployments):
                     item.reasons.append("busy_deployment")
                 if item.action == "delete" and deployments:
                     item.reasons.append("prune_deployed")

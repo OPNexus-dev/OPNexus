@@ -29,6 +29,7 @@ and the sweeper away in the gap (pending/unknown rows are never re-deployed).
 from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable
 
+from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -46,7 +47,21 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-async def _checkpoint(db: AsyncSession) -> None:
+def is_unsettled(row) -> bool:
+    """A change that may still be live and whose rollback is not yet done: pending, outcome unknown, or an
+    "error" row whose revert deadline is still armed (written but apply/ordering not confirmed)."""
+    return row.status in ("pending", "revert_failed") or (row.status == "error" and row.revert_deadline is not None)
+
+
+def unsettled(model):
+    """``is_unsettled`` as a SQL condition for the deployment model."""
+    return or_(
+        model.status.in_(("pending", "revert_failed")),
+        and_(model.status == "error", model.revert_deadline.isnot(None)),
+    )
+
+
+async def checkpoint(db: AsyncSession) -> None:
     from app.services.policy_service import policy_lock
 
     await db.commit()
@@ -67,12 +82,16 @@ async def push_to_host(
 ) -> Any:
     window = timedelta(seconds=settings.deploy_confirm_window_seconds)
     before = {name: getattr(existing, name) for name in _FIELDS} if existing else None
+    # An armed "error" row (written, apply not confirmed) holds the UNCONFIRMED payload as last_payload: a retry must
+    # keep the original rollback target instead of promoting that payload to it.
+    armed = existing is not None and existing.status == "error" and existing.revert_deadline is not None
+    rollback_target = existing.previous_payload if armed else prior_live_payload
 
     # 1. durable intent
     if existing is not None:
         row = existing
         row.status, row.message = "pending", None
-        row.previous_payload, row.last_payload = prior_live_payload, payload
+        row.previous_payload, row.last_payload = rollback_target, payload
         row.revert_deadline, row.deployed_at = _now() + window, _now()
     else:
         row = make(
@@ -83,7 +102,7 @@ async def push_to_host(
     # The intent is a technical safety record, not a state change worth a history
     # entry of its own (the request itself is already audited as "requested").
     row._skip_audit = True
-    await _checkpoint(db)
+    await checkpoint(db)
     row._skip_audit = False
 
     wrote = False
@@ -93,9 +112,9 @@ async def push_to_host(
         # 3. recoverable by UUID from here on
         setattr(row, uuid_attr, new_uuid)
         row.status, row.message = "pending", None
-        row.previous_payload = prior_live_payload if existing is not None else None
+        row.previous_payload = rollback_target if existing is not None else None
         row.last_payload, row.revert_deadline, row.deployed_at = payload, _now() + window, _now()
-        await _checkpoint(db)
+        await checkpoint(db)
         await apply()
     except OpnsenseAPIError as exc:
         ambiguous = isinstance(exc, OpnsenseAmbiguousError)

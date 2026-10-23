@@ -625,3 +625,57 @@ def test_firmware_without_the_automatic_flag_is_not_rejected_as_incomplete():
     assert not rule_hit_service.looks_complete({"rows": []})
     assert not rule_hit_service.looks_complete({"rows": [{"uuid": "u1", "is_automatic": "0"}]})  # flagged firmware, no automatic rule: partial
     assert rule_hit_service.looks_complete({"rows": [{"uuid": "u1", "is_automatic": "0"}, {"uuid": "a", "is_automatic": "1"}]})
+
+
+# ── B11: counters are read right before every apply that reloads pf ───────────
+
+@pytest.mark.asyncio
+async def test_every_reloading_apply_samples_the_counters_first_and_a_failed_sample_never_blocks(client, respx_mock):
+    """`apply` (and NAT/alias/VPN/network reconfigure) zeroes all rule counters; hits since the last sample would be
+    lost. Each of these client calls now reads ruleStats + searchRule right before its own POST."""
+    from app.services import opnsense_client
+
+    host_id = await host_of(client, respx_mock, url=FW)
+    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(200, json={
+        "status": "ok", "stats": {R1: {"packets": 42, "bytes": 4200, "evaluations": 50, "pf_rules": 1}}}))
+    respx_mock.get(f"{FW}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=answer(rule(R1))))
+    reloads = {
+        "apply": "/firewall/filter/apply", "apply_port_forward": "/firewall/d_nat/apply",
+        "apply_one_to_one": "/firewall/one_to_one/apply", "apply_outbound_nat": "/firewall/source_nat/apply",
+        "reconfigure_aliases": "/firewall/alias/reconfigure", "reconfigure_ipsec": "/ipsec/service/reconfigure",
+        "reconfigure_openvpn": "/openvpn/service/reconfigure", "reconfigure_wireguard": "/wireguard/service/reconfigure",
+    }
+    for path in reloads.values():
+        respx_mock.post(f"{FW}/api{path}").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, host_id)
+    for name, path in reloads.items():
+        before = len(respx_mock.calls)
+        await getattr(opnsense_client, name)(host)
+        order = [c.request.url.path for c in list(respx_mock.calls)[before:]]
+        assert order[-1] == f"/api{path}", name
+        assert "/api/firewall/filter_util/ruleStats" in order[:-1] and "/api/firewall/filter/searchRule" in order[:-1], (name, order)
+    async with SessionLocal() as db:
+        row = (await db.scalars(select(RuleHit).where(RuleHit.host_id == host_id))).one()
+    assert row.rule_uuid == R1 and row.last_packets == 42 and row.last_hit_at is not None
+
+    stats.mock(return_value=httpx.Response(500, json={}))  # the probe fails: the write goes on anyway
+    respx_mock.get(f"{FW}/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(500, json={}))
+    assert (await opnsense_client.apply(host))["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_a_writer_that_just_sampled_itself_does_not_probe_twice(client, respx_mock):
+    from app.services import opnsense_client
+
+    host_id = await host_of(client, respx_mock, url=FW)
+    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(200, json={"status": "ok", "stats": {}}))
+    respx_mock.get(f"{FW}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=answer()))
+    respx_mock.post(f"{FW}/api/firewall/filter/apply").mock(return_value=httpx.Response(200, json={"status": "ok"}))
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, host_id)
+    with opnsense_client.counters_already_sampled():
+        await opnsense_client.apply(host)
+    assert stats.call_count == 0
+    await opnsense_client.apply(host)
+    assert stats.call_count == 1

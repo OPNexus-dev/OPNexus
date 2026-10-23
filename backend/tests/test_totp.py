@@ -140,3 +140,41 @@ async def test_read_only_user_can_manage_own_second_factor(client):
     await client.post("/api/users", json={"username": "frank", "password": PASSWORD, "role": "read_only"})
     c, _ = await _login("frank")
     assert (await c.post("/api/auth/2fa/setup", json={"password": PASSWORD})).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_password_login_racing_2fa_enable_gets_no_session(client, monkeypatch):
+    """A sign-in decided "no second factor" must not outlive 2FA being enabled in the meantime (audit AUD-02)."""
+    import asyncio
+    from sqlalchemy import func, select
+    from app.database import SessionLocal
+    from app.models.user import AdminUser, Session
+    await _make_user(client, "racer")
+    owner, _ = await _login("racer")
+    setup = await owner.post("/api/auth/2fa/setup", json={"password": PASSWORD})
+    secret = setup.json()["secret"]
+    reached, resume = asyncio.Event(), asyncio.Event()
+    original = auth_service.finalize_login
+
+    async def paused(db, user, ip):
+        reached.set()
+        await resume.wait()
+        return await original(db, user, ip)
+
+    monkeypatch.setattr(auth_service, "finalize_login", paused)
+    other = AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    login = asyncio.create_task(other.post("/api/auth/login", json={"username": "racer", "password": PASSWORD}))
+    try:
+        await asyncio.wait_for(reached.wait(), 10)
+        enable = await owner.post("/api/auth/2fa/enable", json={"code": totp_service.code_at(secret)})
+        assert enable.status_code == 200, enable.text
+    finally:
+        resume.set()
+    resp = await login
+    assert resp.status_code == 401 and resp.json()["detail"]["code"] == "TOTP_REQUIRED"
+    assert (await other.get("/api/auth/2fa")).status_code == 401
+    async with SessionLocal() as db:
+        racer = await db.scalar(select(AdminUser.id).where(AdminUser.username == "racer"))
+        assert await db.scalar(select(func.count()).select_from(Session).where(Session.user_id == racer)) == 1  # the owner's
+    await owner.aclose()
+    await other.aclose()

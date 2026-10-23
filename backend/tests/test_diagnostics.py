@@ -42,7 +42,7 @@ async def test_traceroute_is_parsed_and_audited(client, respx_mock):
             {"address": "10.0.0.1", "ttl": "1", "AS": "AS0", "host": "gw.lan", "probes": "0.4 ms"}]}}))
     resp = await client.post(f"/api/hosts/{host_id}/diagnostics/traceroute", json={"target": "example.com", "protocol": "icmp"})
     assert resp.status_code == 200, resp.text
-    assert resp.json()["hops"] == [{"ttl": "1", "address": "10.0.0.1", "host": "gw.lan", "as": "AS0", "probes": "0.4 ms"}]
+    assert resp.json()["hops"] == [{"ttl": "1", "address": "10.0.0.1", "host": "gw.lan", "as": "AS0", "probes": "0.4 ms", "silent": False}]
     assert json.loads(sent.calls.last.request.content)["traceroute"]["settings"]["hostname"] == "example.com"
     events = await _events(host_id)
     assert [(e.action, e.status, e.entity_name) for e in events] == [("diag.traceroute", "ok", "example.com")]
@@ -141,3 +141,17 @@ async def test_only_admins_can_run_probes(anon_client, client, respx_mock):
             assert not probe.called
     finally:
         await client.delete(f"/api/users/{created.json()['id']}")
+
+
+@pytest.mark.asyncio
+async def test_hops_that_never_answered_come_back_as_explicit_silent_rows(client, respx_mock):
+    """T5: the firewall skips them (TTL 1 -> 3); an all-silent route is an empty list the UI explains."""
+    host_id = await _host(client, respx_mock, "fw-diag-silent")
+    route = respx_mock.post(_url("/diagnostics/traceroute/set"))
+    route.mock(return_value=httpx.Response(200, json={"result": "ok", "response": {"notice": "n", "rows": [
+        {"address": "10.0.0.1", "ttl": "1", "AS": "", "host": "", "probes": "0.4 ms"},
+        {"address": "192.0.2.9", "ttl": "3", "AS": "", "host": "", "probes": "9 ms"}]}}))
+    hops = (await client.post(f"/api/hosts/{host_id}/diagnostics/traceroute", json={"target": "example.com"})).json()["hops"]
+    assert [(h["ttl"], h["address"], h["silent"]) for h in hops] == [("1", "10.0.0.1", False), ("2", "", True), ("3", "192.0.2.9", False)]
+    route.mock(return_value=httpx.Response(200, json={"result": "ok", "response": {"notice": "n", "rows": []}}))
+    assert (await client.post(f"/api/hosts/{host_id}/diagnostics/traceroute", json={"target": "example.com"})).json()["hops"] == []

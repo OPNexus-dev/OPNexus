@@ -12,7 +12,9 @@ CertAction = Literal["import", "internal", "external", "sign_csr", "import_csr",
 # EC curves) — see ManagedCertificate's docstring.
 CertKeyType = Literal["2048", "3072", "4096", "prime256v1", "secp384r1", "secp521r1"]
 CertDigest = Literal["sha1", "sha224", "sha256", "sha384", "sha512"]
-CertType = Literal["usr_cert", "server_cert", "combined_server_client", "v3_ca"]
+# No "v3_ca": OPNsense would create a certificate with the CA extension, not a CA that can be used as `caref`
+# (found by the 1.31.0 test run, T3). Creating a CA is not offered; the UI never did.
+CertType = Literal["usr_cert", "server_cert", "combined_server_client"]
 
 _DN_ACTIONS = {"internal", "external", "reissue"}
 _CRT_ACTIONS = {"import", "import_csr", "manual"}

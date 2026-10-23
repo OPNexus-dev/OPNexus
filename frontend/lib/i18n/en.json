@@ -406,7 +406,18 @@
     "create": "Create host",
     "editTitle": "Edit host: {name}",
     "active": "Active",
-    "baseUrlEditHint": "Enter the new address if the firewall got a different IP (e.g. after changing its management interface). History and assignments are kept."
+    "baseUrlEditHint": "Enter the new address if the firewall got a different IP (e.g. after changing its management interface). History and assignments are kept.",
+    "connection": {
+      "credentials": "the API key or secret was rejected (401)",
+      "forbidden": "the API key does not have enough rights (403)",
+      "tls": "the TLS certificate does not match (pin or check the certificate)",
+      "unreachable": "no connection (check address, port, network and rules)",
+      "other": "unexpected answer"
+    },
+    "createAnyway": "Create anyway, without the connection check (for example when the firewall behind NAT is not reachable yet).",
+    "deleteTitle": "Delete host",
+    "deleteTypeName": "To confirm, type the host name: {name}",
+    "deleteTypeNameAria": "Type the host name to confirm"
   },
   "rules": {
     "title": "Firewall rules",
@@ -900,7 +911,13 @@
     "CONFIG_PLAN_STALE": "Something changed since the plan was made. Please plan again.",
     "CONFIG_BLOCKED": "The plan contains blocked objects and cannot be applied.",
     "CONFIG_APPLY_SELFCHECK": "The import was rolled back: the database did not match the plan afterwards. Nothing was changed.",
-    "CONFIG_BUSY": "OPNexus is checking another configuration file right now. Please try again shortly."
+    "CONFIG_BUSY": "OPNexus is checking another configuration file right now. Please try again shortly.",
+    "GRUPPE_WIRD_NOCH_VON_VPN_VERWENDET": "Group is still used by VPN connections",
+    "HOST_URL_EXISTS": "This address already belongs to the host “{host}”.",
+    "HOST_CONNECTION_FAILED": "The firewall could not be reached with these details: {reason}",
+    "ZIEL_HOST_NACH_AUSROLLEN_FEST": "The target host can no longer be changed once the entry has been deployed. Delete the entry (this also removes it from the firewall) and create it again for the new host.",
+    "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "This ACME account is used by certificate requests; you can only change its host once no request uses it any more.",
+    "VPN_DEPLOY_LAEUFT_BEREITS": "A deployment or removal is already running for this VPN. Wait a moment and try again."
   },
   "workflow": {
     "attention": "Check errors",
@@ -2906,7 +2923,9 @@
       "time": "Time",
       "open": "Port {port} open",
       "closed": "Port {port} not reachable",
-      "noRecords": "No answer for “{name}”."
+      "noRecords": "No answer for “{name}”.",
+      "noHops": "No hop on the way answered (or the target is unreachable). That is not a firewall error: many routers do not answer traceroute.",
+      "silentHop": "* no answer"
     }
   },
   "setup": {
@@ -3831,7 +3850,10 @@
       "portsHint": "TCP ports the firewalls are additionally managed on (e.g. SSH or the web GUI on another port). The API port, 443, 80 and 22 are always protected.",
       "portsPlaceholder": "e.g. 2222, 8443",
       "portsInvalid": "Not a valid port: {value} (1–65535).",
-      "portsTooMany": "At most 20 ports."
+      "portsTooMany": "At most 20 ports.",
+      "yourAddress": "Your address as OPNexus sees it: {address}",
+      "addYourAddress": "Add",
+      "yourAddressHint": "A suggestion: the firewalls may see your workstation under another address (NAT, VPN). The cleanup determines OPNexus's own address per firewall automatically."
     },
     "mgmt": {
       "title": "Cleanup locked: management sources missing",
@@ -3876,7 +3898,12 @@
       "confirmNameHint": "Type the firewall's name exactly. This prevents changing the wrong firewall by accident.",
       "confirmNameAria": "Type the firewall name to confirm: {host}",
       "deployDisabledName": "The name has to match the firewall's name exactly.",
-      "deployNotAdmin": "Only administrators may roll out. A preview belongs to whoever created it: an administrator has to open a new preview themselves."
+      "deployNotAdmin": "Only administrators may roll out. A preview belongs to whoever created it: an administrator has to open a new preview themselves.",
+      "opnexusSource": {
+        "added": "OPNexus reaches this firewall from {address}: that address is protected as well.",
+        "configured": "OPNexus reaches this firewall from {address} (already in the management sources).",
+        "unknown": "The address OPNexus reaches this firewall from could not be determined (API right “Diagnostics: states” or a path through the management tunnel). Make sure it is in the management sources."
+      }
     },
     "ack": {
       "title": "These findings rest on an assumption. Acknowledge each rule on its own.",

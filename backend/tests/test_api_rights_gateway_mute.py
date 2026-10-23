@@ -18,6 +18,7 @@ from tests.test_monitoring_alerts import (
 )
 from tests.test_notifications import _create_host
 from tests.test_resource_monitor import _mock_resource_endpoints, _mock_vip
+from tests.helpers import delete_host
 
 
 async def _host_row(host_id: str) -> OpnsenseHost:
@@ -413,5 +414,5 @@ async def test_deleting_a_host_removes_its_gateway_mutes(client):
     gone = await _create_host(client, "fw-gone", "https://fwgone.test")
     for h in (keep, gone):
         assert (await client.put(f"/api/hosts/{h['id']}/gateways/WAN_GW/alert", json={"enabled": False})).status_code == 200
-    assert (await client.delete(f"/api/hosts/{gone['id']}")).status_code == 204
+    assert (await delete_host(client, gone['id'])).status_code == 204
     assert (await client.get("/api/notifications/settings")).json()["gateway_alert_muted"] == [f"{keep['id']}:WAN_GW"]

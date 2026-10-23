@@ -211,6 +211,8 @@ from app.models.wireguard_tunnel import WireguardTunnel
 from app.models.wireguard_tunnel_deployment import WireguardTunnelDeployment
 from app.services import opnsense_client, wireguard_key_store
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import checkpoint
+from app.services.deploy_lease import VPN_INTERRUPTED, resource_lease
 
 
 def _now() -> datetime:
@@ -274,7 +276,7 @@ def build_payloads(tunnel: WireguardTunnel) -> dict:
     }
 
 
-async def _write_config(host: OpnsenseHost, payloads: dict, deployment: WireguardTunnelDeployment) -> None:
+async def _write_config(db: AsyncSession, host: OpnsenseHost, payloads: dict, deployment: WireguardTunnelDeployment) -> None:
     """Writes the Server then the Peer, in that dependency order (the
     Peer's payload needs the Server's UUID for the `servers` field — see
     module docstring), persisting each UUID onto `deployment` as soon as
@@ -288,6 +290,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: Wireguar
         deployment.opnsense_server_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_server_uuid:
             raise OpnsenseAPIError("Firewall hat keine Server-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
     # Overlay the deploy-time-known Server UUID onto a shallow copy, never
     # mutating payloads["peer"] itself — the same reasoning ipsec_deploy_
@@ -303,6 +306,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: Wireguar
         deployment.opnsense_peer_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_peer_uuid:
             raise OpnsenseAPIError("Firewall hat keine Peer-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
 
 async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: OpnsenseHost) -> WireguardTunnelDeployment:
@@ -311,7 +315,7 @@ async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: Opnse
     existing = await db.scalar(
         select(WireguardTunnelDeployment).where(
             WireguardTunnelDeployment.tunnel_id == tunnel.id, WireguardTunnelDeployment.host_id == host.id
-        )
+        ).execution_options(populate_existing=True)  # fresh: another request may have just changed the row
     )
     if existing and existing.status == "success" and existing.last_payload == comparable:
         # Nothing actually changed on this host — re-affirm without
@@ -322,8 +326,15 @@ async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: Opnse
 
     deployment = existing or WireguardTunnelDeployment(tunnel_id=tunnel.id, host_id=host.id, status="error")
 
+    # Durable intent BEFORE the first remote call: from here on a crash or cancellation leaves a row, and every UUID the
+    # firewall hands out is committed at once (see _write_config), so a retry continues instead of duplicating.
+    deployment.status, deployment.message, deployment.deployed_at = "error", VPN_INTERRUPTED, _now()
+    if not existing:
+        db.add(deployment)
+    await checkpoint(db)
+
     try:
-        await _write_config(host, payloads, deployment)
+        await _write_config(db, host, payloads, deployment)
         # Without the global switch the config is stored but no interface
         # ever comes up (live-verified), so a "success" would be a lie.
         await opnsense_client.ensure_wireguard_enabled(host)
@@ -331,8 +342,6 @@ async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: Opnse
         deployment.status = "error"
         deployment.message = str(exc)
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     try:
@@ -347,28 +356,30 @@ async def _deploy_to_host(db: AsyncSession, tunnel: WireguardTunnel, host: Opnse
         deployment.message = "Konfiguration wurde geschrieben, Dienst-Reload aber nicht bestätigt — Erreichbarkeit manuell prüfen"
         deployment.last_payload = comparable
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     deployment.status = "success"
     deployment.message = None
     deployment.last_payload = comparable
     deployment.deployed_at = _now()
-    if not existing:
-        db.add(deployment)
     return deployment
 
 
 async def deploy_tunnel(db: AsyncSession, tunnel: WireguardTunnel, hosts: list[OpnsenseHost]) -> list[WireguardTunnelDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
     await ensure_no_maintenance(db, hosts)
-    deployments = [await _deploy_to_host(db, tunnel, host) for host in hosts]
-    await db.commit()
+    async with resource_lease("wireguard", tunnel.id):
+        deployments = [await _deploy_to_host(db, tunnel, host) for host in hosts]
+        await db.commit()
     return deployments
 
 
 async def undeploy_tunnel(db: AsyncSession, tunnel: WireguardTunnel) -> None:
+    async with resource_lease("wireguard", tunnel.id):
+        await _undeploy_tunnel(db, tunnel)
+
+
+async def _undeploy_tunnel(db: AsyncSession, tunnel: WireguardTunnel) -> None:
     """Explicit action, not gated by anything (there is no lockout state
     for this entity to gate on) — deletes the Peer before the Server (the
     dependency direction; deleting the Peer first also auto-unlinks it

@@ -13,6 +13,7 @@ from app.models.alias_deployment import AliasDeployment
 from app.models.host import OpnsenseHost
 from app.schemas.host import AliasOption
 from app.services import opnsense_client
+from app.services.deploy_flow import unsettled
 from app.services.opnsense_client import OpnsenseAPIError
 
 
@@ -87,7 +88,7 @@ async def ensure_aliases_settled(db: AsyncSession, hosts: list[OpnsenseHost], va
         .where(
             FirewallAlias.name.in_(names),
             AliasDeployment.host_id.in_([host.id for host in hosts]),
-            AliasDeployment.status.in_(("pending", "revert_failed")),
+            unsettled(AliasDeployment),
         )
         .order_by(FirewallAlias.name, OpnsenseHost.name)
     )).all()

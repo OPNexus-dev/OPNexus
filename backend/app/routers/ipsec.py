@@ -16,6 +16,7 @@ from app.services import ipsec_psk_store
 from app.services.ipsec_service import effective_hosts, preview, revision, snapshot, workflow, IPSEC_FIELDS
 from app.services.ipsec_deploy_service import deploy_tunnel, undeploy_tunnel
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_lease import resource_lease
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/ipsec/tunnels", tags=["ipsec"])
@@ -192,26 +193,27 @@ async def remove_previous_target(tunnel_id: uuid.UUID, host_id: uuid.UUID, appro
         raise api_error(404, ErrorCode.DEPLOYMENT_NICHT_GEFUNDEN)
     if not entry["can_remove"]:
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_KOENNEN_BEREINIGT_WERDEN)
-    deployment = next(d for d in tunnel.deployments if d.host_id == host_id)
-    from app.services.host_maintenance_service import ensure_no_open_cleanup
-    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
-    from app.services import opnsense_client
-    try:
-        if deployment.opnsense_child_uuid:
-            await opnsense_client.del_ipsec_child(deployment.host, deployment.opnsense_child_uuid)
-        if deployment.opnsense_local_uuid:
-            await opnsense_client.del_ipsec_local(deployment.host, deployment.opnsense_local_uuid)
-        if deployment.opnsense_remote_uuid:
-            await opnsense_client.del_ipsec_remote(deployment.host, deployment.opnsense_remote_uuid)
-        if deployment.opnsense_connection_uuid:
-            await opnsense_client.del_ipsec_connection(deployment.host, deployment.opnsense_connection_uuid)
-        if deployment.opnsense_psk_uuid:
-            await opnsense_client.del_ipsec_psk(deployment.host, deployment.opnsense_psk_uuid)
-        await opnsense_client.reconfigure_ipsec(deployment.host)
-    except OpnsenseAPIError as exc:
-        deployment.status = "error"
-        deployment.message = str(exc)
+    async with resource_lease("ipsec", tunnel.id):
+        deployment = next(d for d in tunnel.deployments if d.host_id == host_id)
+        from app.services.host_maintenance_service import ensure_no_open_cleanup
+        await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
+        from app.services import opnsense_client
+        try:
+            if deployment.opnsense_child_uuid:
+                await opnsense_client.del_ipsec_child(deployment.host, deployment.opnsense_child_uuid)
+            if deployment.opnsense_local_uuid:
+                await opnsense_client.del_ipsec_local(deployment.host, deployment.opnsense_local_uuid)
+            if deployment.opnsense_remote_uuid:
+                await opnsense_client.del_ipsec_remote(deployment.host, deployment.opnsense_remote_uuid)
+            if deployment.opnsense_connection_uuid:
+                await opnsense_client.del_ipsec_connection(deployment.host, deployment.opnsense_connection_uuid)
+            if deployment.opnsense_psk_uuid:
+                await opnsense_client.del_ipsec_psk(deployment.host, deployment.opnsense_psk_uuid)
+            await opnsense_client.reconfigure_ipsec(deployment.host)
+        except OpnsenseAPIError as exc:
+            deployment.status = "error"
+            deployment.message = str(exc)
+            await db.commit()
+            raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
+        await db.delete(deployment)
         await db.commit()
-        raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
-    await db.delete(deployment)
-    await db.commit()

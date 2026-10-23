@@ -63,6 +63,17 @@ async def _guarded(host: OpnsenseHost, tool: str, target: str, params: dict, cal
     return result
 
 
+def _with_silent_hops(hops: list[dict]) -> list[dict]:
+    """The firewall leaves out hops that never answered (TTL jumps 1 -> 3, T5 of the 1.31.0 test run). Put them back as
+    explicit rows so a gap reads as "no answer here", not as a missing hop. A route where nothing answered at all stays
+    an empty list; the UI says so."""
+    seen = {int(h["ttl"]): h for h in hops if h["ttl"].isdigit()}
+    if not seen:
+        return hops
+    silent = {"address": "", "host": "", "as": "", "probes": "", "silent": True}
+    return [seen.get(ttl) or {**silent, "ttl": str(ttl)} for ttl in range(1, max(seen) + 1)]
+
+
 async def traceroute(host: OpnsenseHost, target: str, ipproto: str, protocol: str, source: str | None) -> dict:
     target, source = clean_target(target), clean_source(source)
     params = {"target": target, "ipproto": ipproto, "protocol": protocol, "source": source}
@@ -73,8 +84,9 @@ async def traceroute(host: OpnsenseHost, target: str, ipproto: str, protocol: st
             {"hostname": target, "ipproto": ipproto, "protocol": protocol, "source_address": source})
         resp = data.get("response") or {}
         hops = [{"ttl": str(r.get("ttl", "")), "address": str(r.get("address", "")), "host": str(r.get("host", "")),
-                 "as": str(r.get("AS", "")), "probes": str(r.get("probes", ""))} for r in resp.get("rows", []) if isinstance(r, dict)]
-        return {"target": target, "notice": str(resp.get("notice", "")), "hops": hops}
+                 "as": str(r.get("AS", "")), "probes": str(r.get("probes", "")), "silent": False}
+                for r in resp.get("rows", []) if isinstance(r, dict)]
+        return {"target": target, "notice": str(resp.get("notice", "")), "hops": _with_silent_hops(hops)}
     return await _guarded(host, "traceroute", target, params, call)
 
 

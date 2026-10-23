@@ -196,3 +196,125 @@ async def test_sweep_marks_revert_failed_when_host_unreachable(client, respx_moc
         still_there = (await db.execute(select(RuleDeployment))).scalar_one_or_none()
         assert still_there is not None
         assert still_there.status == "revert_failed"
+
+
+# ── A retry after "written, apply failed" must keep the ORIGINAL rollback target (audit 2026-10-23) ──
+
+def _patch_rule_calls(monkeypatch, *, apply_results):
+    from unittest.mock import AsyncMock
+    from app.services import opnsense_client
+    calls = {
+        "add": AsyncMock(return_value={"uuid": "rule-uuid-1"}),
+        "set": AsyncMock(return_value={}),
+        "delete": AsyncMock(return_value={}),
+        "apply": AsyncMock(side_effect=apply_results),
+    }
+    monkeypatch.setattr(opnsense_client, "add_rule", calls["add"])
+    monkeypatch.setattr(opnsense_client, "set_rule", calls["set"])
+    monkeypatch.setattr(opnsense_client, "del_rule", calls["delete"])
+    monkeypatch.setattr(opnsense_client, "apply", calls["apply"])
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_retry_after_failed_apply_still_removes_a_first_installation(client, respx_mock, monkeypatch):
+    from app.services.opnsense_client import OpnsenseAPIError
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
+    calls = _patch_rule_calls(monkeypatch, apply_results=[OpnsenseAPIError("apply failed"), {}, {}])
+
+    assert (await client.post(f"/api/rules/{rule_id}/deploy")).status_code == 200
+    async with SessionLocal() as db:
+        dep = (await db.execute(select(RuleDeployment))).scalar_one()
+        assert dep.status == "error" and dep.revert_deadline is not None and dep.previous_payload is None
+
+    assert (await client.post(f"/api/rules/{rule_id}/deploy")).status_code == 200
+    async with SessionLocal() as db:
+        dep = (await db.execute(select(RuleDeployment))).scalar_one()
+        assert dep.status == "pending"
+        assert dep.previous_payload is None  # the rollback is still "remove the rule"
+        dep.revert_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        await sweep_expired_deployments(db)
+        assert (await db.execute(select(RuleDeployment))).scalar_one_or_none() is None
+
+    assert calls["delete"].call_count == 1
+    assert calls["delete"].call_args.args[1] == "rule-uuid-1"
+
+
+@pytest.mark.asyncio
+async def test_retry_after_failed_apply_restores_the_confirmed_payload_of_an_existing_rule(client, respx_mock, monkeypatch):
+    from app.services.opnsense_client import OpnsenseAPIError
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
+    confirmed = {"description": "confirmed before", "action": "pass"}
+    async with SessionLocal() as db:
+        db.add(RuleDeployment(
+            rule_id=uuid.UUID(rule_id), host_id=uuid.UUID(host["id"]), status="success",
+            opnsense_rule_uuid="existing-uuid", last_payload=confirmed,
+        ))
+        await db.commit()
+    calls = _patch_rule_calls(monkeypatch, apply_results=[OpnsenseAPIError("apply failed"), {}, {}])
+
+    assert (await client.post(f"/api/rules/{rule_id}/deploy")).status_code == 200
+    assert (await client.post(f"/api/rules/{rule_id}/deploy")).status_code == 200
+    async with SessionLocal() as db:
+        dep = (await db.execute(select(RuleDeployment))).scalar_one()
+        assert dep.status == "pending"
+        assert dep.previous_payload == confirmed
+        assert dep.last_payload != confirmed
+        dep.revert_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        await sweep_expired_deployments(db)
+
+    assert calls["delete"].call_count == 0
+    assert calls["set"].call_args.args[2] == confirmed  # the last set_rule is the rollback to the confirmed payload
+
+
+@pytest.mark.asyncio
+async def test_an_armed_error_row_blocks_cleanup_and_maintenance_like_a_pending_one(client, respx_mock, monkeypatch):
+    from app.models.rule_deployment import RuleDeployment as Dep
+    from app.services.deploy_flow import is_unsettled, unsettled
+    now = datetime.now(timezone.utc)
+    assert is_unsettled(Dep(status="error", revert_deadline=now + timedelta(minutes=1)))
+    assert not is_unsettled(Dep(status="error", revert_deadline=None))
+    assert not is_unsettled(Dep(status="success", revert_deadline=None))
+    assert is_unsettled(Dep(status="revert_failed", revert_deadline=None))
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
+    async with SessionLocal() as db:
+        db.add(Dep(rule_id=uuid.UUID(rule_id), host_id=uuid.UUID(host["id"]), status="error",
+                   opnsense_rule_uuid="u", last_payload={"a": 1}, revert_deadline=now + timedelta(minutes=1)))
+        await db.commit()
+        assert await db.scalar(select(Dep.id).where(unsettled(Dep)))
+
+
+@pytest.mark.asyncio
+async def test_alias_retry_after_failed_reconfigure_still_removes_a_first_installation(client, respx_mock, monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.models.alias_deployment import AliasDeployment
+    from app.services import opnsense_client
+    from app.services.alias_deploy_service import sweep_expired_alias_deployments
+    from app.services.opnsense_client import OpnsenseAPIError
+    from tests.test_aliases import _alias_payload
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    alias_id = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()["id"]
+    delete = AsyncMock(return_value={})
+    monkeypatch.setattr(opnsense_client, "add_alias_item", AsyncMock(return_value={"uuid": "alias-uuid-1"}))
+    monkeypatch.setattr(opnsense_client, "set_alias_item", AsyncMock(return_value={}))
+    monkeypatch.setattr(opnsense_client, "del_alias_item", delete)
+    monkeypatch.setattr(opnsense_client, "reconfigure_aliases", AsyncMock(side_effect=[OpnsenseAPIError("reconfigure failed"), {}, {}]))
+
+    assert (await client.post(f"/api/aliases/{alias_id}/deploy")).status_code == 200
+    assert (await client.post(f"/api/aliases/{alias_id}/deploy")).status_code == 200
+    async with SessionLocal() as db:
+        dep = (await db.execute(select(AliasDeployment))).scalar_one()
+        assert dep.previous_payload is None
+        dep.revert_deadline = datetime.now(timezone.utc) - timedelta(seconds=1)
+        await db.commit()
+        await sweep_expired_alias_deployments(db)
+    assert delete.call_count == 1

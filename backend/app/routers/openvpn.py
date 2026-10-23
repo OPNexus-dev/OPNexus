@@ -18,6 +18,7 @@ from app.services import openvpn_key_store
 from app.services.openvpn_service import effective_hosts, preview, revision, snapshot, workflow, OPENVPN_FIELDS
 from app.services.openvpn_deploy_service import deploy_instance, undeploy_instance
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_lease import resource_lease
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/openvpn/instances", tags=["openvpn"])
@@ -194,20 +195,21 @@ async def remove_previous_target(instance_id: uuid.UUID, host_id: uuid.UUID, app
         raise api_error(404, ErrorCode.DEPLOYMENT_NICHT_GEFUNDEN)
     if not entry["can_remove"]:
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_KOENNEN_BEREINIGT_WERDEN)
-    deployment = next(d for d in instance.deployments if d.host_id == host_id)
-    from app.services.host_maintenance_service import ensure_no_open_cleanup
-    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
-    from app.services import opnsense_client
-    try:
-        if deployment.opnsense_instance_uuid:
-            await opnsense_client.del_openvpn_instance(deployment.host, deployment.opnsense_instance_uuid)
-        if deployment.opnsense_statickey_uuid:
-            await opnsense_client.del_openvpn_static_key(deployment.host, deployment.opnsense_statickey_uuid)
-        await opnsense_client.reconfigure_openvpn(deployment.host)
-    except OpnsenseAPIError as exc:
-        deployment.status = "error"
-        deployment.message = str(exc)
+    async with resource_lease("openvpn", instance.id):
+        deployment = next(d for d in instance.deployments if d.host_id == host_id)
+        from app.services.host_maintenance_service import ensure_no_open_cleanup
+        await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
+        from app.services import opnsense_client
+        try:
+            if deployment.opnsense_instance_uuid:
+                await opnsense_client.del_openvpn_instance(deployment.host, deployment.opnsense_instance_uuid)
+            if deployment.opnsense_statickey_uuid:
+                await opnsense_client.del_openvpn_static_key(deployment.host, deployment.opnsense_statickey_uuid)
+            await opnsense_client.reconfigure_openvpn(deployment.host)
+        except OpnsenseAPIError as exc:
+            deployment.status = "error"
+            deployment.message = str(exc)
+            await db.commit()
+            raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
+        await db.delete(deployment)
         await db.commit()
-        raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
-    await db.delete(deployment)
-    await db.commit()

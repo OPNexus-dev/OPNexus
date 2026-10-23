@@ -169,3 +169,16 @@ def test_one_mebibyte_parses_in_reasonable_time():
     elapsed = time.monotonic() - started
     print(f"parse {len(raw)} bytes: {elapsed:.2f}s")
     assert elapsed < 8
+
+
+WRONG_SHAPES = ["42", '"text"', "true", "{a: 1}", "[1, 2]", "[[1]]", "[{entries: 5}]", "[{entries: [1, [2]]}]", "null"]
+
+
+@pytest.mark.parametrize("shape", WRONG_SHAPES)
+@pytest.mark.parametrize("kind", __import__("app.config_code.schema", fromlist=["KINDS"]).KINDS)
+def test_every_section_with_the_wrong_shape_is_a_config_error_never_another_exception(kind, shape):
+    """Valid YAML of the wrong form used to end in a TypeError before the schema check (audit AUD-07)."""
+    try:
+        parse(f"{HEAD}{kind}: {shape}\n")
+    except ConfigError:
+        pass  # the expected, orderly refusal (null parses as an empty section)

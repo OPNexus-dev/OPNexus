@@ -31,6 +31,48 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): Saker …
 
+## [1.33.0] "Saker" — 2026-10-24
+
+- **Aus dem Testlauf 1.31.0 behoben (T2 bis T6, B15):**
+  - **Benutzerliste:** `GET /api/users` zeigte jedem angemeldeten Konto (auch Nur-Lese, auch per Token) alle Benutzernamen, Rollen, letzte Anmeldung und 2FA-Status.
+    Jetzt sehen **nur Admins** die ganze Liste, alle anderen nur das eigene Konto.
+  - **Hosts:** Dieselbe Adresse zweimal einzutragen wird abgelehnt (`HOST_URL_EXISTS`, auch beim Ändern der Adresse). Die Hosts-Seite und der Einrichtungsassistent
+    prüfen die Verbindung beim Anlegen (Schlüssel abgelehnt / zu wenig Rechte / Zertifikat / keine Verbindung), speichern bei einem Fehler nichts und bieten
+    „Trotzdem anlegen“. Über die API ist das `verify_connection: true` (Standard aus). **Löschen verlangt jetzt auch am Server den Hostnamen:**
+    `DELETE /api/hosts/{id}?confirm_name=<Name>` (sonst 409); Skripte, die Hosts löschen, müssen das anpassen.
+  - **Zertifikate:** `cert_type: v3_ca` wird nicht mehr angenommen (es entstand ein Zertifikat mit CA-Erweiterung, keine nutzbare CA); die Oberfläche bot es nie an.
+  - **Traceroute:** Zwischenstationen ohne Antwort stehen als Zeile „keine Antwort“ in der Liste (vorher sprang die Zählung 1 → 3); ein Weg ganz ohne Antwort wird erklärt.
+  - **Netzwerk:** Die Vorschau prüft Zahlenbereiche vorab (VLAN-Tag 1–4094, PCP 0–7, VHID 1–255, Basis 1–254, Skew 0–254, gegen das Modell der OPNsense gelesen): `422` mit dem
+    Feldnamen statt `502` von der Firewall.
+  - **Gruppen:** Eine Gruppe, die ein VPN-Objekt als Ziel hat, lässt sich nicht mehr löschen (die Verknüpfung fiel still weg).
+  - Das Skript `scripts/verify_i18n.mjs` läuft jetzt auch gegen die HTTPS-Test-Instanz.
+- **Regel-Bereinigung: OPNexus selbst ist automatisch geschützt (B10).** Beim Planen fragt die Bereinigung jede Firewall, von welcher Adresse sie OPNexus kommen sieht
+  (die eigene API-Verbindung in der Zustandstabelle), und schützt diese Adresse zusätzlich zu den Verwaltungsquellen. Vorher konnte eine Regel abgeschaltet werden, über
+  die nur OPNexus die Firewall erreicht, wenn in den Quellen nur Arbeitsplätze standen; dann scheiterte auch das automatische Zurücksetzen. Die Vorschau zeigt die Adresse
+  je Firewall (nur Admins) oder sagt, dass sie sich nicht ermitteln ließ (API-Recht „Diagnose: Zustände“, Management-Tunnel).
+- **Keine verlorenen Regeltreffer mehr (B11):** Jedes Anwenden setzt die Regelzähler der Firewall zurück. OPNexus liest sie jetzt unmittelbar vor jedem Anwenden, das es
+  selbst auslöst (Regeln, NAT, Aliase, IPsec/OpenVPN/WireGuard, Netzwerk); vorher konnte eine Regel deshalb fälschlich als „ungenutzt“ gelten.
+- **Einstellungen › Regel-Bereinigung:** schlägt die eigene Browser-Adresse als Verwaltungsquelle vor (B12). Geprüft: OPNsense 26.7 hat kein „savepoint“ zum Zurücknehmen
+  durch die Firewall selbst (Quellcode und live 404), das automatische Zurücksetzen bleibt bei OPNexus.
+
+- **Installation unter Windows:** Neue Anleitung auf der Website (`/docs/windows/`, auch auf Englisch) und im Handbuch: Docker Desktop mit WSL 2, Zertifizierungsstelle importieren, Zugriff aus dem Netz (Windows-Firewall), Updates mit `opnexus` in WSL und Fehlerbehebung. Entwickelt und getestet wird weiterhin unter Linux; die Anleitung sagt das offen.
+- **Sicherheit und Stabilität (aus einer externen Prüfung):**
+  - **Rückweg bleibt erhalten:** Wer nach „Konfiguration geschrieben, Anwenden fehlgeschlagen“ erneut ausrollte, überschrieb den ursprünglichen Rückweg; die automatische
+    Rücknahme stellte dann den unbestätigten Stand wieder her. Jetzt bleibt der Rückweg der Stand vor dem ersten Versuch. Wartung, Regel-Bereinigung und
+    „Konfiguration als Code“ behandeln eine solche Zeile wie eine offene Bestätigung. Gilt für Regeln, Aliase, Port-Forwards, 1:1-NAT, Outbound-NAT und Hierarchie-Regeln.
+  - **Anmeldung und 2FA:** Eine Passwort-Anmeldung, die genau während der Aktivierung von 2FA lief, bekam eine Sitzung ohne zweiten Faktor. Jetzt wird sie mit `TOTP_REQUIRED` abgewiesen.
+  - **Letzter Administrator:** Zwei Administratoren, die sich gleichzeitig herabstuften oder gegenseitig löschten, konnten alle Administratoren entfernen. Beides ist jetzt serialisiert.
+  - **Operatoren:** Mit ausgeschaltetem „Operatoren dürfen ausrollen“ konnten sie noch Snapshots (Boot-Umgebungen) anlegen. Ein Test hält künftig jede schreibende Route
+    fest, die keiner Rechte-Regel zugeordnet ist.
+  - **Zertifikate und ACME:** Der Ziel-Host ist nach dem ersten Push fest (`409 ZIEL_HOST_NACH_AUSROLLEN_FEST`); vorher meldete ein Host-Wechsel Erfolg für einen Host, der nie
+    etwas erhielt. Ein ACME-Konto mit Anfragen lässt sich nicht auf einen anderen Host verschieben (`ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET`).
+  - **VPN-Ausrollen:** IPsec, OpenVPN und WireGuard sichern jede von der Firewall vergebene Kennung sofort; bei einem Abbruch entstehen beim nächsten Versuch keine Duplikate.
+    Pro VPN läuft nur ein Ausrollen oder Entfernen zugleich (`409 VPN_DEPLOY_LAEUFT_BEREITS`).
+  - **Konfiguration als Code:** Gültiges YAML mit falsch geformtem Abschnitt (z. B. `aliases: 42`) ergibt `422 CONFIG_INVALID` statt eines Serverfehlers.
+  - **`.env`:** Die Anleitungen legen sie mit `install -m 600` an; `opnexus update` und `opnexus status` setzen eine zu offene Datei auf 0600. `opnexus rollback` liest seinen
+    Update-Zustand nur noch als Text und führt ihn nie aus.
+  - **Abhängigkeiten:** Next.js 15.5.28, PyJWT 2.15.1.
+
 ## [1.32.1] "Merlin" — 2026-10-23
 
 - **Korrektur: Rollouts erkannten die Zielversion bei anderen Release-Typen falsch.** OPNexus las die neue Version nur am Kernpaket `opnsense`. Bei der

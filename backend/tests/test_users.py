@@ -174,3 +174,89 @@ async def test_read_only_user_can_still_change_own_theme(client):
         assert resp.json()["theme"] == "dark"
     finally:
         await viewer.aclose()
+
+
+@pytest.mark.asyncio
+async def test_non_admins_only_see_their_own_account_and_so_do_their_tokens(client):
+    """T2 (1.32 test run): GET /api/users used to hand every logged-in account the whole directory."""
+    from httpx import ASGITransport, AsyncClient
+
+    from app.config import settings
+    from app.main import app
+
+    for name, role in (("t2-reader", "read_only"), ("t2-operator", "operator"), ("t2-other", "admin")):
+        assert (await client.post("/api/users", json={"username": name, "password": "password-123456", "role": role})).status_code == 201
+    for name in ("t2-reader", "t2-operator"):
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as own:
+            assert (await own.post("/api/auth/login", json={"username": name, "password": "password-123456"})).status_code == 200
+            assert [u["username"] for u in (await own.get("/api/users")).json()] == [name]
+    assert {"admin", "t2-reader", "t2-operator", "t2-other"} <= {u["username"] for u in (await client.get("/api/users")).json()}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as reader:
+        await reader.post("/api/auth/login", json={"username": "t2-reader", "password": "password-123456"})
+        token = (await reader.post("/api/tokens", json={"name": "t2", "scope": "read", "current_password": "password-123456"})).json()["token"]
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as api:
+        assert [u["username"] for u in (await api.get("/api/users")).json()] == ["t2-reader"]  # a token never sees more than its owner
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["demote", "delete"])
+async def test_two_admins_acting_on_each_other_at_once_never_remove_the_last_admin(client, monkeypatch, how):
+    """Both requests counted the other admin before either one changed anything (audit AUD-06)."""
+    import asyncio
+    from sqlalchemy import select
+    from app.database import SessionLocal
+    from app.models.user import AdminUser
+    from app.routers import users
+
+    await _demote_all_other_admins(client)
+    ids = {}
+    for name in ("race-a", "race-b"):
+        made = await client.post("/api/users", json={"username": name, "password": "race-password-123", "role": "admin"})
+        assert made.status_code == 201, made.text
+        ids[name] = made.json()["id"]
+    a = await _login_as("race-a", "race-password-123")
+    b = await _login_as("race-b", "race-password-123")
+    bootstrap = next(u["id"] for u in (await client.get("/api/users")).json() if u["username"] == "admin")
+    assert (await client.patch(f"/api/users/{bootstrap}/role", json={"role": "operator"})).status_code == 200
+
+    # Without the lock both requests reach the count together; with it the second one waits, so the first gives up waiting.
+    original = users._admin_count
+    arrived = 0
+    both = asyncio.Event()
+
+    async def synchronized_count(db, exclude_id=None):
+        nonlocal arrived
+        count = await original(db, exclude_id)
+        arrived += 1
+        if arrived >= 2:
+            both.set()
+        try:
+            await asyncio.wait_for(both.wait(), 1)
+        except asyncio.TimeoutError:
+            pass
+        return count
+
+    monkeypatch.setattr(users, "_admin_count", synchronized_count)
+    try:
+        if how == "demote":
+            first = a.patch(f"/api/users/{ids['race-b']}/role", json={"role": "operator"})
+            second = b.patch(f"/api/users/{ids['race-a']}/role", json={"role": "operator"})
+        else:
+            first = a.delete(f"/api/users/{ids['race-b']}")
+            second = b.delete(f"/api/users/{ids['race-a']}")
+        responses = await asyncio.gather(first, second)
+        codes = sorted(r.status_code for r in responses)
+        assert codes[0] in (200, 204) and codes[1] in (403, 409), codes
+        async with SessionLocal() as db:
+            admins = list((await db.scalars(select(AdminUser).where(AdminUser.role == "admin"))).all())
+            assert len(admins) == 1
+    finally:
+        monkeypatch.undo()
+        async with SessionLocal() as db:  # restore the fixture account, drop the helpers
+            for row in (await db.scalars(select(AdminUser).where(AdminUser.username.in_(("race-a", "race-b"))))).all():
+                await db.delete(row)
+            boot = await db.get(AdminUser, __import__("uuid").UUID(bootstrap))
+            boot.role = "admin"
+            await db.commit()
+        await a.aclose()
+        await b.aclose()

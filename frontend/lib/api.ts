@@ -128,6 +128,8 @@ export interface HostCreate {
   enabled: boolean;
   cluster_name?: string | null;
   policy_hierarchy_group_id?: string | null;
+  // Ask the firewall once with these credentials before saving (the host page and the setup assistant do).
+  verify_connection?: boolean;
 }
 
 export interface TlsProbe {
@@ -244,7 +246,7 @@ export interface PingResult {
 export interface TracerouteResult {
   target: string;
   notice: string;
-  hops: { ttl: string; address: string; host: string; as: string; probes: string }[];
+  hops: { ttl: string; address: string; host: string; as: string; probes: string; silent?: boolean }[];
 }
 
 export interface PortprobeResult {
@@ -1437,7 +1439,8 @@ export const api = {
   createHost: (data: HostCreate) => request<Host>("/hosts", { method: "POST", body: JSON.stringify(data) }),
   updateHost: (id: string, data: HostUpdate) =>
     request<Host>(`/hosts/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
-  deleteHost: (id: string) => request<void>(`/hosts/${id}`, { method: "DELETE" }),
+  // The server wants the host's own name too (T4): deleting drops its stored credentials at once.
+  deleteHost: (id: string, confirmName: string) => request<void>(`/hosts/${id}?confirm_name=${encodeURIComponent(confirmName)}`, { method: "DELETE" }),
   getLiveRules: (id: string) => request<LiveRule[]>(`/hosts/${id}/live-rules`),
   getHostNetwork: (id: string) => request<HostNetwork>(`/hosts/${id}/network`),
   runPing: (id: string, data: { target: string; ipproto: string; count: number; packetsize?: number | null; source?: string }) =>
@@ -2188,6 +2191,8 @@ export interface GovernanceSettings {
   cleanup_management_sources: string[]; cleanup_management_sources_configured: boolean;
   // Extra management ports (besides API port, 443, 80, 22); the list only for admins, too.
   cleanup_management_ports: number[]; cleanup_management_ports_configured: boolean;
+  // B12: the address this browser's request came from, as a suggestion (admins only).
+  your_address?: string | null;
 }
 export interface CleanupSettingsUpdate {
   cleanup_max_rules?: number; cleanup_delete_min_days?: number; cleanup_management_sources?: string[];
@@ -2215,7 +2220,9 @@ export interface CleanupPlanItem {
   external: string | null;
   basis?: { type: "confirmed" | "disabled_long"; confirmed_at?: string; since?: string };
 }
-export interface CleanupPlanNode { host_id: string; host_name: string; role: string | null; items: CleanupPlanItem[]; }
+// opnexus_source (B10): the address this firewall sees OPNexus come from; protected as well. The address only for admins.
+export interface CleanupPlanNode { host_id: string; host_name: string; role: string | null; items: CleanupPlanItem[];
+  opnexus_source?: { address?: string | null; status: "added" | "configured" | "unknown" | null }; }
 // sources/ports only for admins (the backend leaves them out for everybody else, sources_configured instead).
 export interface CleanupPlan { kind: CleanupActionKind; uuids: string[]; unused_days: number; sources?: string[]; ports?: number[]; sources_configured?: boolean; acknowledged: string[]; nodes: CleanupPlanNode[]; }
 export interface CleanupOperation {

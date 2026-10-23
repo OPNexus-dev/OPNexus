@@ -139,7 +139,8 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.UNGUELTIGER_BENUTZERNAME_ODER_PASSWORT)
 
     verified_hash = user.password_hash
-    if user.totp_enabled:
+    second_factor_checked = bool(user.totp_enabled)  # the state this login is decided on; create_session re-checks it
+    if second_factor_checked:
         # Only revealed after the password was correct, so it cannot be used
         # to find out which usernames exist or have 2FA.
         if not payload.totp_code:
@@ -153,7 +154,8 @@ async def login(payload: LoginRequest, request: Request, response: Response, db:
     auth_service.throttle.reset(ip, payload.username)
     failed_since_last_login = auth_service.throttle.pop_failures_since_success(payload.username)
     token, expires_at = await auth_service.create_session(
-        db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip, verified_hash=verified_hash
+        db, user, user_agent=request.headers.get("User-Agent"), ip_address=ip, verified_hash=verified_hash,
+        verified_totp=second_factor_checked,
     )
     _set_session_cookie(response, token)
     logger.info("Successful login for '%s' from %s", user.username, ip)
@@ -252,6 +254,8 @@ async def totp_enable(
         _account_failure(user, "2fa-enable")
         raise api_error(status.HTTP_401_UNAUTHORIZED, ErrorCode.TOTP_INVALID)
     _account_success(user, "2fa-enable")
+    # Same row lock as create_session: a sign-in that decided "no second factor needed" is ordered before or after this.
+    await db.execute(select(AdminUser.id).where(AdminUser.id == user.id).with_for_update())
     plain, hashes = totp_service.new_recovery_codes()
     totp_service.promote_pending(user.id)
     user.totp_enabled = True

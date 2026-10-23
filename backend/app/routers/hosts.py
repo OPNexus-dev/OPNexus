@@ -5,7 +5,7 @@ from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.one_to_one_deployment import OneToOneDeployment
 from app.models.outbound_nat_deployment import OutboundNatDeployment
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,11 +107,37 @@ async def tls_probe(payload: TlsProbeRequest):
         raise api_error(502, ErrorCode.TLS_PROBE_FAILED)
 
 
+def _same_url(a: str, b: str) -> bool:
+    return a.strip().rstrip("/").lower() == b.strip().rstrip("/").lower()
+
+
+async def _ensure_url_free(db: AsyncSession, base_url: str, exclude_id: uuid.UUID | None = None) -> None:
+    """One firewall, one entry: the same address twice would double every rollout, alert and backup (T4)."""
+    for other in (await db.scalars(select(OpnsenseHost))).all():
+        if other.id != exclude_id and _same_url(other.base_url, base_url):
+            raise api_error(409, ErrorCode.HOST_URL_EXISTS, host=other.name)
+
+
+def _connection_failure_reason(exc: Exception) -> str:
+    """A short machine code for the UI (hosts.connection.<code>): why the first call to the firewall failed."""
+    text = str(exc)
+    if isinstance(exc, opnsense_client.OpnsenseForbiddenError):
+        return "forbidden"
+    if text.startswith("401 ") or text.startswith("403 "):
+        return "credentials" if text.startswith("401 ") else "forbidden"
+    if "TLS-Zertifikat" in text or "CERTIFICATE_VERIFY_FAILED" in text:
+        return "tls"
+    if "Verbindung zu" in text:
+        return "unreachable"
+    return "other"
+
+
 @router.post("", response_model=HostRead, status_code=201)
 async def create_host(payload: HostCreate, db: AsyncSession = Depends(get_db)):
     existing = await db.scalar(select(OpnsenseHost).where(OpnsenseHost.name == payload.name))
     if existing:
         raise api_error(409, ErrorCode.HOST_MIT_DIESEM_NAMEN_EXISTIERT_BEREITS)
+    await _ensure_url_free(db, payload.base_url)
     if payload.policy_hierarchy_group_id and not await db.get(PolicyHierarchyGroup, payload.policy_hierarchy_group_id):
         raise api_error(400, ErrorCode.POLICY_HIERARCHIE_GRUPPE_NICHT_GEFUNDEN)
 
@@ -130,6 +156,14 @@ async def create_host(payload: HostCreate, db: AsyncSession = Depends(get_db)):
     db.add(host)
     await db.flush()
     opnsense_secret_store.save_secret(host.id, payload.api_secret)
+    if payload.verify_connection:
+        # The call that decides "online" in the host list: if it works here, the host shows up online right away.
+        try:
+            await opnsense_client.get_vip_status(host)
+        except opnsense_client.OpnsenseAPIError as exc:
+            await db.rollback()
+            opnsense_secret_store.delete_secret(host.id)
+            raise api_error(422, ErrorCode.HOST_CONNECTION_FAILED, reason=_connection_failure_reason(exc)) from exc
     await db.commit()
 
     statuses = await get_statuses([host])
@@ -161,6 +195,7 @@ async def update_host(host_id: uuid.UUID, payload: HostUpdate, db: AsyncSession 
             raise api_error(409, ErrorCode.HOST_MIT_DIESEM_NAMEN_EXISTIERT_BEREITS)
         host.name = payload.name
     if payload.base_url is not None:
+        await _ensure_url_free(db, payload.base_url, exclude_id=host_id)
         host.base_url = payload.base_url
     if payload.verify_tls is not None:
         host.verify_tls = payload.verify_tls
@@ -188,11 +223,15 @@ async def update_host(host_id: uuid.UUID, payload: HostUpdate, db: AsyncSession 
 
 
 @router.delete("/{host_id}", status_code=204)
-async def delete_host(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def delete_host(host_id: uuid.UUID, confirm_name: str = Query(default="", max_length=120), db: AsyncSession = Depends(get_db)):
+    """Deleting a host drops its stored credentials at once, so the caller must name it (like every other destructive
+    action in OPNexus), not only a click in the UI: `DELETE /api/hosts/{id}?confirm_name=<name>` (T4)."""
     await policy_lock(db)
     host = await db.get(OpnsenseHost, host_id)
     if not host:
         raise api_error(404, ErrorCode.HOST_NICHT_GEFUNDEN)
+    if confirm_name != host.name:
+        raise api_error(409, ErrorCode.HOSTNAMEN_EXAKT_EINGEBEN)
     # An open rule cleanup (1.31) holds a revert deadline and snapshots for this host (and its cluster peers).
     from app.services.host_maintenance_service import ensure_no_open_cleanup
     await ensure_no_open_cleanup(db, [host])

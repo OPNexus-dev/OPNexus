@@ -600,3 +600,25 @@ async def test_vxlan_and_gif_are_listed_and_changed_like_the_other_devices(clien
     done = await _execute(client, host_id, plan["token"], **change)
     assert done.status_code == 200 and done.json()["verified"] is True, done.text
     assert _body(add.calls.last) == {"gif": change["fields"]}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind,field,bad,good", [
+    ("vlan", "tag", ["0", "4095", "-1", "abc", "20.5", "99999"], ["1", "20", "4094"]),
+    ("vlan", "pcp", ["8", "-1"], ["0", "7"]),
+    ("vip", "vhid", ["0", "256"], ["1", "255", ""]),
+    ("vip", "advbase", ["0", "255"], ["1", "254"]),
+    ("vip", "advskew", ["255", "-5"], ["0", "254"]),
+])
+async def test_numbers_outside_the_firewalls_range_are_refused_in_the_preview(client, respx_mock, kind, field, bad, good):
+    """T6: a VLAN tag of 4095 used to come back from the firewall as 502 UPSTREAM_REJECTED; now 422 with the field name,
+    before the firewall is asked anything (ranges from Interfaces/Vlan.xml and Vip.xml)."""
+    host_id = await _setup(client, respx_mock, f"fw-r-{kind}-{field}")
+    base_fields = {"vlan": {"if": "vtnet1", "tag": "20"}, "vip": {"interface": "lan", "mode": "carp", "network": "192.0.2.1/24"}}[kind]
+    for value in bad:
+        resp = await _preview(client, host_id, kind=kind, action="add", fields={**base_fields, field: value})
+        assert resp.status_code == 422, (field, value)
+        assert resp.json()["detail"] == {"code": "NETWORK_FIELD_INVALID", "params": {"field": field}}
+    for value in good:
+        resp = await _preview(client, host_id, kind=kind, action="add", fields={**base_fields, field: value})
+        assert resp.status_code == 200, (field, value, resp.text)

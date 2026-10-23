@@ -5,6 +5,7 @@ import pytest
 
 from tests.test_rules import _rule_payload
 from tests.test_aliases import _alias_payload, _mock_alias_push
+from tests.helpers import delete_host
 
 
 @pytest.mark.asyncio
@@ -18,12 +19,12 @@ async def test_delete_host_with_active_rule_deployment_rejected(client, respx_mo
     await client.post(f"/api/rules/{rule['id']}/deploy")
     await client.post(f"/api/rules/{rule['id']}/confirm")
 
-    resp = await client.delete(f"/api/hosts/{host['id']}")
+    resp = await delete_host(client, host['id'])
     assert resp.status_code == 409, resp.text
 
     respx_mock.post("https://fw-k.test/api/firewall/filter/delRule/r1").mock(return_value=httpx.Response(200, json={"result": "deleted"}))
     await client.delete(f"/api/rules/{rule['id']}")  # undeploys + removes the rule first
-    assert (await client.delete(f"/api/hosts/{host['id']}")).status_code == 204
+    assert (await delete_host(client, host['id'])).status_code == 204
 
 
 @pytest.mark.asyncio
@@ -36,12 +37,12 @@ async def test_delete_host_with_active_alias_deployment_rejected(client, respx_m
     await client.post(f"/api/aliases/{alias['id']}/deploy")
     await client.post(f"/api/aliases/{alias['id']}/confirm")
 
-    resp = await client.delete(f"/api/hosts/{host['id']}")
+    resp = await delete_host(client, host['id'])
     assert resp.status_code == 409, resp.text
 
     respx_mock.post("https://fw-l.test/api/firewall/alias/delItem/alias-uuid-1").mock(return_value=httpx.Response(200, json={"result": "deleted"}))
     await client.delete(f"/api/aliases/{alias['id']}")
-    assert (await client.delete(f"/api/hosts/{host['id']}")).status_code == 204
+    assert (await delete_host(client, host['id'])).status_code == 204
 
 
 @pytest.mark.asyncio
@@ -72,7 +73,7 @@ async def test_create_list_delete_host(client, respx_mock):
     names = [h["name"] for h in resp.json()]
     assert "fw1" in names
 
-    resp = await client.delete(f"/api/hosts/{host_id}")
+    resp = await delete_host(client, host_id)
     assert resp.status_code == 204
 
     resp = await client.get("/api/hosts")
@@ -587,3 +588,52 @@ async def test_host_address_can_be_changed_after_the_firewall_moved(client, resp
     for bad in ("ftp://x", "http://10.9.9.3", "https://user:pw@10.9.9.3", "https://10.9.9.3/?a=b"):
         assert (await client.patch(f"/api/hosts/{host['id']}", json={"base_url": bad})).status_code == 422, bad
     assert next(h for h in (await client.get("/api/hosts")).json() if h["id"] == host["id"])["base_url"] == "https://10.9.9.2"
+
+
+@pytest.mark.asyncio
+async def test_a_second_host_with_the_same_address_is_refused(client, respx_mock):
+    """T4: the same firewall twice would double every rollout, alert and backup."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    first = await client.post("/api/hosts", json={"name": "dup-a", "base_url": "https://dup.test", "api_key": "k", "api_secret": "s"})
+    assert first.status_code == 201
+    for url in ("https://dup.test", "https://DUP.test/", "https://dup.test//"):
+        again = await client.post("/api/hosts", json={"name": "dup-b", "base_url": url, "api_key": "k", "api_secret": "s"})
+        assert again.status_code == 409, url
+        assert again.json()["detail"] == {"code": "HOST_URL_EXISTS", "params": {"host": "dup-a"}}
+    other = (await client.post("/api/hosts", json={"name": "dup-c", "base_url": "https://dup-c.test", "api_key": "k", "api_secret": "s"})).json()
+    moved = await client.patch(f"/api/hosts/{other['id']}", json={"base_url": "https://dup.test"})
+    assert moved.status_code == 409 and moved.json()["detail"]["code"] == "HOST_URL_EXISTS"
+    assert (await client.patch(f"/api/hosts/{other['id']}", json={"base_url": "https://dup-c.test/"})).status_code == 200  # itself
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure,reason", [
+    (httpx.Response(401, json={"status": 401}), "credentials"),
+    (httpx.Response(403, json={"status": 403}), "forbidden"),
+    (httpx.ConnectError("no route"), "unreachable"),
+    (httpx.Response(200, json={"rows": []}), None),
+])
+async def test_verify_connection_asks_the_firewall_once_and_keeps_nothing_on_failure(client, respx_mock, failure, reason):
+    route = respx_mock.get(url__regex=r".*/getVipStatus")
+    route.mock(side_effect=failure) if isinstance(failure, Exception) else route.mock(return_value=failure)
+    body = {"name": f"vc-{reason}", "base_url": f"https://vc-{reason}.test", "api_key": "k", "api_secret": "s", "verify_connection": True}
+    resp = await client.post("/api/hosts", json=body)
+    names = [h["name"] for h in (await client.get("/api/hosts")).json()]
+    if reason is None:
+        assert resp.status_code == 201 and body["name"] in names
+    else:
+        assert resp.status_code == 422 and resp.json()["detail"] == {"code": "HOST_CONNECTION_FAILED", "params": {"reason": reason}}
+        assert body["name"] not in names  # nothing saved, so a corrected retry is not blocked by a leftover
+        assert (await client.post("/api/hosts", json={**body, "verify_connection": False})).status_code == 201  # "create anyway"
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_host_needs_its_name_on_the_server_side_too(client, respx_mock):
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    host = (await client.post("/api/hosts", json={"name": "del-me", "base_url": "https://del-me.test", "api_key": "k", "api_secret": "s"})).json()
+    for params in ({}, {"confirm_name": ""}, {"confirm_name": "DEL-ME"}, {"confirm_name": "other"}):
+        refused = await client.delete(f"/api/hosts/{host['id']}", params=params)
+        assert refused.status_code == 409 and refused.json()["detail"]["code"] == "HOSTNAMEN_EXAKT_EINGEBEN", params
+    assert (await client.get(f"/api/hosts/{host['id']}")).status_code == 200
+    assert (await client.delete(f"/api/hosts/{host['id']}", params={"confirm_name": "del-me"})).status_code == 204
+    assert (await client.delete(f"/api/hosts/{host['id']}", params={"confirm_name": "del-me"})).status_code == 404

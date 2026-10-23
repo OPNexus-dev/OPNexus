@@ -101,7 +101,7 @@ def operator_denies(method: str, path: str) -> bool:
 # Writes that put a change onto the fleet (as opposed to preparing one): deploy, remove/rollback a deployment,
 # maintenance (reboot/update/CARP switch), scheduling it, applying network changes, pushing certificates and
 # ACME accounts, re-asserting the hierarchy order, controlling services, and DELETING a centrally managed object
-# or snapshot (deleting a rule removes it from every firewall it was deployed to).
+# or snapshot (deleting a rule removes it from every firewall it was deployed to), and creating a snapshot.
 _ROLLOUT_POST = re.compile(
     r"/(deploy|push|sign|poll|register|reassert-ordering"
     r"|deployments/[^/]+/(remove|retry-rollback)"
@@ -110,6 +110,7 @@ _ROLLOUT_POST = re.compile(
     r"|rule-cleanup/[^/]+/(revert|retry)"
     r"|maintenance/(execute|carp-execute|schedule)"
     r"|network/changes"
+    r"|snapshots"  # creating a boot environment (deleting one is in _ROLLOUT_DELETE)
     r"|services/[^/]+/(start|stop|restart)"
     # Firmware rollouts (1.25): starting/arming a plan and moving a run forward. Pausing is deliberately absent.
     r"|rollouts/plans/[^/]+/(start|activate)"

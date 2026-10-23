@@ -197,6 +197,7 @@ function FirewallStep({ hosts, onHostsChanged }: { hosts: Host[] | null; onHosts
         enabled: true,
         cluster_name: form.cluster_name.trim() || null,
         policy_hierarchy_group_id: null,
+        verify_connection: true,  // the assistant exists to get a working first firewall: say right away if it does not work
       });
       toast.show(t("hosts.created", { name: created.name }), "success");
       setForm(emptyHostForm);

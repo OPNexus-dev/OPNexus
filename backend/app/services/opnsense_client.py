@@ -8,7 +8,10 @@ required.
 
 Auth is HTTP Basic: username = API key, password = API secret.
 """
+import ipaddress
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 import json
 import re
 from typing import Any
@@ -61,6 +64,34 @@ def _client(host: OpnsenseHost) -> httpx.AsyncClient:
         # Firewalls reached through the management overlay (WireGuard hub) go via the hub's CONNECT proxy.
         proxy=overlay_service.proxy_for(host.base_url),
     )
+
+
+# ── Rule counters before a reload (B11) ────────────────────────────────────
+# Every request below that makes OPNsense reload pf (filter/NAT apply; alias and IPsec reconfigure run
+# `filter reload skip_alias` too, verified in core stable/26.7; OpenVPN/WireGuard/network may through interface
+# registration) zeroes every rule counter. Whatever was hit since the last observation would be lost and a rule
+# could later look "unused". So the counters are read right before, through rule_hit_service. A writer that has
+# just sampled itself (the rule cleanup) switches this off for its own call with ``counters_already_sampled()``.
+_sampled_already: ContextVar[bool] = ContextVar("opnexus_counters_sampled", default=False)
+
+
+@contextmanager
+def counters_already_sampled():
+    token = _sampled_already.set(True)
+    try:
+        yield
+    finally:
+        _sampled_already.reset(token)
+
+
+async def _before_reload(host: OpnsenseHost) -> None:
+    if _sampled_already.get():
+        return
+    from app.services.rule_hit_service import sample_before_reload  # needs the database; this module does not
+    try:
+        await sample_before_reload(host)
+    except Exception as exc:  # noqa: BLE001 - a failed sample must never block or fail the write itself
+        logger.info("Zählerprobe vor dem Anwenden auf %s fehlgeschlagen: %s", host.name, exc)
 
 
 def _refuse_unresolved_placeholders(method: str, path: str, kwargs: dict) -> None:
@@ -221,6 +252,7 @@ async def del_alias_item(host: OpnsenseHost, alias_uuid: str) -> dict:
 
 
 async def reconfigure_aliases(host: OpnsenseHost) -> dict:
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/firewall/alias/reconfigure"), "Aliase anwenden", set())
 
 
@@ -366,6 +398,7 @@ def rule_write_payload(rule: dict) -> dict[str, str]:
 
 
 async def apply(host: OpnsenseHost) -> dict:
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/firewall/filter/apply"), "Änderungen anwenden", set())
 
 
@@ -471,6 +504,7 @@ async def apply_port_forward(host: OpnsenseHost) -> dict:
     apply (verified in core source: neither DNatController nor
     FilterController override applyAction). Called via its own semantically
     named endpoint anyway, matching what OPNsense's own UI does."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/firewall/d_nat/apply"), "Änderungen anwenden", set())
 
 
@@ -510,6 +544,7 @@ async def del_one_to_one_rule(host: OpnsenseHost, rule_uuid: str) -> dict:
 
 async def apply_one_to_one(host: OpnsenseHost) -> dict:
     """Apply through the type-specific controller, using FilterBaseController reload."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/firewall/one_to_one/apply"), "Änderungen anwenden", set())
 
 
@@ -532,6 +567,7 @@ async def del_outbound_nat_rule(host: OpnsenseHost, rule_uuid: str) -> dict:
 
 async def apply_outbound_nat(host: OpnsenseHost) -> dict:
     """Apply through the type-specific controller, using FilterBaseController reload."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/firewall/source_nat/apply"), "Änderungen anwenden", set())
 
 
@@ -567,6 +603,59 @@ async def get_pf_rule_statistics(host: OpnsenseHost) -> dict:
 # - Firewall/Api/GroupController::searchItemAction -> searchBase("ifgroupentry"): rows with
 #   ifname, members (comma separated identifiers), sequence; the built-in groups (enc0, openvpn,
 #   wireguard) appear with their name as uuid and empty members.
+def _stream_addr(response: httpx.Response, which: str) -> tuple[str, int] | None:
+    stream = response.extensions.get("network_stream")
+    try:
+        addr = stream.get_extra_info(which) if stream is not None else None
+    except Exception:  # noqa: BLE001 - transport without that information
+        return None
+    return (str(addr[0]), int(addr[1])) if isinstance(addr, (tuple, list)) and len(addr) >= 2 else None
+
+
+async def own_source_address(host: OpnsenseHost) -> str | None:
+    """The address this firewall sees OPNexus's API requests come from (B10): behind NAT or the management tunnel it is
+    not what OPNexus knows about itself, so the firewall is asked. Two requests on one keep-alive connection: the first
+    tells the firewall address and the local port of this connection, the second lists pf's states for that address
+    (`diagnostics/firewall/query_states`, POST, read-only; Diagnostics/Api/FirewallController, core stable/26.7) and the
+    state whose source port is our local port is this very connection. Live 2026-10-23 on test-fw-1/3: one ESTABLISHED
+    state, src 192.0.2.10 = the OPNexus server, port preserved by Docker's NAT.
+
+    None when it cannot be told for sure: through the overlay's CONNECT proxy (the local port belongs to the proxy
+    connection), a NAT that rewrote the port, or an API key without the states privilege (that raises
+    OpnsenseAPIError)."""
+    async with _client(host) as http:
+        try:
+            first = await http.get("/diagnostics/firewall/pf_states")
+            first.raise_for_status()
+            server = _stream_addr(first, "server_addr")
+            if server is None:
+                return None
+            second = await http.post("/diagnostics/firewall/query_states",
+                                     json={"searchPhrase": server[0], "rowCount": 500, "current": 1})
+            second.raise_for_status()
+            local, server = _stream_addr(second, "client_addr"), _stream_addr(second, "server_addr")
+            rows = second.json().get("rows") or []
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            raise OpnsenseAPIError(f"Zustandstabelle von {host.name} nicht lesbar: {str(exc)[:200]}") from exc
+    if local is None or server is None:
+        return None
+
+    def same_ip(a, b) -> bool:
+        try:
+            return ipaddress.ip_address(str(a)) == ipaddress.ip_address(str(b))
+        except ValueError:
+            return False
+
+    for row in rows if isinstance(rows, list) else []:
+        if (isinstance(row, dict) and same_ip(row.get("dst_addr"), server[0]) and str(row.get("dst_port")) == str(server[1])
+                and str(row.get("src_port")) == str(local[1]) and str(row.get("state", "")).startswith("ESTABLISHED")):
+            try:
+                return str(ipaddress.ip_address(str(row.get("src_addr"))))
+            except ValueError:
+                return None
+    return None
+
+
 async def get_rule_stats(host: OpnsenseHost) -> dict:
     """Per-label counters, already summed over every pf line of a rule. Used for the rule usage sampling
     (rule_hit_service). Live check 2026-10-22 on all three test firewalls (26.7, one with unmigrated legacy
@@ -801,6 +890,7 @@ async def reconfigure_ipsec(host: OpnsenseHost) -> dict:
     Deliberately its own call, separate from the 5 config-write calls
     above — see ipsec_deploy_service.py for why this app never bundles it
     silently."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/ipsec/service/reconfigure"), "IPsec-Dienst neu laden", set())
 
 
@@ -898,6 +988,7 @@ async def reconfigure_openvpn(host: OpnsenseHost) -> dict:
     section comment above for why this is NOT assumed symmetric with
     IPsec's `{"status": "ok"}`), dispatched via _mutation_result with the
     "result"-based branch (results={"ok"})."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/openvpn/service/reconfigure"), "OpenVPN-Dienst neu laden", {"ok"})
 
 
@@ -1074,6 +1165,7 @@ async def reconfigure_wireguard(host: OpnsenseHost) -> dict:
     IPsec's `{"status": "ok"}`, and matches OpenVPN's shape instead),
     dispatched via _mutation_result with the "result"-based branch
     (results={"ok"})."""
+    await _before_reload(host)
     return _mutation_result(await _request(host, "POST", "/wireguard/service/reconfigure"), "WireGuard-Dienst neu laden", {"ok"})
 
 
@@ -1394,6 +1486,7 @@ async def write_network_item(host: OpnsenseHost, kind: str, action: str, uuid: s
 
 
 async def reconfigure_network(host: OpnsenseHost, kind: str) -> dict:
+    await _before_reload(host)
     return _mutation_result(
         await _request(host, "POST", NETWORK_ITEM_APIS[kind]["reconfigure"]), "Änderung anwenden", set())
 

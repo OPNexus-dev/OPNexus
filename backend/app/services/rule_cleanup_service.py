@@ -75,6 +75,7 @@ Item and operation ``message`` hold an ErrorCode name (``errors.<CODE>`` in the 
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import logging
 import re
@@ -96,6 +97,7 @@ from app.models.policy_hierarchy_rule_deployment import PolicyHierarchyRuleDeplo
 from app.models.rule_cleanup import OPEN_ITEM_STATES, RuleCleanupItem, RuleCleanupOperation
 from app.models.rule_history import LiveRuleState, RuleChangeEvent
 from app.services import audit_service
+from app.services.deploy_flow import unsettled
 from app.services import opnsense_client as client
 from app.services import rule_history_service as rhs
 from app.services import rule_hit_service
@@ -236,7 +238,7 @@ async def _ensure_free(db: AsyncSession, host: OpnsenseHost, fleet: list[Opnsens
     await ensure_no_maintenance(db, [host], cleanup=False)
     ids = [h.id for h in fleet]
     for model in (*DEPLOYMENTS, PolicyHierarchyRuleDeployment):
-        if await db.scalar(select(model.id).where(model.host_id.in_(ids), model.status.in_(("pending", "revert_failed"))).limit(1)):
+        if await db.scalar(select(model.id).where(model.host_id.in_(ids), unsettled(model)).limit(1)):
             raise api_error(409, ErrorCode.BEREINIGUNG_OFFENE_OPERATION, reason="deployment")
     if await has_open_cleanup(db, ids, exclude_op=exclude_op):
         raise api_error(409, ErrorCode.BEREINIGUNG_OFFENE_OPERATION, reason="cleanup")
@@ -255,6 +257,7 @@ class Node:
     managed: dict[str, dict]
     hasync: dict | None
     states: dict = field(default_factory=dict)
+    own_source: str | None = None  # where this firewall sees OPNexus's API requests come from (B10)
 
 
 def _hasync_brief(data) -> dict | None:
@@ -312,12 +315,17 @@ async def _load_nodes(db: AsyncSession, host: OpnsenseHost, *, unused_days: int,
         except OpnsenseAPIError:
             hasync = None  # protection.infrastructure_reason then assumes the worst on a cluster node
         states = {s.rule_uuid: s for s in (await db.scalars(select(LiveRuleState).where(LiveRuleState.host_id == member.id))).all()}
+        try:
+            own_source = await client.own_source_address(member)
+        except OpnsenseAPIError as exc:
+            own_source = None  # shown as "unknown" in the preview; the configured sources still protect
+            logger.info("Bereinigung: OPNexus-Adresse auf %s nicht ermittelbar: %s", member.name, exc)
         nodes.append(Node(
             host=member, role=roles.get(member.id), ctx=ctx,
             rules={r.uuid.lower(): r for r in rules if r.uuid and not r.uuid.startswith("pf@")},
             rows={str(r.get("uuid")).lower(): r for r in ctx.rows if r.get("uuid")},
             candidates={str(c["uuid"]).lower(): c for c in view["candidates"] if c.get("uuid")},
-            managed=managed, hasync=hasync, states=states,
+            managed=managed, hasync=hasync, states=states, own_source=own_source,
         ))
     return _write_order(nodes)
 
@@ -394,6 +402,18 @@ async def _uuid_map(db: AsyncSession, nodes: list[Node], kind: str, uuids: list[
     return mapping
 
 
+def _with_own_source(sources: list, own: str | None) -> tuple[list, dict]:
+    """The configured management sources plus OPNexus's own address on this firewall (B10): a rule that only an
+    admin's workstation was listed for could otherwise cut OPNexus off, and then the automatic revert cannot reach the
+    firewall any more. Unknown address: the configured sources alone, and the preview says so."""
+    if not own:
+        return sources, {"address": None, "status": "unknown"}
+    addr = ipaddress.ip_address(own)
+    if any(addr.version == net.version and addr in net for net in sources):
+        return sources, {"address": own, "status": "configured"}
+    return [*sources, ipaddress.ip_network(own)], {"address": own, "status": "added"}
+
+
 async def _plan(db: AsyncSession, nodes: list[Node], *, kind: str, uuids: list[str], unused_days: int,
                 acknowledge: set[str], limits: Limits, now: datetime) -> dict:
     """What the operation would do, recomputed from the live state, or a refusal (api_error)."""
@@ -408,6 +428,7 @@ async def _plan(db: AsyncSession, nodes: list[Node], *, kind: str, uuids: list[s
     missing_ack: list[str] = []
     for node in nodes:
         targets, ports = protection.management_targets(node.host.base_url, node.ctx, limits.ports)
+        node_sources, opnexus_source = _with_own_source(sources, node.own_source)
         node_uuids = [mapping[u][node.host.id] for u in uuids]
         rows = node.rows
         covers = {c.get("by", {}).get("uuid", "").lower() for u in node_uuids
@@ -452,7 +473,7 @@ async def _plan(db: AsyncSession, nodes: list[Node], *, kind: str, uuids: list[s
                 if infra:
                     refuse(infra)
                     continue
-                check = protection.management_check(rule, node.ctx, sources, targets, ports)
+                check = protection.management_check(rule, node.ctx, node_sources, targets, ports)
                 item["protection"] = check
                 if check["result"] != "false":
                     refuse("management")
@@ -487,7 +508,7 @@ async def _plan(db: AsyncSession, nodes: list[Node], *, kind: str, uuids: list[s
                 if not eligible:
                     refuse("not_candidate")
                     continue
-                item["protection"] = protection.management_check(rule, node.ctx, sources, targets, ports)
+                item["protection"] = protection.management_check(rule, node.ctx, node_sources, targets, ports)
                 # Switching a block/reject rule back ON can cut off the management path; the auto-revert then only
                 # works if OPNexus itself still reaches the firewall. Unless the rule is proven not to touch
                 # management traffic: an explicit acknowledgement per rule (review finding 7).
@@ -506,7 +527,7 @@ async def _plan(db: AsyncSession, nodes: list[Node], *, kind: str, uuids: list[s
                     continue
             items.append(item)
         plan_nodes.append({"host_id": str(node.host.id), "host_name": node.host.name, "base_url": node.host.base_url,
-                           "role": node.role, "items": items})
+                           "role": node.role, "opnexus_source": opnexus_source, "items": items})
     if problems:
         first = problems[0]
         if first.get("code") == "wait":
@@ -677,7 +698,8 @@ def redact_plan(plan: dict | None) -> dict | None:
         return plan
     out = {k: v for k, v in plan.items() if k not in ("sources", "ports")}
     out["sources_configured"] = bool(plan.get("sources"))
-    out["nodes"] = [{**{k: v for k, v in n.items() if k != "base_url"},
+    out["nodes"] = [{**{k: v for k, v in n.items() if k not in ("base_url", "opnexus_source")},
+                     "opnexus_source": {"status": (n.get("opnexus_source") or {}).get("status")},
                      "items": [{**i, "protection": _brief_protection(i.get("protection"))} for i in n.get("items", [])]}
                     for n in plan.get("nodes", [])]
     return out
@@ -963,7 +985,8 @@ async def _run_switch(db: AsyncSession, op: RuleCleanupOperation, nodes: list[No
             # Also after an error: what is switched in the configuration must not wait for a foreign apply.
             await _sample(db, node.host, strict=False)
             try:
-                await client.apply(node.host)
+                with client.counters_already_sampled():  # _sample just ran: no second probe
+                    await client.apply(node.host)
             except OpnsenseAPIError as exc:
                 apply_failed = True
                 op.message = f"{ErrorCode.BEREINIGUNG_ANWENDEN_FEHLGESCHLAGEN.value}: {node.host.name}: {exc}"[:1000]
@@ -1110,7 +1133,8 @@ async def _revert(db: AsyncSession, op: RuleCleanupOperation, *, allowed: tuple,
         if touched and member is not None:
             await _sample(db, member, strict=False)
             try:
-                await client.apply(member)
+                with client.counters_already_sampled():  # _sample just ran: no second probe
+                    await client.apply(member)
             except OpnsenseAPIError as exc:
                 for item in node_items:
                     if item.state == "reverted":
@@ -1322,7 +1346,8 @@ async def _run_delete(db: AsyncSession, op: RuleCleanupOperation, nodes: list[No
             # and leaves no "pending changes" in the GUI. It still zeroes the counters: sample first.
             await _sample(db, node.host, strict=False)
             try:
-                await client.apply(node.host)
+                with client.counters_already_sampled():  # _sample just ran: no second probe
+                    await client.apply(node.host)
             except OpnsenseAPIError as exc:
                 op.message = f"{ErrorCode.BEREINIGUNG_ANWENDEN_FEHLGESCHLAGEN.value}: {node.host.name}: {exc}"[:1000]
                 stop = True
@@ -1467,7 +1492,8 @@ async def restore_item(db: AsyncSession, host: OpnsenseHost, item_id, *, actor: 
             warnings.append(f"{member.name}:{item.rule_uuid}")
         await _sample(db, member, strict=False)
         try:
-            await client.apply(member)
+            with client.counters_already_sampled():  # _sample just ran: no second probe
+                await client.apply(member)
         except OpnsenseAPIError as exc:  # the rule is disabled: pf does not change; the GUI shows pending changes
             op.message = f"{ErrorCode.BEREINIGUNG_ANWENDEN_FEHLGESCHLAGEN.value}: {member.name}: {exc}"[:1000]
         item.state, item.changed_at = "restored", _now()

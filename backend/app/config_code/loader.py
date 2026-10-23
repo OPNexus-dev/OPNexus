@@ -265,7 +265,8 @@ def _check_counts(data: dict, lines: dict[tuple, int]) -> list[dict]:
             continue
         if isinstance(section, list) and len(section) > MAX_OBJECTS_PER_KIND:
             errors.append(_err("too_many_objects", kind, _line_for(lines, (kind,)), max=MAX_OBJECTS_PER_KIND))
-    for i, alias in enumerate(data.get("aliases") or []):
+    aliases = data.get("aliases")
+    for i, alias in enumerate(aliases if isinstance(aliases, list) else []):  # any other shape is for the schema check
         entries = alias.get("entries") if isinstance(alias, dict) else None
         if isinstance(entries, list):
             loc = ("aliases", i, "entries")

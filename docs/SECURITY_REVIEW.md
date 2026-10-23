@@ -330,3 +330,19 @@ Every finding was re-checked against the source before changing it; all 16 SEC f
 | HARD-01, 04, 07, 08 | Open | Non-root containers/least-privilege DB role (volume ownership and migration role need a rollout plan), egress policy and streaming limits, CI pinning/signing and `scripts/opnexus` state-file parsing, backup retention/permissions — separate work items. |
 
 Rollout notes: rebuild backend, frontend **and proxy** images (Caddyfile is baked in); apply the lockfile with the frontend rebuild; no database migration.
+
+## Follow-up review — 2026-10-23
+
+An external code review of version 1.32.1 found the following issues; all are fixed in 1.33.0 and covered by regression tests.
+
+| Area | Fix |
+|---|---|
+| Deploy rollback | A retry after "written, apply failed" no longer overwrites the original rollback target (`services/deploy_flow.py`, all six deploy types). Maintenance, cleanup and configuration-as-code treat an armed `error` row like a pending one. |
+| Sign-in vs. 2FA | `create_session` re-checks `totp_enabled` under the row lock; enabling 2FA takes the same lock. A password-only sign-in that raced the activation is refused with `TOTP_REQUIRED`. |
+| Last administrator | Role changes and user deletion share one advisory lock, re-read the caller under it and count afterwards, so two administrators acting on each other cannot leave none. |
+| Operator rights | Creating a snapshot is a rollout. `tests/test_write_route_matrix.py` requires every write route to be a rollout, admin-only or explicitly allowed for operators. |
+| Certificates / ACME | The target host is fixed after the first push; an ACME account with requests cannot change host. |
+| VPN deploys | Each UUID the firewall hands out is committed at once; a per-object lease (`services/deploy_lease.py`) refuses parallel deploys and removals. Residual: if the reply to an `add_*` call is lost, its UUID is unknown and a retry may create a duplicate. |
+| Configuration as code | A wrong-shaped section answers 422 instead of failing with a `TypeError`. |
+| Installation | `.env` is created with mode 0600 and tightened by `opnexus update`/`status`; `opnexus rollback` parses its state file instead of sourcing it. |
+| Dependencies | Next.js 15.5.28 (`npm audit --omit=dev`: clean), PyJWT 2.15.1 (`pip-audit`: clean). Three moderate findings remain in the Tailwind build tooling. |

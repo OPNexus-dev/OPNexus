@@ -167,3 +167,10 @@ async def test_too_many_waiting_plans_are_turned_away(client, monkeypatch):
     assert resp.status_code == 429 and resp.json()["detail"]["code"] == "CONFIG_BUSY"
     monkeypatch.setattr(config_code, "_waiting", 0)
     assert (await client.post("/api/config/import/plan", json={"yaml": "opnexus_config: 1\n"})).status_code == 200
+
+
+async def test_a_wrong_shaped_section_is_answered_with_422_not_a_server_error(client):
+    resp = await client.post("/api/config/import/plan", json={"yaml": "opnexus_config: 1\naliases: 42\n"})
+    assert resp.status_code == 422, resp.text
+    detail = resp.json()["detail"]
+    assert detail["code"] == "CONFIG_INVALID" and detail["params"]["errors"]

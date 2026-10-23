@@ -40,6 +40,7 @@ from app.services import (
 )
 from app.services.redaction import redact_data, redact_text
 from app.services.rule_deploy_service import sweep_expired_deployments
+from tests.helpers import delete_host
 
 PASSWORD = "a-long-test-password-1"
 
@@ -604,7 +605,7 @@ async def test_host_with_deployed_certificate_or_vpn_cannot_be_deleted(client, r
         row = await db.get(ManagedCertificate, cert_id)
         row.opnsense_uuid = "remote-cert"
         await db.commit()
-    blocked = await client.delete(f"/api/hosts/{host['id']}")
+    blocked = await delete_host(client, host['id'])
     assert blocked.status_code == 409
     assert blocked.json()["detail"]["code"] == "HOST_HAT_NOCH_VPN_ODER_ZERTIFIKATS_OBJEKTE_DIESE_ZUERST_ENTFERNEN"
 
@@ -612,7 +613,7 @@ async def test_host_with_deployed_certificate_or_vpn_cannot_be_deleted(client, r
         row = await db.get(ManagedCertificate, cert_id)
         row.opnsense_uuid = None
         await db.commit()
-    assert (await client.delete(f"/api/hosts/{host['id']}")).status_code == 204
+    assert (await delete_host(client, host['id'])).status_code == 204
     assert cert_key_store.read_secret(cert_id) is None
 
 
@@ -629,7 +630,7 @@ async def test_host_with_vpn_deployment_cannot_be_deleted(client, respx_mock):
     async with SessionLocal() as db:
         db.add(IpsecTunnelDeployment(tunnel_id=uuid.UUID(tunnel.json()["id"]), host_id=uuid.UUID(host["id"]), status="success"))
         await db.commit()
-    resp = await client.delete(f"/api/hosts/{host['id']}")
+    resp = await delete_host(client, host['id'])
     assert resp.status_code == 409
 
 

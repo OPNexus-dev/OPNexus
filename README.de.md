@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.32.1` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.33.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -48,7 +48,7 @@ Voraussetzung: Docker mit Compose-Plugin.
 ```bash
 git clone https://git.opnexus.dev/opnexus/opnexus.git
 cd opnexus
-cp .env.example .env        # POSTGRES_PASSWORD (und ADMIN_PASSWORD) setzen
+install -m 600 .env.example .env   # POSTGRES_PASSWORD (und ADMIN_PASSWORD) setzen; nur für dich lesbar
 docker compose up -d --build
 ```
 
@@ -60,13 +60,15 @@ scripts/opnexus password
 
 Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassistent**: eigenes Passwort setzen, optional Zwei-Faktor-Anmeldung einschalten, die erste Firewall verbinden (samt Anleitung für den API-Key in OPNsense). Er lässt sich überspringen und jederzeit unter System › Einrichtung wieder öffnen.
 
+**Windows:** läuft in Docker Desktop mit WSL 2, siehe die [Installationsanleitung für Windows](https://opnexus.dev/docs/windows/). Entwickelt und getestet wird unter Linux; für den Dauerbetrieb ist ein Linux-Server oder eine Linux-VM besser.
+
 Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls).
 
 **Fertige Images** (amd64 und arm64) liegen in der Registry dieses Gitea. In der `.env`:
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.32.1
+OPNEXUS_VERSION=1.33.0
 ```
 
 ```bash

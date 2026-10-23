@@ -2,6 +2,7 @@
 fake firewall (tests/rule_cleanup_fake.py) and the test database. Numbers refer to DESIGN-1.31 §6. Roles and API
 tokens are checked in the router (package 6), not here."""
 import asyncio
+import json
 import uuid as uuid_lib
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -992,3 +993,70 @@ async def test_an_outdated_acknowledgement_text_is_refused(env):  # review findi
     assert env.fw.calls == []  # refused before anything is read
     ok = await preview(env.host_id, [R_BLOCK], acknowledge=[R_BLOCK], ack_text_version=svc.ACK_TEXT_VERSION)
     assert ok["plan"]["acknowledged"] == [R_BLOCK]
+
+
+@pytest.mark.asyncio
+async def test_opnexus_own_address_is_protected_even_when_only_workstations_are_configured(env, monkeypatch):
+    """B10: the management sources may list only the admins' workstations. A rule that is the only way OPNexus itself
+    reaches the firewall would then look harmless, and after switching it off the automatic revert could not reach the
+    firewall any more. The address the firewall sees OPNexus come from is protected as well."""
+    from app.services import opnsense_client
+    from app.services.rule_cleanup_service import redact
+
+    custom = "aaaaaaaa-0000-4000-8000-000000000920"
+    env.fw.rules.append(rule(custom, 920, interface="wan", src="198.51.100.0/24", dport="443", description="opnexus server net"))
+    await _seed_hits(env.host_id, [custom])
+    ok = await preview(env.host_id, [custom])  # address unknown (respx has no socket): configured sources only
+    assert ok["plan"]["nodes"][0]["opnexus_source"] == {"address": None, "status": "unknown"}
+
+    async def seen_from(_host):
+        return "198.51.100.7"
+
+    monkeypatch.setattr(opnsense_client, "own_source_address", seen_from)
+    got = await refused(env.host_id, svc.preview, actor="admin", kind="disable", uuids=[custom])
+    assert got["code"] == "BEREINIGUNG_REGEL_NICHT_AENDERBAR" and got["params"]["reason"] == "management"
+    assert env.fw.writes() == []
+
+    async def configured(_host):
+        return MGMT_SOURCE
+
+    monkeypatch.setattr(opnsense_client, "own_source_address", configured)
+    p = await preview(env.host_id, [R_UNUSED])
+    node = p["plan"]["nodes"][0]
+    assert node["opnexus_source"] == {"address": MGMT_SOURCE, "status": "configured"}
+    hidden = redact(p)["plan"]["nodes"][0]  # an address is security-relevant like the sources: admins only
+    assert hidden["opnexus_source"] == {"status": "configured"}
+
+
+@pytest.mark.asyncio
+async def test_own_source_address_matches_exactly_this_connection(monkeypatch, respx_mock):
+    """The state whose source port is the local port of the request; nothing else (other clients on 443, old states)."""
+    import httpx as _httpx
+
+    from app.models.host import OpnsenseHost
+    from app.services import opnsense_client, opnsense_secret_store
+
+    host = OpnsenseHost(id=uuid_lib.uuid4(), name="fw-src", base_url="https://192.0.2.1", api_key="k", verify_tls=False)
+    opnsense_secret_store.save_secret(host.id, "s")
+    respx_mock.get("https://192.0.2.1/api/diagnostics/firewall/pf_states").mock(return_value=_httpx.Response(200, json={"current": 3}))
+    states = respx_mock.post("https://192.0.2.1/api/diagnostics/firewall/query_states")
+    rows = [
+        {"src_addr": "203.0.113.50", "src_port": "40000", "dst_addr": "192.0.2.1", "dst_port": "443", "state": "ESTABLISHED:ESTABLISHED"},  # a browser
+        {"src_addr": "192.0.2.10", "src_port": "55555", "dst_addr": "192.0.2.1", "dst_port": "443", "state": "TIME_WAIT:TIME_WAIT"},  # old
+        {"src_addr": "192.0.2.10", "src_port": "33160", "dst_addr": "192.0.2.1", "dst_port": "443", "state": "ESTABLISHED:ESTABLISHED"},  # us
+    ]
+    states.mock(return_value=_httpx.Response(200, json={"rows": rows}))
+    addrs = {"server_addr": ("192.0.2.1", 443), "client_addr": ("172.22.0.5", 33160)}
+    monkeypatch.setattr(opnsense_client, "_stream_addr", lambda _resp, which: addrs.get(which))
+    assert await opnsense_client.own_source_address(host) == "192.0.2.10"
+    assert json.loads(states.calls.last.request.content)["searchPhrase"] == "192.0.2.1"
+
+    addrs["client_addr"] = ("172.22.0.5", 40001)  # NAT rewrote the port: no guessing
+    assert await opnsense_client.own_source_address(host) is None
+    addrs["server_addr"] = None  # through the overlay's CONNECT proxy
+    assert await opnsense_client.own_source_address(host) is None
+    states.mock(return_value=_httpx.Response(403, json={"message": "forbidden"}))
+    addrs["server_addr"] = ("192.0.2.1", 443)
+    with pytest.raises(opnsense_client.OpnsenseAPIError):
+        await opnsense_client.own_source_address(host)
+    opnsense_secret_store.delete_secret(host.id)

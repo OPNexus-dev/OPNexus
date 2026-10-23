@@ -1,6 +1,7 @@
 import httpx
 import pytest
 from tests.test_rules import _create_host
+from tests.helpers import delete_host
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('kind,remote,fields',[('port-forward','d_nat',{'target':'192.0.2.20'}),('one-to-one','one_to_one',{'external':'192.0.2.20'}),('outbound-nat','source_nat',{'target':'192.0.2.20'})])
@@ -14,7 +15,7 @@ async def test_nat_groups_and_deletion_guards(client,respx_mock,outbound_mode_hy
     respx_mock.post(f'https://fw1.test/api/firewall/{remote}/addRule').respond(200,json={'result':'saved','uuid':'nat1'})
     respx_mock.post(f'https://fw1.test/api/firewall/{remote}/apply').respond(200,json={'status':'ok'})
     assert (await client.post(f"/api/{kind}/{r['id']}/deploy")).status_code==200
-    assert (await client.delete('/api/hosts/'+h['id'])).status_code==409
+    assert (await delete_host(client, h['id'])).status_code==409
     impact=(await client.post(f"/api/groups/{g['id']}/preview",json={'name':'NAT group','description':'','host_ids':[]})).json()
     assert impact['nat'][0]['retained_host_ids']==[h['id']]
     assert impact['nat'][0]['kind']==kind.replace('-','_')
@@ -25,7 +26,7 @@ async def test_nat_groups_and_deletion_guards(client,respx_mock,outbound_mode_hy
     respx_mock.post(f'https://fw1.test/api/firewall/{remote}/delRule/nat1').respond(200,json={'result':'deleted'})
     p=(await client.get(f"/api/{kind}/{r['id']}/preview")).json()
     assert (await client.post(f"/api/{kind}/{r['id']}/deployments/{h['id']}/remove",json={'preview_token':p['token']})).status_code==204
-    assert (await client.delete('/api/hosts/'+h['id'])).status_code==204
+    assert (await delete_host(client, h['id'])).status_code==204
 
 @pytest.mark.asyncio
 async def test_pf_disabled_polarity_and_readonly_automatic_rows(client,respx_mock):

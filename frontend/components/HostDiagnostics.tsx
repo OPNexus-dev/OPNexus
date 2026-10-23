@@ -142,12 +142,12 @@ function TracerouteView({ r }: { r: TracerouteResult }) {
   return (
     <div className="space-y-2">
       <p className="font-mono text-xs text-slate-600">{r.notice}</p>
-      {r.hops.length === 0 ? <p className="text-sm text-slate-500">{t("network.empty")}</p> : (
+      {r.hops.length === 0 ? <p className="text-sm text-slate-500">{t("hostsystem.diag.noHops")}</p> : (
         <Table>
           <THead><TRow><TH>{t("hostsystem.diag.hop")}</TH><TH>{t("network.col.address")}</TH><TH>{t("hostsystem.diag.hostname")}</TH><TH>AS</TH><TH>{t("hostsystem.diag.time")}</TH></TRow></THead>
           <TBody>
             {r.hops.map((h) => (
-              <TRow key={h.ttl + h.address}><TD>{h.ttl}</TD><TD className="font-mono text-xs">{h.address || "*"}</TD><TD className="font-mono text-xs">{h.host}</TD><TD>{h.as}</TD><TD className="font-mono text-xs">{h.probes}</TD></TRow>
+              <TRow key={h.ttl + h.address}><TD>{h.ttl}</TD><TD className="font-mono text-xs">{h.silent ? <span className="text-slate-400">{t("hostsystem.diag.silentHop")}</span> : h.address || "*"}</TD><TD className="font-mono text-xs">{h.host}</TD><TD>{h.as}</TD><TD className="font-mono text-xs">{h.probes}</TD></TRow>
             ))}
           </TBody>
         </Table>

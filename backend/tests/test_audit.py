@@ -7,6 +7,7 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from tests.test_rules import _create_host
 from tests.test_port_forward import _pf_payload, _mock_pf_push
+from tests.helpers import delete_host
 
 @pytest.mark.asyncio
 async def test_audit_retains_payload_actor_after_rule_and_host_deletion(client,respx_mock):
@@ -18,7 +19,7 @@ async def test_audit_retains_payload_actor_after_rule_and_host_deletion(client,r
     assert (await client.post(f"/api/port-forward/{r['id']}/confirm")).status_code==200
     respx_mock.post('https://fw1.test/api/firewall/d_nat/delRule/pf-uuid-1').respond(200,json={'result':'deleted'})
     assert (await client.delete(f"/api/port-forward/{r['id']}")).status_code==204
-    assert (await client.delete(f"/api/hosts/{h['id']}")).status_code==204
+    assert (await delete_host(client, h['id'])).status_code==204
     data=(await client.get('/api/audit',params={'entity_id':r['id'],'limit':200})).json()
     state=[e for e in data['items'] if e['host_id']==h['id']]
     assert {e['status'] for e in state} == {'pending','success','removed'}

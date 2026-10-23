@@ -24,6 +24,7 @@ from app.routers import rule_cleanup as router_mod
 from app.schemas.rule_cleanup import CleanupItemRead, CleanupOperationRead
 from app.services import api_token_service, notification_checks
 from app.services import rule_cleanup_service as svc
+from tests.helpers import delete_host
 from tests.rule_cleanup_fake import MGMT_SOURCE, R_ALIAS, R_BASE, R_BLOCK, R_DUP, R_MGMT, R_TAIL, R_UNUSED
 from tests.test_api_tokens import _bearer, _login, _make
 from tests.test_rule_cleanup import (  # noqa: F401  (fixtures are used by name)
@@ -583,7 +584,7 @@ async def test_the_block_covers_the_cluster_and_the_maintenance_inspection(clust
         await ensure_no_maintenance(db, [a], cleanup=False)  # the cleanup service's own check does not trip over itself
     # deleting or re-addressing either node is refused while it is open
     for host_id in (cluster.a, cluster.b):
-        r = await client.delete(f"/api/hosts/{host_id}")
+        r = await delete_host(client, host_id)
         assert r.status_code == 409 and r.json()["detail"]["code"] == "OPEN_CLEANUP_BLOCKS_DEPLOY", host_id
     op = (await client.get(_base(cluster.a))).json()[0]
     assert (await client.post(f"{_base(cluster.a)}/{op['id']}/revert")).status_code == 200
@@ -596,7 +597,7 @@ async def test_the_block_covers_the_cluster_and_the_maintenance_inspection(clust
 async def test_host_delete_and_readdressing_are_refused_while_a_cleanup_is_open(client, env):
     hid = env.host_id
     await _open(client, env)
-    gone = await client.delete(f"/api/hosts/{hid}")
+    gone = await delete_host(client, hid)
     assert gone.status_code == 409 and gone.json()["detail"]["code"] == "OPEN_CLEANUP_BLOCKS_DEPLOY"
     for body in ({"base_url": "https://203.0.113.99"}, {"enabled": False}, {"cluster_name": "ha-x"}, {"clear_cluster_name": True}):
         r = await client.patch(f"/api/hosts/{hid}", json=body)
@@ -607,7 +608,7 @@ async def test_host_delete_and_readdressing_are_refused_while_a_cleanup_is_open(
         assert host.base_url == FW1 and host.enabled and host.name == "fw-a2"
     op = (await client.get(_base(env))).json()[0]
     assert (await client.post(f"{_base(env)}/{op['id']}/revert")).status_code == 200
-    assert (await client.delete(f"/api/hosts/{hid}")).status_code == 204  # settled: the host may go (its runs go with it)
+    assert (await delete_host(client, hid)).status_code == 204  # settled: the host may go (its runs go with it)
     async with SessionLocal() as db:
         assert (await db.scalars(select(RuleCleanupOperation))).all() == []
 
@@ -865,11 +866,12 @@ async def test_sources_and_firewall_addresses_are_for_admins_only(client, env, w
 
 
 # Review finding 9: undeploying a central object and removing a former target write to the firewall too.
+# (The VPN undeploy_* are thin wrappers that take the per-object lease; the work and the check live in _undeploy_*.)
 _UNDEPLOY_SITES = [
-    ("app.services.alias_deploy_service", "undeploy_alias"), ("app.services.openvpn_deploy_service", "undeploy_instance"),
-    ("app.services.wireguard_deploy_service", "undeploy_tunnel"), ("app.services.port_forward_deploy_service", "undeploy_port_forward"),
+    ("app.services.alias_deploy_service", "undeploy_alias"), ("app.services.openvpn_deploy_service", "_undeploy_instance"),
+    ("app.services.wireguard_deploy_service", "_undeploy_tunnel"), ("app.services.port_forward_deploy_service", "undeploy_port_forward"),
     ("app.services.outbound_nat_deploy_service", "undeploy_outbound_nat"), ("app.services.one_to_one_deploy_service", "undeploy_one_to_one"),
-    ("app.services.ipsec_deploy_service", "undeploy_tunnel"),
+    ("app.services.ipsec_deploy_service", "_undeploy_tunnel"),
 ] + [(f"app.routers.{r}", "remove_previous_target") for r in
      ("aliases", "port_forward", "one_to_one", "outbound_nat", "wireguard", "openvpn", "ipsec")]
 
@@ -908,3 +910,19 @@ async def test_alias_delete_and_target_removal_wait_for_the_cleanup(client, env)
     r = await client.post(f"/api/aliases/{former.json()['id']}/deployments/{env.host_id}/remove", json={"preview_token": preview["token"]})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "OPEN_CLEANUP_BLOCKS_DEPLOY", r.text
     assert env.fw.writes() == writes
+
+
+async def test_admins_get_their_own_address_as_a_source_suggestion(client):
+    """B12: the settings suggest the address the request came from; only to admins (an address is security-relevant
+    like the sources themselves)."""
+    from app.main import app
+
+    got = (await client.get("/api/settings/governance")).json()
+    assert got["your_address"] == "127.0.0.1"  # ASGI test client
+    saved = (await client.put("/api/settings/governance", json={"cleanup_management_sources": ["203.0.113.10"]})).json()
+    assert saved["your_address"] == "127.0.0.1"
+    assert (await client.post("/api/users", json={"username": "b12-op", "password": "password-123456", "role": "operator"})).status_code == 201
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as op:
+        await op.post("/api/auth/login", json={"username": "b12-op", "password": "password-123456"})
+        seen = (await op.get("/api/settings/governance")).json()
+    assert seen["your_address"] is None and seen["cleanup_management_sources"] == []

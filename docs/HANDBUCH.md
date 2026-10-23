@@ -56,7 +56,7 @@ Werkzeug `opnexus` und eine Kurzanleitung.
 
 ```bash
 tar xzf opnexus-<version>.tar.gz && cd opnexus-<version>
-cp .env.example .env          # POSTGRES_PASSWORD setzen (und was sonst nötig ist)
+install -m 600 .env.example .env   # POSTGRES_PASSWORD setzen (und was sonst nötig ist); nur für dich lesbar
 docker compose pull && docker compose up -d --no-build
 ./opnexus password            # zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war
 ```
@@ -65,7 +65,7 @@ docker compose pull && docker compose up -d --no-build
 
 ```bash
 git clone https://git.opnexus.dev/opnexus/opnexus.git && cd opnexus
-cp .env.example .env          # POSTGRES_PASSWORD setzen
+install -m 600 .env.example .env   # POSTGRES_PASSWORD setzen; nur für dich lesbar
 docker compose up -d --build
 scripts/opnexus password
 ```
@@ -73,6 +73,17 @@ scripts/opnexus password
 Alternativ lassen sich auch aus einem Checkout die fertigen Images verwenden: in
 der `.env` `OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus` und `OPNEXUS_VERSION=<version>`
 setzen, dann `docker compose pull && docker compose up -d --no-build`.
+
+### Installation unter Windows
+
+Unter Windows läuft derselbe Stack in **Docker Desktop mit WSL 2**: WSL und Docker Desktop
+installieren, in der WSL-Umgebung (Ubuntu) das Release-Bundle wie oben entpacken, `.env`
+anlegen und `docker compose up -d --no-build` ausführen; die Oberfläche öffnet sich unter
+`https://localhost`. Die ausführliche Anleitung mit Zertifikatsimport, Zugriff aus dem Netz
+(Windows-Firewall), Updates und Fehlerbehebung steht auf der Website:
+<https://opnexus.dev/docs/windows/>. Entwickelt und getestet wird OPNexus unter Linux; für den
+Dauerbetrieb ist ein Linux-Server oder eine Linux-VM besser, weil Docker Desktop erst nach der
+Anmeldung startet und im Ruhezustand anhält.
 
 ### Images prüfen (Signatur)
 
@@ -289,7 +300,8 @@ Netzwerkänderungen anwenden. Die Ablehnung („nur ein Administrator“) steht 
 **Benutzerverwaltung** (System › Benutzer, nur Admins): Benutzer anlegen, Rolle
 ändern, Passwort zurücksetzen, Zwei-Faktor eines anderen Benutzers zurücksetzen,
 löschen. Du kannst dich nicht selbst löschen und dich nicht zum letzten Admin
-herabstufen.
+herabstufen. **Nur Admins sehen die Benutzerliste** (`GET /api/users`); jede andere Rolle,
+auch ein Token, sieht nur das eigene Konto.
 
 **Anmeldung.**
 - Mehrere Fehlversuche (Standard: 5 in 5 Minuten, je Benutzer und IP) sperren die
@@ -339,6 +351,16 @@ API-Secret, optional Cluster-Name und Policy-Gruppe.
   in einem eigenen Volume.
 - `http://`-Adressen werden abgelehnt, weil die Zugangsdaten per HTTP-Basic-Auth
   gesendet werden (Ausnahme: `ALLOW_INSECURE_FIREWALL_URLS=true` für Labore).
+- **Eine Adresse, ein Host:** Dieselbe Adresse zweimal einzutragen lehnt OPNexus ab
+  (Groß-/Kleinschreibung und ein abschließender `/` zählen nicht); es würde jeden Rollout,
+  Alarm und jede Sicherung verdoppeln.
+- **Verbindungsprüfung:** Die Hosts-Seite und der Einrichtungsassistent fragen die
+  Firewall beim Anlegen einmal mit den eingegebenen Zugangsdaten ab. Klappt das nicht,
+  wird **nichts gespeichert**, und die Meldung nennt den Grund (Schlüssel abgelehnt,
+  zu wenig Rechte, Zertifikat passt nicht, keine Verbindung). **Trotzdem anlegen** speichert
+  den Host ohne Prüfung, zum Beispiel für eine Firewall hinter NAT, deren Tunnel noch
+  nicht steht. Über die API ist die Prüfung mit `"verify_connection": true` zuschaltbar
+  (Standard aus, damit Skripte auch nicht erreichbare Firewalls eintragen können).
 
 ### Zertifikat festsetzen (Pinning)
 
@@ -363,6 +385,9 @@ ist der Schritt, der das Festsetzen absichert.
 - **Host-Detailseite** (Klick auf den Namen): Status, zentral verwaltete und
   **live von der Firewall gelesene** Regeln (auch von Hand angelegte),
   Konfigurationssicherungen, Dienste, Systemauslastung und Wartung.
+- **Löschen** verlangt den **Hostnamen**: in der Oberfläche im Bestätigungsdialog, über
+  die API als `DELETE /api/hosts/{id}?confirm_name=<Name>` (sonst `409`). Beim Löschen
+  gehen die gespeicherten Zugangsdaten sofort verloren.
 - **Deaktivieren** nimmt einen Host aus Rollouts und Abfragen, ohne ihn zu löschen.
   Ein Host, auf den noch Regeln, Aliase oder NAT ausgerollt sind, lässt sich nicht
   löschen: Sonst ginge OPNexus der Überblick verloren, was dort liegt. Entferne
@@ -525,6 +550,9 @@ Weitere Regeln dazu:
 - Ein erneuter Push einer bestätigten Regel mit **unverändertem** Inhalt macht
   keine Firewall-Aufrufe. Solange ein Deployment offen ist, sind erneuter Push und
   Bearbeiten gesperrt.
+- **Nach einem Fehler beim Anwenden** (Konfiguration geschrieben, Anwenden aber nicht bestätigt) darfst du
+  erneut ausrollen. Der Rückweg bleibt dabei der **ursprüngliche** Stand vor dem ersten Versuch: eine neue Regel wird
+  beim Fristablauf entfernt, eine geänderte auf den bestätigten Stand zurückgesetzt.
 - Schlägt der Rollback selbst fehl (Host nicht erreichbar), steht die Regel mit dem
   Status „Rollback fehlgeschlagen“ da und braucht Aufmerksamkeit. In der Vorschau
   lässt er sich gezielt wiederholen. Das meldet auch eine Benachrichtigung.
@@ -655,7 +683,8 @@ aktuellen Mitglieder zusammengeführt und dedupliziert, deaktivierte Hosts
 
 - Vor dem Speichern einer bestehenden Gruppe zeigt die Oberfläche die Auswirkungen:
   neue und entfernte Mitglieder und Ziele je Regel.
-- Gruppen, die noch verwendet werden, lassen sich nicht löschen.
+- Gruppen, die noch verwendet werden (von Regeln, Aliasen, NAT, **VPN-Objekten** oder
+  Rollout-Wellen), lassen sich nicht löschen.
 - „Regel für diese Gruppe anlegen“ öffnet das Regelformular mit vorausgewählter
   Gruppe.
 
@@ -794,7 +823,8 @@ Weitere Hinweise:
   der Firewall aus**. Nur für Admins, mit strenger Eingabeprüfung; jeder Lauf
   steht im Audit-Log, Ergebnisse werden nicht gespeichert, die Port-Prüfung gibt nie
   den Banner der Gegenstelle weiter. Ein Test auf einen geschlossenen oder blockierten
-  Port dauert bei OPNsense rund 10 Sekunden. Packet-Capture gibt es bewusst nicht,
+  Port dauert bei OPNsense rund 10 Sekunden. Zwischenstationen, die nicht auf Traceroute
+  antworten, erscheinen als Zeile „* keine Antwort“ statt als Lücke. Packet-Capture gibt es bewusst nicht,
   denn Mitschnitte enthalten fremde Nutzdaten und Zugangsdaten.
 
 ---
@@ -837,6 +867,11 @@ Hinweise:
 
 Teste die VPN-Rollouts zuerst auf einer Nicht-Produktiv-Firewall.
 
+Bricht ein Ausrollen mittendrin ab (Netz weg, Neustart von OPNexus), bleibt ein Eintrag mit dem Status „Fehler“ und
+dem Hinweis „Ausrollen unterbrochen“ stehen, samt aller Kennungen, die die Firewall bis dahin vergeben hat. Ein
+erneutes Ausrollen setzt dort fort, statt Objekte doppelt anzulegen. Pro VPN läuft immer nur ein Ausrollen oder
+Entfernen; ein zweites wird mit „läuft bereits“ abgelehnt.
+
 ---
 
 ## Zertifikate und ACME
@@ -844,7 +879,9 @@ Teste die VPN-Rollouts zuerst auf einer Nicht-Produktiv-Firewall.
 **Zertifikate** zeigt live die Zertifikate aller Firewalls (Ablauf, Status) und
 verwaltet den Trust-Store sowie die ACME-Ausstellung. Alles ist **pro Host**
 modelliert, weil Zertifikats- und CA-UUIDs hostlokal sind; es gibt keinen
-Multi-Host-Push.
+Multi-Host-Push. **Der Ziel-Host ist nach dem ersten Push fest** (Zertifikat, ACME-Konto und
+ACME-Anfrage): Für einen anderen Host löschst du den Eintrag und legst ihn neu an. Ein ACME-Konto, das
+Zertifikatsanfragen nutzen, lässt sich auch vorher nicht auf einen anderen Host verschieben.
 
 **Trust-Store** (Zertifikate und CAs): anlegen (importieren, intern ausstellen,
 erneut ausstellen), bearbeiten, pushen, löschen. Das ist ein einzelner,
@@ -1154,7 +1191,9 @@ Sicherung) zeigt die Vorschau eine Warnung.
 Auf der Seite **Sicherheitslage** zeigt die Tabelle „Regelnutzung“, wann jede Regel
 zuletzt Verkehr getroffen hat. OPNexus liest dafür die Paketzähler der Firewall. Weil diese
 bei jeder Änderung und jedem Neustart von vorn beginnen, merkt sich OPNexus den Zeitpunkt, an dem
-ein Zähler zuletzt gewachsen ist (Auflösung: eine Beobachtung, alle 15 Minuten). Die Zähler kommen aus `ruleStats` der
+ein Zähler zuletzt gewachsen ist (Auflösung: eine Beobachtung, alle 15 Minuten). Unmittelbar vor jedem Anwenden, das OPNexus
+auf einer Firewall auslöst (Regeln, NAT, Aliase, VPN, Netzwerk), liest OPNexus die Zähler zusätzlich, denn jedes Anwenden setzt sie
+zurück; so gehen keine Treffer verloren. Die Zähler kommen aus `ruleStats` der
 Firewall (je Regel schon summiert; bei älteren OPNsense-Versionen aus dem geladenen Regelsatz). Eine Regel gilt
 als **ungenutzt**, wenn OPNexus sie mindestens 30 Tage beobachtet hat, ohne einen Treffer zu sehen;
 bis dahin steht sie auf „Daten werden gesammelt“ (die Beobachtungszeit beginnt neu, wenn die Regel eingeschaltet oder geändert wird, und nach einem pf-Neuladen mit langer Lücke bei den Zählern), damit eine neue Installation keinen Fehlalarm
@@ -1338,9 +1377,14 @@ auf einem eigenen Port; bis 20 Ports). Geprüft wird auf jedem Interface, auch f
 lässt sich das nicht ausschließen, wird sie nie deaktiviert. Dazu kommen Cluster-Regeln (CARP, pfsync), die nie angeboten werden. Eine Sperrregel wieder einzuschalten,
 die den Verwaltungszugang treffen könnte, verlangt eine ausdrückliche Bestätigung je Regel.
 
-> **Wichtig: OPNexus selbst gehört in die Verwaltungsquellen.** Trag die Adresse ein, mit der OPNexus bei den Firewalls ankommt (bei NAT die Absenderadresse nach der
-> Übersetzung, über das Management-Overlay die Overlay-Adresse). Fehlt sie, kann eine Bereinigung genau die Regel abschalten, über die OPNexus die Firewall erreicht; dann
-> scheitert auch das automatische Zurücksetzen. Im **Cluster** gilt das für jeden Knoten: OPNexus muss beide Knoten über eingetragene Quellen erreichen.
+> **OPNexus selbst ist automatisch geschützt.** Für jede Firewall fragt die Bereinigung beim Planen, von welcher Adresse die Firewall OPNexus kommen sieht (die eigene
+> API-Verbindung in der Zustandstabelle, über `diagnostics/firewall/query_states`), und schützt diese Adresse zusätzlich. Die Vorschau zeigt sie je Firewall
+> („zusätzlich geschützt“ oder „schon in den Verwaltungsquellen“). Lässt sie sich nicht ermitteln (dem API-Schlüssel fehlt das Recht **Diagnose: Zustände**, oder die
+> Firewall hängt am Management-Tunnel), sagt die Vorschau das. Dann trag die Adresse selbst ein (bei NAT die Absenderadresse nach der Übersetzung, über das
+> Management-Overlay die Overlay-Adresse). Fehlt sie, kann eine Bereinigung genau die Regel abschalten, über die OPNexus die Firewall erreicht; dann scheitert auch
+> das automatische Zurücksetzen. Unter Einstellungen › Regel-Bereinigung schlägt OPNexus außerdem die Adresse deines Browsers vor (wie OPNexus sie sieht; die
+> Firewalls können sie anders sehen). Ein „savepoint“ mit Rücknahme durch die Firewall selbst gibt es in OPNsense 26.7 nicht (geprüft im Quellcode und live:
+> `firewall/filter/savepoint` antwortet 404); das Zurücksetzen bleibt Aufgabe von OPNexus.
 > Quellen, Ports und Firewall-Adressen sehen nur Administratoren; alle anderen sehen nur, ob etwas eingetragen ist.
 
 ##### Deaktivieren, Bestätigen, automatisches Zurücksetzen

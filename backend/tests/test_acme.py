@@ -326,3 +326,30 @@ async def test_poll_certificate_status_updates_remote_fields(client, respx_mock)
     assert body["remote_status_code"] == 200
     assert body["remote_status_last_update"] is not None
     assert body["remote_last_update"] is not None
+
+
+@pytest.mark.asyncio
+async def test_acme_target_host_is_fixed_once_deployed_or_used_by_requests(client, respx_mock):
+    """Audit AUD-03: the same re-pointing problem for ACME accounts and certificate requests."""
+    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    a = await _create_host(client, "acme-a", "https://acme-a.test")
+    b = await _create_host(client, "acme-b", "https://acme-b.test")
+    acct = (await client.post("/api/acme/accounts", json=_account_payload(a["id"]))).json()
+    free = await client.put(f"/api/acme/accounts/{acct['id']}", json=_account_payload(b["id"], expected_updated_at=acct["updated_at"]))
+    assert free.status_code == 200 and free.json()["host_id"] == b["id"]  # draft, no requests: free to move
+    acct = (await client.put(f"/api/acme/accounts/{acct['id']}", json=_account_payload(a["id"], expected_updated_at=free.json()["updated_at"]))).json()
+
+    req = (await client.post("/api/acme/certificates", json=_cert_request_payload(a["id"], acct["id"]))).json()
+    used = await client.put(f"/api/acme/accounts/{acct['id']}", json=_account_payload(b["id"], expected_updated_at=acct["updated_at"]))
+    assert used.status_code == 409 and used.json()["detail"]["code"] == "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET"
+
+    respx_mock.post(url__regex=r".*/acmeclient/accounts/add$").mock(return_value=httpx.Response(200, json={"result": "saved", "uuid": "acct-uuid-1"}))
+    pushed_account = (await client.post(f"/api/acme/accounts/{acct['id']}/push")).json()
+    fixed = await client.put(f"/api/acme/accounts/{acct['id']}", json=_account_payload(b["id"], expected_updated_at=pushed_account["updated_at"]))
+    assert fixed.status_code == 409 and fixed.json()["detail"]["code"] == "ZIEL_HOST_NACH_AUSROLLEN_FEST"
+
+    respx_mock.post(url__regex=r".*/acmeclient/certificates/add$").mock(return_value=httpx.Response(200, json={"result": "saved", "uuid": "req-uuid-1"}))
+    pushed_request = (await client.post(f"/api/acme/certificates/{req['id']}/push")).json()
+    assert pushed_request["status"] == "success"
+    moved = await client.put(f"/api/acme/certificates/{req['id']}", json=_cert_request_payload(b["id"], acct["id"], expected_updated_at=pushed_request["updated_at"]))
+    assert moved.status_code == 409 and moved.json()["detail"]["code"] == "ZIEL_HOST_NACH_AUSROLLEN_FEST"

@@ -8,7 +8,7 @@ old and the new values."""
 import ipaddress
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +16,7 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.governance import GovernanceSettings
 from app.models.user import AdminUser
-from app.routers.auth import current_user
+from app.routers.auth import client_ip, current_user
 from app.services import audit_service
 
 router = APIRouter(prefix="/settings/governance", tags=["governance"])
@@ -37,6 +37,9 @@ class GovernanceRead(BaseModel):
     # Extra management ports (besides API port, 443, 80, 22): also admins only, others see the flag.
     cleanup_management_ports: list[int] = Field(default_factory=list)
     cleanup_management_ports_configured: bool = False
+    # The address this request came from, as a suggestion for the management sources (B12; admins only). Only a
+    # suggestion: the firewalls may see the workstation under another address (NAT, VPN).
+    your_address: str | None = None
 
 
 class GovernanceUpdate(BaseModel):
@@ -105,14 +108,23 @@ async def get_settings(db: AsyncSession) -> GovernanceSettings:
     return row
 
 
+def _suggestion(request: Request, user: AdminUser) -> str | None:
+    if user.role != "admin":
+        return None
+    try:
+        return str(ipaddress.ip_address(client_ip(request)))
+    except ValueError:
+        return None
+
+
 @router.get("", response_model=GovernanceRead)
-async def read(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+async def read(request: Request, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
     """Readable by everybody signed in (the UI explains why a deploy was refused)."""
-    return _read(await get_settings(db), user)
+    return _read(await get_settings(db), user).model_copy(update={"your_address": _suggestion(request, user)})
 
 
 @router.put("", response_model=GovernanceRead)
-async def update(payload: GovernanceUpdate, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
+async def update(payload: GovernanceUpdate, request: Request, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
     if user.role != "admin":
         raise api_error(403, ErrorCode.ADMIN_REQUIRED)
     row = await get_settings(db)
@@ -137,4 +149,4 @@ async def update(payload: GovernanceUpdate, db: AsyncSession = Depends(get_db), 
             kind="settings", action="cleanup_settings", status="accepted", entity_id="governance",
             message="Einstellungen der Regel-Bereinigung geändert", details={"changes": changes}))
     await db.commit()
-    return _read(row, user)
+    return _read(row, user).model_copy(update={"your_address": _suggestion(request, user)})

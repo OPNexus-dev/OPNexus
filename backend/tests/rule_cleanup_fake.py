@@ -161,6 +161,12 @@ class FakeFirewall:
             return httpx.Response(200, json={"rows": [{"name": "tbl", "type": "urltable", "content": "https://203.0.113.9/list"}]})
         if method == "GET" and path == "/firewall/d_nat/searchRule":
             return httpx.Response(200, json={"rows": []})
+        # B10: OPNexus asks for its own source address. respx has no real socket, so the state cannot be matched to
+        # this connection: the address stays unknown unless a test sets ``own_source`` (then the fake answers it).
+        if method == "GET" and path == "/diagnostics/firewall/pf_states":
+            return httpx.Response(200, json={"current": 5, "limit": "100000"})
+        if method == "POST" and path == "/diagnostics/firewall/query_states":
+            return httpx.Response(200, json={"rows": [], "rowCount": 0, "total": 0, "current": 1})
         if method == "GET" and path == "/core/hasync/get":
             sel = {"": {"value": "Disabled", "selected": 1 if not self.pfsync else 0},
                    "lan": {"value": "LAN", "selected": 1 if self.pfsync == "lan" else 0}}

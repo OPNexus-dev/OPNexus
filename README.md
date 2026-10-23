@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.32.1` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.33.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -50,7 +50,7 @@ Requires Docker with the Compose plugin.
 ```bash
 git clone https://git.opnexus.dev/opnexus/opnexus.git
 cd opnexus
-cp .env.example .env        # set POSTGRES_PASSWORD (and ADMIN_PASSWORD)
+install -m 600 .env.example .env   # set POSTGRES_PASSWORD (and ADMIN_PASSWORD); readable by you only
 docker compose up -d --build
 ```
 
@@ -62,13 +62,15 @@ scripts/opnexus password
 
 After the first sign-in a short **setup assistant** opens on its own: set your own password, optionally enable two-factor sign-in, connect your first firewall (including how to create the API key in OPNsense). You can skip it and reopen it any time under System › Setup.
 
+**Windows:** run it in Docker Desktop with WSL 2 – see the [installation guide for Windows](https://opnexus.dev/en/docs/windows/). OPNexus is developed and tested on Linux; for permanent operation a Linux server or VM is the better choice.
+
 For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) (German).
 
 **Prebuilt images** (amd64 and arm64) are published to this Gitea's registry. In `.env`:
 
 ```bash
 OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.32.1
+OPNEXUS_VERSION=1.33.0
 ```
 
 ```bash

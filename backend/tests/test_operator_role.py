@@ -1,4 +1,5 @@
 """The operator role: rolls out and operates, but cannot change access or destinations."""
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -42,7 +43,8 @@ async def test_operator_keeps_self_service(client):
         assert (await op.put("/api/settings", json={"theme": "dark"})).status_code == 200
         resp = await op.post("/api/auth/change-password", json={"current_password": PW, "new_password": "another-password-1"})
         assert resp.status_code == 200, resp.text
-        assert (await op.get("/api/users")).status_code == 200
+        listed = await op.get("/api/users")  # self-service: only the own account, never the directory (T2)
+        assert listed.status_code == 200 and [u["username"] for u in listed.json()] == ["selfserve"]
     finally:
         await op.aclose()
 
@@ -136,6 +138,8 @@ async def test_demoting_an_admin_to_operator_takes_effect_at_once(client):
     ("POST", "/api/rules/abc/confirm", False),
     ("GET", "/api/rules/abc/deploy", False),
     ("POST", "/api/hosts/abc/network/changes/preview", False),
+    ("POST", "/api/hosts/abc/snapshots", True),
+    ("GET", "/api/hosts/abc/snapshots", False),
 ])
 def test_what_counts_as_a_rollout(method, path, rollout):
     from app.services import api_token_service
@@ -206,3 +210,26 @@ async def test_channel_test_button_is_admin_only_on_the_server_too(client):
         await op.aclose()
         if ro is not None:
             await ro.aclose()
+
+
+@pytest.mark.asyncio
+async def test_creating_a_snapshot_is_a_rollout_and_follows_the_separation_of_duties(client, respx_mock):
+    """A boot environment is created ON the firewall: with deploying admin-only an operator may not do it (AUD-05)."""
+    from tests.test_snapshots import BASE, ROW, _host
+    host_id = await _host(client, respx_mock, "fw-oper-snap")
+    new = {"uuid": "s9", "name": "by_operator", "active": "-", "mountpoint": "-", "size": "0", "created_str": "now"}
+    respx_mock.get(f"{BASE}/api/core/snapshots/isSupported").mock(return_value=httpx.Response(200, json={"supported": True}))
+    respx_mock.get(f"{BASE}/api/core/snapshots/search").mock(return_value=httpx.Response(200, json={"rows": [ROW, new]}))
+    add = respx_mock.post(f"{BASE}/api/core/snapshots/add").mock(return_value=httpx.Response(200, json="OK"))
+    op = await _operator(client, "snapop")
+    try:
+        assert (await op.post(f"/api/hosts/{host_id}/snapshots", json={"name": "by_operator"})).status_code == 201
+        assert add.call_count == 1
+        assert (await client.put("/api/settings/governance", json={"operators_may_deploy": False})).status_code == 200
+        resp = await op.post(f"/api/hosts/{host_id}/snapshots", json={"name": "by_operator"})
+        assert resp.status_code == 403 and resp.json()["detail"]["code"] == "DEPLOY_NEEDS_ADMIN"
+        assert add.call_count == 1  # nothing was sent to the firewall
+        assert (await client.post(f"/api/hosts/{host_id}/snapshots", json={"name": "by_operator"})).status_code == 201  # an admin may
+    finally:
+        await client.put("/api/settings/governance", json={"operators_may_deploy": True})
+        await op.aclose()

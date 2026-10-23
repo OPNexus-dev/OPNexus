@@ -87,6 +87,13 @@ OBJECT_COLUMNS: dict[str, list[str]] = {
 # These change how the network is wired; the others (DNS/DHCP data) cannot cut the connection to the firewall.
 WIRING_KINDS = {"vlan", "vip", "gateway", "route", "interface", "lagg", "bridge", "gre", "gif", "vxlan"}
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+# Integer ranges of the firewall's own model (Interfaces/Vlan.xml, Interfaces/Vip.xml, read 2026-10-23). Checked before the
+# preview so a wrong number is a 422 with the field name, not a 502 after the firewall refused it (T6 of the 1.31.0 test
+# run). Only fields whose range is stated in the model; an empty value is left to the firewall (e.g. vhid of a non-CARP VIP).
+RANGES: dict[tuple[str, str], tuple[int, int]] = {
+    ("vlan", "tag"): (1, 4094), ("vlan", "pcp"): (0, 7),
+    ("vip", "vhid"): (1, 255), ("vip", "advbase"): (1, 254), ("vip", "advskew"): (0, 254),
+}
 
 
 def validate_fields(kind: str, fields: dict) -> dict[str, str]:
@@ -103,6 +110,9 @@ def validate_fields(kind: str, fields: dict) -> dict[str, str]:
             raise api_error(422, ErrorCode.NETWORK_FIELD_INVALID, field=key)
         text = str(value).strip()
         if len(text) > 255 or _CONTROL.search(text):
+            raise api_error(422, ErrorCode.NETWORK_FIELD_INVALID, field=key)
+        bounds = RANGES.get((kind, key))
+        if bounds and text and not (text.isdecimal() and bounds[0] <= int(text) <= bounds[1]):
             raise api_error(422, ErrorCode.NETWORK_FIELD_INVALID, field=key)
         clean[key] = text
     return clean

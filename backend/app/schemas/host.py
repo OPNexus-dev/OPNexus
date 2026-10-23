@@ -18,6 +18,9 @@ class HostCreate(BaseModel):
     enabled: bool = True
     cluster_name: str | None = Field(default=None, max_length=120)
     policy_hierarchy_group_id: uuid.UUID | None = None
+    # Ask the firewall once with these credentials before saving (the UI and the setup assistant do). Off by default so
+    # scripts can still register a firewall that is not reachable yet (behind NAT, tunnel not up).
+    verify_connection: bool = False
 
     @field_validator("base_url")
     @classmethod

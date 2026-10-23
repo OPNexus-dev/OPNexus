@@ -18,6 +18,7 @@ from app.services import wireguard_key_store
 from app.services.wireguard_service import effective_hosts, preview, revision, snapshot, workflow, WIREGUARD_FIELDS
 from app.services.wireguard_deploy_service import deploy_tunnel, undeploy_tunnel
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_lease import resource_lease
 from app.services.policy_service import policy_lock
 
 router = APIRouter(prefix="/wireguard/tunnels", tags=["wireguard"])
@@ -206,20 +207,21 @@ async def remove_previous_target(tunnel_id: uuid.UUID, host_id: uuid.UUID, appro
         raise api_error(404, ErrorCode.DEPLOYMENT_NICHT_GEFUNDEN)
     if not entry["can_remove"]:
         raise api_error(409, ErrorCode.NUR_FRUEHERE_AKTIVE_ZIELE_KOENNEN_BEREINIGT_WERDEN)
-    deployment = next(d for d in tunnel.deployments if d.host_id == host_id)
-    from app.services.host_maintenance_service import ensure_no_open_cleanup
-    await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
-    from app.services import opnsense_client
-    try:
-        if deployment.opnsense_peer_uuid:
-            await opnsense_client.del_wireguard_peer(deployment.host, deployment.opnsense_peer_uuid)
-        if deployment.opnsense_server_uuid:
-            await opnsense_client.del_wireguard_server(deployment.host, deployment.opnsense_server_uuid)
-        await opnsense_client.reconfigure_wireguard(deployment.host)
-    except OpnsenseAPIError as exc:
-        deployment.status = "error"
-        deployment.message = str(exc)
+    async with resource_lease("wireguard", tunnel.id):
+        deployment = next(d for d in tunnel.deployments if d.host_id == host_id)
+        from app.services.host_maintenance_service import ensure_no_open_cleanup
+        await ensure_no_open_cleanup(db, [deployment.host])  # a rule cleanup (1.31) owns the firewall: no other writes
+        from app.services import opnsense_client
+        try:
+            if deployment.opnsense_peer_uuid:
+                await opnsense_client.del_wireguard_peer(deployment.host, deployment.opnsense_peer_uuid)
+            if deployment.opnsense_server_uuid:
+                await opnsense_client.del_wireguard_server(deployment.host, deployment.opnsense_server_uuid)
+            await opnsense_client.reconfigure_wireguard(deployment.host)
+        except OpnsenseAPIError as exc:
+            deployment.status = "error"
+            deployment.message = str(exc)
+            await db.commit()
+            raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
+        await db.delete(deployment)
         await db.commit()
-        raise api_error(502, ErrorCode.ENTFERNEN_FEHLGESCHLAGEN_DIE_ZUORDNUNG_BLEIBT_FUER_EINEN_NEUEN_4CF90E4C) from exc
-    await db.delete(deployment)
-    await db.commit()

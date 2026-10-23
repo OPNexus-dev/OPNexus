@@ -2,6 +2,7 @@
 confused login could succeed."""
 import base64
 import hashlib
+import hmac
 import json
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -70,6 +71,15 @@ def _claims(sent_nonce, **over):
             "preferred_username": "alice", "groups": ["opnexus-admins"]}
     base.update(over)
     return {k: v for k, v in base.items() if v is not None}
+
+
+def _forged_hs256(claims, secret: str, kid="k1"):
+    """What an attacker sends: PyJWT >= 2.12 itself refuses to sign with a JWK-looking secret, so build the token by hand."""
+    def b64(raw: bytes) -> bytes:
+        return base64.urlsafe_b64encode(raw).rstrip(b"=")
+    signing_input = b64(json.dumps({"alg": "HS256", "typ": "JWT", "kid": kid}).encode()) + b"." + b64(json.dumps(claims).encode())
+    signature = hmac.new(secret.encode(), signing_input, hashlib.sha256).digest()
+    return (signing_input + b"." + b64(signature)).decode()
 
 
 def _id_token(claims, key=KEY, alg="RS256", kid="k1"):
@@ -221,7 +231,7 @@ async def test_signature_attacks_are_rejected(client, anon_client, respx_mock):
         if spec is None:
             token = jwt.encode(claims, None, algorithm="none", headers={"kid": "k1"})
         elif spec == "hs":
-            token = jwt.encode(claims, json.dumps(JWK), algorithm="HS256", headers={"kid": "k1"})
+            token = _forged_hs256(claims, json.dumps(JWK))
         else:
             token = _id_token(claims, **spec)
         resp, _ = await _callback(anon_client, respx_mock, query, token_response={"id_token": token})

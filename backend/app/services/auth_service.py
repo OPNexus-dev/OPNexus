@@ -236,6 +236,7 @@ async def create_session(
     user_agent: str | None = None,
     ip_address: str | None = None,
     verified_hash: str | None = None,
+    verified_totp: bool | None = None,
     lifetime_seconds: int | None = None,
 ) -> tuple[str, datetime]:
     """Create a session, returning the raw token (to be set as a cookie) and its expiry.
@@ -244,15 +245,22 @@ async def create_session(
     against. The user row is re-read under a row lock first: a password
     change/reset that committed while the (slow) password check was running
     changed the hash, and the login must not outlive that revocation.
+
+    ``verified_totp`` is whether the caller checked a second factor. Two-factor
+    enabled in the meantime (it also revoked every session) means this login
+    was decided without it and must start over.
     """
     user_id = user.id
-    if verified_hash is not None:
-        locked = await db.scalar(
-            select(AdminUser.password_hash).where(AdminUser.id == user_id).with_for_update()
-        )
-        if locked != verified_hash:
+    if verified_hash is not None or verified_totp is not None:
+        locked_hash, locked_totp = (await db.execute(
+            select(AdminUser.password_hash, AdminUser.totp_enabled).where(AdminUser.id == user_id).with_for_update()
+        )).one()
+        if verified_hash is not None and locked_hash != verified_hash:
             await db.rollback()
             raise api_error(401, ErrorCode.UNGUELTIGER_BENUTZERNAME_ODER_PASSWORT)
+        if locked_totp and not verified_totp:
+            await db.rollback()
+            raise api_error(401, ErrorCode.TOTP_REQUIRED)
     token = secrets.token_urlsafe(SESSION_TOKEN_BYTES)
     expires_at = _now() + timedelta(seconds=lifetime_seconds or settings.session_lifetime)
     session = Session(

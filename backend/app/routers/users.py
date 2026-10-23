@@ -1,7 +1,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.errors import ErrorCode, api_error
@@ -21,10 +21,29 @@ async def _admin_count(db: AsyncSession, exclude_id: uuid.UUID | None = None) ->
     return await db.scalar(query)
 
 
+_ADMIN_LOCK_KEY = 728194032  # next to policy_lock's key; only admin role changes and deletions take it
+
+
+async def _lock_admins(db: AsyncSession, current: AdminUser) -> None:
+    """Serialize every change that can reduce the number of administrators and re-read the caller under the lock.
+
+    The "at least one administrator" check counts rows; two requests that each see the other's admin row would both
+    pass it. Held until commit/rollback (transaction-scoped advisory lock). The caller may have been demoted or
+    deleted by the request that ran first, so it must still be an admin to proceed."""
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _ADMIN_LOCK_KEY})
+    fresh = await db.scalar(select(AdminUser).where(AdminUser.id == current.id).execution_options(populate_existing=True))
+    if fresh is None or fresh.role != "admin":
+        raise api_error(403, ErrorCode.ADMIN_REQUIRED)
+
+
 @router.get("", response_model=list[UserRead])
-async def list_users(db: AsyncSession = Depends(get_db)):
-    rows = (await db.scalars(select(AdminUser).order_by(AdminUser.username))).all()
-    return rows
+async def list_users(user: AdminUser = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    """Admins see everyone. Every other role sees only its own account: the full list (names, roles, last login,
+    2FA status) is a directory an attacker with any low-privilege account or token could use to pick targets."""
+    query = select(AdminUser).order_by(AdminUser.username)
+    if user.role != "admin":
+        query = query.where(AdminUser.id == user.id)
+    return (await db.scalars(query)).all()
 
 
 @router.post("", response_model=UserRead, status_code=201)
@@ -43,8 +62,12 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db)):
 
 
 @router.patch("/{user_id}/role", response_model=UserRead)
-async def update_role(user_id: uuid.UUID, payload: UserRoleUpdate, db: AsyncSession = Depends(get_db)):
-    target = await db.get(AdminUser, user_id)
+async def update_role(
+    user_id: uuid.UUID, payload: UserRoleUpdate, db: AsyncSession = Depends(get_db),
+    current: AdminUser = Depends(current_user),
+):
+    await _lock_admins(db, current)
+    target = await db.get(AdminUser, user_id, populate_existing=True)
     if target is None:
         raise api_error(404, ErrorCode.BENUTZER_NICHT_GEFUNDEN)
     if target.auth_source == "oidc":
@@ -96,13 +119,13 @@ async def delete_user(
 ):
     if user_id == current.id:
         raise api_error(400, ErrorCode.DER_EIGENE_ACCOUNT_KANN_NICHT_GELOESCHT_WERDEN)
-    target = await db.get(AdminUser, user_id)
+    await _lock_admins(db, current)
+    target = await db.get(AdminUser, user_id, populate_existing=True)
     if target is None:
         raise api_error(404, ErrorCode.BENUTZER_NICHT_GEFUNDEN)
-    # No separate "last admin" guard here: only an admin can reach this
-    # endpoint (read_only is rejected earlier, in AuthMiddleware) and the
-    # self-delete check above already guarantees target != current — so
-    # `current` is always a still-existing admin afterward, meaning the
-    # admin count can never reach zero this way.
+    # Two admins deleting each other (or demoting/deleting in parallel) would each still see the other: the lock above
+    # orders them, and the guard below counts what is left without the target.
+    if target.role == "admin" and await _admin_count(db, exclude_id=target.id) == 0:
+        raise api_error(409, ErrorCode.MINDESTENS_EIN_ADMIN_ACCOUNT_MUSS_BESTEHEN_BLEIBEN)
     await db.delete(target)
     await db.commit()

@@ -266,6 +266,11 @@ export function CleanupPreviewModal({ host, request, unusedDays, coverName, onCl
                     {node.host_name}
                     {node.role && <Badge tone={node.role === "MASTER" ? "info" : "neutral"}>{node.role}</Badge>}
                   </h3>
+                  {node.opnexus_source?.status && (
+                    <p className={node.opnexus_source.status === "unknown" ? "text-xs text-amber-700" : "text-xs text-slate-500"}>
+                      {t(`cleanup.preview.opnexusSource.${node.opnexus_source.status}`, { address: node.opnexus_source.address ?? "" })}
+                    </p>
+                  )}
                   <ul className="space-y-2">
                     {node.items.map((item) => (
                       <PlanItem

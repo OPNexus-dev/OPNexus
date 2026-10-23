@@ -142,6 +142,15 @@ async def apply_sample(db: AsyncSession, host: OpnsenseHost, counters: dict[str,
     return len(rules)
 
 
+async def sample_before_reload(host: OpnsenseHost) -> None:
+    """Called by opnsense_client right before any request that makes the firewall reload pf (B11): read the counters
+    while they still hold what was hit since the last sample. Own session, so the writer's transaction stays as it is."""
+    from app.database import SessionLocal
+
+    async with SessionLocal() as db:
+        await sample_host(db, host)
+
+
 async def restart_window(db: AsyncSession, host_id, rule_uuids, now: datetime | None = None) -> int:
     """The rules were edited, enabled or created: what OPNexus saw before does not describe them any more, so the
     observation window for "unused" starts over (an earlier last hit is kept)."""

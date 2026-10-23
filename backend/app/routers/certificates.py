@@ -37,6 +37,13 @@ acme_accounts_router = APIRouter(prefix="/acme/accounts", tags=["acme"])
 acme_certificates_router = APIRouter(prefix="/acme/certificates", tags=["acme"])
 
 
+def _ensure_host_unchanged_once_deployed(obj, new_host_id: uuid.UUID) -> None:
+    """The firewall-local UUID, the stored payload and the success status all belong to the host the object was pushed
+    to. Re-pointing it would report success for a host that never received it and orphan the object on the old one."""
+    if new_host_id != obj.host_id and obj.opnsense_uuid:
+        raise api_error(409, ErrorCode.ZIEL_HOST_NACH_AUSROLLEN_FEST)
+
+
 async def _get_host(db: AsyncSession, host_id: uuid.UUID) -> OpnsenseHost:
     host = await db.get(OpnsenseHost, host_id)
     if not host:
@@ -82,6 +89,7 @@ async def edit_managed_certificate(cert_id: uuid.UUID, payload: ManagedCertifica
     if cert.updated_at != payload.expected_updated_at:
         raise api_error(409, ErrorCode.EINTRAG_WURDE_INZWISCHEN_GEAENDERT_NEU_LADEN_UND_AENDERUNGEN_B5A5CE87)
     await _get_host(db, payload.host_id)
+    _ensure_host_unchanged_once_deployed(cert, payload.host_id)
     for field, value in payload.model_dump(exclude={"expected_updated_at", "private_key"}).items():
         setattr(cert, field, value)
     if payload.private_key:
@@ -146,6 +154,11 @@ async def edit_acme_account(account_id: uuid.UUID, payload: AcmeAccountEdit, db:
     if account.updated_at != payload.expected_updated_at:
         raise api_error(409, ErrorCode.EINTRAG_WURDE_INZWISCHEN_GEAENDERT_NEU_LADEN_UND_AENDERUNGEN_B5A5CE87)
     await _get_host(db, payload.host_id)
+    _ensure_host_unchanged_once_deployed(account, payload.host_id)
+    if payload.host_id != account.host_id and await db.scalar(
+        select(AcmeCertificateRequest.id).where(AcmeCertificateRequest.account_id == account.id).limit(1)
+    ):
+        raise api_error(409, ErrorCode.ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET)
     for field, value in payload.model_dump(exclude={"expected_updated_at", "eab_hmac"}).items():
         setattr(account, field, value)
     if payload.eab_hmac:
@@ -236,6 +249,7 @@ async def edit_acme_certificate_request(request_id: uuid.UUID, payload: AcmeCert
     if req.updated_at != payload.expected_updated_at:
         raise api_error(409, ErrorCode.EINTRAG_WURDE_INZWISCHEN_GEAENDERT_NEU_LADEN_UND_AENDERUNGEN_B5A5CE87)
     await _get_host(db, payload.host_id)
+    _ensure_host_unchanged_once_deployed(req, payload.host_id)
     await _get_account(db, payload.account_id, payload.host_id)
     for field, value in payload.model_dump(exclude={"expected_updated_at"}).items():
         setattr(req, field, value)

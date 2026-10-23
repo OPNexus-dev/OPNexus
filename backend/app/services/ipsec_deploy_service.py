@@ -109,6 +109,8 @@ from app.models.ipsec_tunnel import IpsecTunnel
 from app.models.ipsec_tunnel_deployment import IpsecTunnelDeployment
 from app.services import opnsense_client, ipsec_psk_store
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import checkpoint
+from app.services.deploy_lease import VPN_INTERRUPTED, resource_lease
 
 _VERSION_MAP = {"ike": "0", "ikev1": "1", "ikev2": "2"}
 
@@ -176,7 +178,7 @@ def build_payloads(tunnel: IpsecTunnel) -> dict:
     }
 
 
-async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTunnelDeployment) -> None:
+async def _write_config(db: AsyncSession, host: OpnsenseHost, payloads: dict, deployment: IpsecTunnelDeployment) -> None:
     """Runs the 5 config-write calls in dependency order, persisting each
     UUID onto `deployment` as soon as it's known so a later retry (after a
     partial failure) updates rather than duplicates. Raises
@@ -189,6 +191,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTun
         deployment.opnsense_connection_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_connection_uuid:
             raise OpnsenseAPIError("Firewall hat keine Connection-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
     # `payloads` (built by build_payloads()) is also what gets persisted as
     # last_payload for no-op-redeploy comparison — the injected `connection`
@@ -209,6 +212,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTun
         deployment.opnsense_local_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_local_uuid:
             raise OpnsenseAPIError("Firewall hat keine Local-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
     if deployment.opnsense_remote_uuid:
         await opnsense_client.set_ipsec_remote(host, deployment.opnsense_remote_uuid, remote_wire)
@@ -217,6 +221,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTun
         deployment.opnsense_remote_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_remote_uuid:
             raise OpnsenseAPIError("Firewall hat keine Remote-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
     if deployment.opnsense_child_uuid:
         await opnsense_client.set_ipsec_child(host, deployment.opnsense_child_uuid, child_wire)
@@ -225,6 +230,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTun
         deployment.opnsense_child_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_child_uuid:
             raise OpnsenseAPIError("Firewall hat keine Child-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
     if deployment.opnsense_psk_uuid:
         await opnsense_client.set_ipsec_psk(host, deployment.opnsense_psk_uuid, payloads["psk"])
@@ -233,6 +239,7 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: IpsecTun
         deployment.opnsense_psk_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_psk_uuid:
             raise OpnsenseAPIError("Firewall hat keine PSK-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
 
 async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseHost) -> IpsecTunnelDeployment:
@@ -241,7 +248,7 @@ async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseH
     existing = await db.scalar(
         select(IpsecTunnelDeployment).where(
             IpsecTunnelDeployment.tunnel_id == tunnel.id, IpsecTunnelDeployment.host_id == host.id
-        )
+        ).execution_options(populate_existing=True)  # fresh: another request may have just changed the row
     )
     if existing and existing.status == "success" and existing.last_payload == comparable:
         # Nothing actually changed on this host — re-affirm without
@@ -252,8 +259,15 @@ async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseH
 
     deployment = existing or IpsecTunnelDeployment(tunnel_id=tunnel.id, host_id=host.id, status="error")
 
+    # Durable intent BEFORE the first remote call: from here on a crash or cancellation leaves a row, and every UUID the
+    # firewall hands out is committed at once (see _write_config), so a retry continues instead of duplicating.
+    deployment.status, deployment.message, deployment.deployed_at = "error", VPN_INTERRUPTED, _now()
+    if not existing:
+        db.add(deployment)
+    await checkpoint(db)
+
     try:
-        await _write_config(host, payloads, deployment)
+        await _write_config(db, host, payloads, deployment)
         # Same trap as WireGuard: with the global IPsec switch off the config
         # is stored but nothing runs, and reconfigure still answers ok.
         await opnsense_client.ensure_ipsec_enabled(host)
@@ -261,8 +275,6 @@ async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseH
         deployment.status = "error"
         deployment.message = str(exc)
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     try:
@@ -277,28 +289,30 @@ async def _deploy_to_host(db: AsyncSession, tunnel: IpsecTunnel, host: OpnsenseH
         deployment.message = "Konfiguration wurde geschrieben, Dienst-Reload aber nicht bestätigt — Erreichbarkeit manuell prüfen"
         deployment.last_payload = comparable
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     deployment.status = "success"
     deployment.message = None
     deployment.last_payload = comparable
     deployment.deployed_at = _now()
-    if not existing:
-        db.add(deployment)
     return deployment
 
 
 async def deploy_tunnel(db: AsyncSession, tunnel: IpsecTunnel, hosts: list[OpnsenseHost]) -> list[IpsecTunnelDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
     await ensure_no_maintenance(db, hosts)
-    deployments = [await _deploy_to_host(db, tunnel, host) for host in hosts]
-    await db.commit()
+    async with resource_lease("ipsec", tunnel.id):
+        deployments = [await _deploy_to_host(db, tunnel, host) for host in hosts]
+        await db.commit()
     return deployments
 
 
 async def undeploy_tunnel(db: AsyncSession, tunnel: IpsecTunnel) -> None:
+    async with resource_lease("ipsec", tunnel.id):
+        await _undeploy_tunnel(db, tunnel)
+
+
+async def _undeploy_tunnel(db: AsyncSession, tunnel: IpsecTunnel) -> None:
     """Explicit action, not gated by anything (there is no lockout state
     for this entity to gate on) — deletes Child/Local/Remote before their
     parent Connection (the ModelRelationField dependency direction), then

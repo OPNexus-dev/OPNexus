@@ -165,6 +165,8 @@ from app.models.openvpn_instance import OpenVpnInstance
 from app.models.openvpn_instance_deployment import OpenVpnInstanceDeployment
 from app.services import opnsense_client, openvpn_key_store
 from app.services.opnsense_client import OpnsenseAPIError
+from app.services.deploy_flow import checkpoint
+from app.services.deploy_lease import VPN_INTERRUPTED, resource_lease
 
 
 def _now() -> datetime:
@@ -252,7 +254,7 @@ async def _next_vpnid(host: OpnsenseHost) -> str:
     return str(max(used, default=0) + 1)
 
 
-async def _write_config(host: OpnsenseHost, payloads: dict, deployment: OpenVpnInstanceDeployment) -> None:
+async def _write_config(db: AsyncSession, host: OpnsenseHost, payloads: dict, deployment: OpenVpnInstanceDeployment) -> None:
     """Writes the StaticKey (if enabled) then the Instance, in that
     dependency order, persisting each UUID onto `deployment` as soon as
     it's known so a later retry (after a partial failure) updates rather
@@ -267,11 +269,13 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: OpenVpnI
             deployment.opnsense_statickey_uuid = result.get("uuid") if isinstance(result, dict) else None
             if not deployment.opnsense_statickey_uuid:
                 raise OpnsenseAPIError("Firewall hat keine StaticKey-UUID zurückgegeben; Stand manuell prüfen")
+            await checkpoint(db)  # the UUID is durable before the next remote call
     elif deployment.opnsense_statickey_uuid:
         # tls_key hardening was switched off after previously being on —
         # remove the now-orphaned StaticKey rather than leaving it behind.
         await opnsense_client.del_openvpn_static_key(host, deployment.opnsense_statickey_uuid)
         deployment.opnsense_statickey_uuid = None
+        await checkpoint(db)
 
     # Overlay the deploy-time-known tls_key UUID (or "" to explicitly
     # clear a previously-set relation — see module docstring) onto a
@@ -292,13 +296,14 @@ async def _write_config(host: OpnsenseHost, payloads: dict, deployment: OpenVpnI
         deployment.opnsense_instance_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not deployment.opnsense_instance_uuid:
             raise OpnsenseAPIError("Firewall hat keine Instance-UUID zurückgegeben; Stand manuell prüfen")
+        await checkpoint(db)  # the UUID is durable before the next remote call
 
 
 async def _deploy_to_host(db: AsyncSession, instance: OpenVpnInstance, host: OpnsenseHost) -> OpenVpnInstanceDeployment:
     existing = await db.scalar(
         select(OpenVpnInstanceDeployment).where(
             OpenVpnInstanceDeployment.instance_id == instance.id, OpenVpnInstanceDeployment.host_id == host.id
-        )
+        ).execution_options(populate_existing=True)  # fresh: another request may have just changed the row
     )
     try:
         payloads = build_payloads(instance, host.id)
@@ -323,14 +328,19 @@ async def _deploy_to_host(db: AsyncSession, instance: OpenVpnInstance, host: Opn
 
     deployment = existing or OpenVpnInstanceDeployment(instance_id=instance.id, host_id=host.id, status="error")
 
+    # Durable intent BEFORE the first remote call: from here on a crash or cancellation leaves a row, and every UUID the
+    # firewall hands out is committed at once (see _write_config), so a retry continues instead of duplicating.
+    deployment.status, deployment.message, deployment.deployed_at = "error", VPN_INTERRUPTED, _now()
+    if not existing:
+        db.add(deployment)
+    await checkpoint(db)
+
     try:
-        await _write_config(host, payloads, deployment)
+        await _write_config(db, host, payloads, deployment)
     except OpnsenseAPIError as exc:
         deployment.status = "error"
         deployment.message = str(exc)
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     try:
@@ -345,28 +355,30 @@ async def _deploy_to_host(db: AsyncSession, instance: OpenVpnInstance, host: Opn
         deployment.message = "Konfiguration wurde geschrieben, Dienst-Reload aber nicht bestätigt — Erreichbarkeit manuell prüfen"
         deployment.last_payload = comparable
         deployment.deployed_at = _now()
-        if not existing:
-            db.add(deployment)
         return deployment
 
     deployment.status = "success"
     deployment.message = None
     deployment.last_payload = comparable
     deployment.deployed_at = _now()
-    if not existing:
-        db.add(deployment)
     return deployment
 
 
 async def deploy_instance(db: AsyncSession, instance: OpenVpnInstance, hosts: list[OpnsenseHost]) -> list[OpenVpnInstanceDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
     await ensure_no_maintenance(db, hosts)
-    deployments = [await _deploy_to_host(db, instance, host) for host in hosts]
-    await db.commit()
+    async with resource_lease("openvpn", instance.id):
+        deployments = [await _deploy_to_host(db, instance, host) for host in hosts]
+        await db.commit()
     return deployments
 
 
 async def undeploy_instance(db: AsyncSession, instance: OpenVpnInstance) -> None:
+    async with resource_lease("openvpn", instance.id):
+        await _undeploy_instance(db, instance)
+
+
+async def _undeploy_instance(db: AsyncSession, instance: OpenVpnInstance) -> None:
     """Explicit action, not gated by anything (there is no lockout state
     for this entity to gate on) — deletes the Instance before its
     referenced StaticKey (the ModelRelationField dependency direction),
