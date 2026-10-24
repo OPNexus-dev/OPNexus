@@ -340,6 +340,21 @@
           "hint": "Wie lange OPNexus auf den Mailserver wartet."
         }
       }
+    },
+    "nav": {
+      "label": "Bereiche der Einstellungen",
+      "account": "Mein Konto",
+      "accountHint": "Darstellung, Sprache, Passwort und Zwei-Faktor-Anmeldung für dein eigenes Konto.",
+      "notifications": "Benachrichtigungen",
+      "notificationsHint": "Welche Ereignisse melden, über welche Kanäle, ab welchen Schwellen. Dazu der Heartbeat für einen Überwacher von außen und die Mail-CA.",
+      "access": "Anmeldung & Zugriff",
+      "accessHint": "Sitzungsdauer und Schutz vor erratenen Passwörtern, Anmeldung über SSO, Aufgabentrennung und der Fernzugriff auf die Firewall-Oberfläche.",
+      "operation": "Betrieb",
+      "operationHint": "Sicherheitsnetz beim Ausrollen, Messintervalle und Aufbewahrung, Log-Erfassung und Regel-Bereinigung.",
+      "data": "Sicherung & Export",
+      "dataHint": "Geplante Sicherungen der Firewall-Konfigurationen (auch offsite) und die Weitergabe des Audit-Logs an Syslog oder Webhook.",
+      "system": "System",
+      "systemHint": "OPNexus aktualisieren, den Einrichtungsassistenten erneut öffnen und Versionsinformationen."
     }
   },
   "nav": {

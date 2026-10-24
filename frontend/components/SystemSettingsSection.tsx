@@ -23,8 +23,9 @@ function draftOf(items: SystemSetting[]): Draft {
   return draft;
 }
 
-/** Settings › Betrieb: everything that used to need the server's .env and is safe to change while OPNexus runs. */
-export function SystemSettingsSection() {
+/** Settings that used to need the server's .env and are safe to change while OPNexus runs (Settings › several areas).
+ *  `groups` picks which groups this instance shows, each as its own card. */
+export function SystemSettingsSection({ groups = GROUPS }: { groups?: readonly (typeof GROUPS)[number][] }) {
   const { t, errorMessage } = useLanguage();
   const toast = useToast();
   const readOnly = useNotAdmin();
@@ -186,37 +187,36 @@ export function SystemSettingsSection() {
   }
 
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
-      <h2 className="flex items-center gap-2 text-lg font-medium">
-        {t("settings.operational")}
-        <InfoTip text={t("settings.system.intro")} />
-      </h2>
-      {!items && !error && <p className="text-sm text-slate-500">{t("common.loading")}</p>}
+    <>
+      {!items && !error && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-500">{t("common.loading")}</section>
+      )}
       {items &&
-        GROUPS.filter((g) => byGroup[g]?.length).map((group) => {
+        groups.filter((g) => byGroup[g]?.length).map((group) => {
           const dirty = (byGroup[group] ?? []).some(changed);
           return (
-            <form
-              key={group}
-              className="space-y-3 rounded-lg border border-slate-100 p-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                saveGroup(group);
-              }}
-            >
-              <p className="flex items-center gap-2 text-sm font-medium">
-                {t(`settings.system.group.${group}`)}
-                <InfoTip text={t(`settings.system.groupHint.${group}`)} />
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">{(byGroup[group] ?? []).map(field)}</div>
-              {!readOnly && (
-                <div className="flex justify-end border-t border-slate-100 pt-3">
-                  <Button type="submit" disabled={!dirty || saving !== null}>
-                    {t("common.save")}
-                  </Button>
-                </div>
-              )}
-            </form>
+            <section key={group} id={`system-${group}`} className="scroll-mt-4 rounded-xl border border-slate-200 bg-white p-5">
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveGroup(group);
+                }}
+              >
+                <h2 className="flex items-center gap-2 text-lg font-medium">
+                  {t(`settings.system.group.${group}`)}
+                  <InfoTip text={`${t(`settings.system.groupHint.${group}`)} ${t("settings.system.intro")}`} />
+                </h2>
+                <div className="grid gap-4 sm:grid-cols-2">{(byGroup[group] ?? []).map(field)}</div>
+                {!readOnly && (
+                  <div className="flex justify-end border-t border-slate-100 pt-4">
+                    <Button type="submit" disabled={!dirty || saving !== null}>
+                      {t("common.save")}
+                    </Button>
+                  </div>
+                )}
+              </form>
+            </section>
           );
         })}
       {error && (
@@ -224,6 +224,6 @@ export function SystemSettingsSection() {
           {error}
         </p>
       )}
-    </section>
+    </>
   );
 }

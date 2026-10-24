@@ -29,7 +29,15 @@ in der App auf der Login-Seite, im Footer jeder Seite, auf `/about` und in
 den Einstellungen.
 
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
-ansteht): wird beim nächsten MINOR-Release festgelegt (Saker ist mit 1.33.0 vergeben).
+ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
+
+## [1.34.1] "Griffon" — 2026-10-24
+
+- **Einstellungen in Bereiche gegliedert:** Mein Konto, Benachrichtigungen, Anmeldung & Zugriff, Betrieb, Sicherung & Export und
+  System, mit Navigation links (am Handy als wischbare Leiste). Die Betriebseinstellungen stehen jetzt beim jeweiligen Thema. Bestehende
+  Links (z. B. aus dem Update-Hinweis) öffnen den passenden Bereich.
+- **Git-Checkouts:** `opnexus update` lässt in einem Git-Checkout (Release-Modus aus dem Quellcode-Verzeichnis) die versionierte
+  `docker-compose.yml` unangetastet; sie kommt dort mit `git pull`.
 
 ## [1.34.0] "Griffon" — 2026-10-24
 

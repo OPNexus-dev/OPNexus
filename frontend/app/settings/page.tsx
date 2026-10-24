@@ -18,6 +18,7 @@ import { SystemSettingsSection } from "@/components/SystemSettingsSection";
 import { AuditExportSection } from "@/components/AuditExportSection";
 import { APP_CODENAME, APP_MAINTAINER, APP_VERSION } from "@/lib/version";
 import { translate } from "@/lib/i18n";
+import { Bell, HardDrive, Info, KeyRound, SlidersHorizontal, User } from "lucide-react";
 
 function SetupAssistantSection() {
   const { t } = useLanguage();
@@ -482,14 +483,150 @@ function LogIngestSection() {
   );
 }
 
+type CategoryKey = "account" | "notifications" | "access" | "operation" | "data" | "system";
+
+/** Areas of the settings page. `anchors`: section ids (and the area key itself) that open this area, so old deep links
+ *  like /settings#opnexus-update or #cleanup keep working. */
+const CATEGORIES: { key: CategoryKey; icon: typeof User; anchors: string[]; adminOnly?: boolean }[] = [
+  { key: "account", icon: User, anchors: ["account", "appearance", "language", "password", "two-factor"] },
+  { key: "notifications", icon: Bell, anchors: ["notifications", "channels", "system-integrations"] },
+  { key: "access", icon: KeyRound, anchors: ["access", "system-security", "sso", "duties", "gui-access"] },
+  { key: "operation", icon: SlidersHorizontal, anchors: ["operation", "system-operation", "system-monitoring", "logs", "cleanup"] },
+  { key: "data", icon: HardDrive, anchors: ["data", "backups", "audit-export"], adminOnly: true },
+  { key: "system", icon: Info, anchors: ["system", "opnexus-update", "setup", "about"] },
+];
+
+function categoryFromHash(hash: string): { category: CategoryKey; anchor: string | null } | null {
+  const id = hash.replace(/^#/, "");
+  if (!id) return null;
+  const found = CATEGORIES.find((c) => c.anchors.includes(id));
+  return found ? { category: found.key, anchor: id === found.key ? null : id } : null;
+}
+
 export default function SettingsPage(){
   const {theme,setTheme}=useTheme();const [settings,setSettings]=useState<AppSettings|null>(null);
   const {language,setLanguage,t,errorMessage}=useLanguage();
+  const notAdmin=useNotAdmin();
   const [error,setError]=useState('');const [notice,setNotice]=useState('');const [saving,setSaving]=useState(false);
   const [current,setCurrent]=useState('');const [password,setPassword]=useState('');const [repeat,setRepeat]=useState('');
+  const [active,setActive]=useState<CategoryKey>("account");
+  const categories=CATEGORIES.filter((c)=>!(c.adminOnly && notAdmin));
   useEffect(()=>{api.settings().then(setSettings).catch(e=>setError(errorMessage(e)));},[errorMessage]);
+
+  // Follow the URL hash: an area key or the id of a section inside one (deep links from banner, wizard, cleanup tab).
+  useEffect(()=>{
+    let tries=0; let timer: ReturnType<typeof setTimeout>|undefined;
+    function apply(){
+      const target=categoryFromHash(window.location.hash);
+      if(!target) return;
+      setActive(target.category);
+      if(!target.anchor) return;
+      tries=0;
+      const scroll=()=>{ // sections load their data first and appear only then
+        const el=document.getElementById(target.anchor as string);
+        if(el){el.scrollIntoView({block:"start"});return;}
+        if(++tries<25) timer=setTimeout(scroll,200);
+      };
+      timer=setTimeout(scroll,0);
+    }
+    apply();
+    window.addEventListener("hashchange",apply);
+    return ()=>{window.removeEventListener("hashchange",apply); if(timer) clearTimeout(timer);};
+  },[]);
+
+  function select(key: CategoryKey){
+    setActive(key); setError(''); setNotice('');
+    window.history.replaceState(null,"",`#${key}`);
+    window.scrollTo({top:0});
+  }
+
   async function saveTheme(value:Theme){setSaving(true);setError('');setNotice('');const old=theme;setTheme(value);try{setSettings(await api.saveSettings({theme:value,language}));setNotice(t('settings.appearanceSaved'));}catch(e){setTheme(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function saveLanguage(value:"de"|"en"){setSaving(true);setError('');setNotice('');const old=language;setLanguage(value);try{setSettings(await api.saveSettings({theme,language:value}));setNotice(translate(value,'settings.language.saved'));}catch(e){setLanguage(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function changePassword(e:React.FormEvent){e.preventDefault();setError('');setNotice('');if(password!==repeat){setError(t('settings.passwordMismatch'));return;}setSaving(true);try{await api.changePassword(current,password);setCurrent('');setPassword('');setRepeat('');setNotice(t('settings.passwordChanged'));}catch(e){setError(errorMessage(e,'settings.passwordFailed'));}finally{setSaving(false);}}
-  return <div className="mx-auto max-w-3xl space-y-6"><h1 className="text-2xl font-semibold">{t("settings.title")}</h1>{error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}{notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}<section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.appearance')}<InfoTip text={t('settings.appearanceHint')} /></h2><div role="radiogroup" aria-label={t('settings.colorScheme')} className="flex flex-wrap gap-3">{(['light','dark','system'] as const).map((v)=><label key={v} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${theme===v?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="theme" checked={theme===v} disabled={saving || !settings} onChange={()=>saveTheme(v)}/>{t(`settings.theme.${v}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.language.label')}</h2><div role="radiogroup" aria-label={t('settings.language.label')} className="flex flex-wrap gap-3">{(['de','en'] as const).map(value=><label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${language===value?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}><input type="radio" name="language" checked={language===value} disabled={saving || !settings} onChange={()=>saveLanguage(value)}/>{t(`settings.language.${value}`)}</label>)}</div></section><section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5"><h2 className="text-lg font-medium">{t('settings.account')} {settings?.username ? `· ${settings.username}`:''}</h2><form onSubmit={changePassword} className="space-y-4"><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.currentPassword')}</span><Input aria-label={t('settings.currentPassword')} type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.newPassword')}</span><Input aria-label={t('settings.newPassword')} type="password" autoComplete="new-password" minLength={10} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label><label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.repeatPassword')}</span><Input aria-label={t('settings.repeatPassword')} type="password" autoComplete="new-password" minLength={10} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label><Button type="submit" disabled={saving}>{t('settings.changePassword')}</Button></form></section><SystemSettingsSection/><SetupAssistantSection/><TwoFactorSection/><NotificationsSection/><LogIngestSection/><OidcSection/><CleanupSettings/><BackupSettingsSection/><AuditExportSection/><GuiAccessSection/><OpnexusUpdateSection/><section className="space-y-2 rounded-xl border border-slate-200 bg-white p-5"><h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.about')}<InfoTip text={t('settings.changelogNote',{file:'CHANGELOG.md'})} /></h2><dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.version')}</dt><dd>{APP_VERSION} {language==='en'?'“':'„'}{APP_CODENAME}{language==='en'?'”':'“'}</dd><dt>{t('settings.development')}</dt><dd>{APP_MAINTAINER}</dd></dl></section></div>;
+
+  const account = (
+    <>
+      <section id="appearance" className="scroll-mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.appearance')}<InfoTip text={t('settings.appearanceHint')} /></h2>
+        <div role="radiogroup" aria-label={t('settings.colorScheme')} className="flex flex-wrap gap-3">
+          {(['light','dark','system'] as const).map((v)=>(
+            <label key={v} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${theme===v?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}>
+              <input type="radio" name="theme" checked={theme===v} disabled={saving || !settings} onChange={()=>saveTheme(v)}/>{t(`settings.theme.${v}`)}
+            </label>
+          ))}
+        </div>
+      </section>
+      <section id="language" className="scroll-mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-medium">{t('settings.language.label')}</h2>
+        <div role="radiogroup" aria-label={t('settings.language.label')} className="flex flex-wrap gap-3">
+          {(['de','en'] as const).map(value=>(
+            <label key={value} className={`flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-3 text-sm ${language===value?'border-sky-500 bg-sky-50 text-sky-700':'border-slate-200'}`}>
+              <input type="radio" name="language" checked={language===value} disabled={saving || !settings} onChange={()=>saveLanguage(value)}/>{t(`settings.language.${value}`)}
+            </label>
+          ))}
+        </div>
+      </section>
+      <section id="password" className="scroll-mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="text-lg font-medium">{t('settings.account')} {settings?.username ? `· ${settings.username}`:''}</h2>
+        <form onSubmit={changePassword} className="space-y-4">
+          <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.currentPassword')}</span><Input aria-label={t('settings.currentPassword')} type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label>
+          <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.newPassword')}</span><Input aria-label={t('settings.newPassword')} type="password" autoComplete="new-password" minLength={10} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
+          <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.repeatPassword')}</span><Input aria-label={t('settings.repeatPassword')} type="password" autoComplete="new-password" minLength={10} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label>
+          <Button type="submit" disabled={saving}>{t('settings.changePassword')}</Button>
+        </form>
+      </section>
+      <div id="two-factor" className="scroll-mt-4"><TwoFactorSection/></div>
+    </>
+  );
+
+  const about = (
+    <section id="about" className="scroll-mt-4 space-y-2 rounded-xl border border-slate-200 bg-white p-5">
+      <h2 className="flex items-center gap-2 text-lg font-medium">{t('settings.about')}<InfoTip text={t('settings.changelogNote',{file:'CHANGELOG.md'})} /></h2>
+      <dl className="grid grid-cols-2 gap-3 text-sm"><dt>{t('settings.version')}</dt><dd>{APP_VERSION} {language==='en'?'“':'„'}{APP_CODENAME}{language==='en'?'”':'“'}</dd><dt>{t('settings.development')}</dt><dd>{APP_MAINTAINER}</dd></dl>
+    </section>
+  );
+
+  const content: Record<CategoryKey, React.ReactNode> = {
+    account,
+    notifications: <><NotificationsSection/><SystemSettingsSection groups={["integrations"]}/></>,
+    access: <><SystemSettingsSection groups={["security"]}/><OidcSection/><GuiAccessSection/></>,
+    operation: <><SystemSettingsSection groups={["operation","monitoring"]}/><div id="logs" className="scroll-mt-4"><LogIngestSection/></div><CleanupSettings/></>,
+    data: <><BackupSettingsSection/><AuditExportSection/></>,
+    system: <><OpnexusUpdateSection/><div id="setup" className="scroll-mt-4"><SetupAssistantSection/></div>{about}</>,
+  };
+  const shown = categories.some((c)=>c.key===active) ? active : "account";
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <h1 className="mb-4 text-2xl font-semibold">{t("settings.title")}</h1>
+      <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
+        <nav aria-label={t("settings.nav.label")} className="-mx-4 mb-4 overflow-x-auto px-4 lg:mx-0 lg:mb-0 lg:overflow-visible lg:px-0">
+          <ul className="flex gap-2 lg:sticky lg:top-4 lg:flex-col lg:gap-1">
+            {categories.map(({key,icon:Icon})=>(
+              <li key={key} className="shrink-0">
+                <button
+                  type="button"
+                  onClick={()=>select(key)}
+                  aria-current={shown===key ? "page" : undefined}
+                  className={`flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${shown===key ? "bg-brand-50 text-brand-600" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                >
+                  <Icon size={16} aria-hidden="true" className="shrink-0" />
+                  <span>{t(`settings.nav.${key}`)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className="min-w-0 space-y-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">{t(`settings.nav.${shown}`)}</h2>
+            <p className="text-sm text-slate-500">{t(`settings.nav.${shown}Hint`)}</p>
+          </div>
+          {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+          {notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
+          {content[shown]}
+        </div>
+      </div>
+    </div>
+  );
 }

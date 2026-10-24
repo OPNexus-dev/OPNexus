@@ -139,6 +139,14 @@ class ComposeRefresh(unittest.TestCase):
         self.assertEqual(self.compose(), OLD)
         self.assertEqual(self.recorded(), _sha(OLD))
 
+    def test_a_git_checkout_keeps_its_versioned_compose_file(self):
+        subprocess.run(["git", "init", "-q", str(self.tmp)], check=True)
+        subprocess.run(["git", "-C", str(self.tmp), "add", "docker-compose.yml"], check=True)
+        r = self.refresh()
+        self.assertEqual(self.compose(), OLD)
+        self.assertIn("Git-Checkout", r.stdout)
+        self.assertFalse(self.log.exists())  # not even pulled
+
     def test_rollback_without_a_swapped_file_does_nothing(self):
         r = self.run_body('prev_compose="" restore_compose; echo DONE')
         self.assertIn("DONE", r.stdout)

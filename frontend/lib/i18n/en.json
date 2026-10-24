@@ -340,6 +340,21 @@
           "hint": "How long OPNexus waits for the mail server."
         }
       }
+    },
+    "nav": {
+      "label": "Settings areas",
+      "account": "My account",
+      "accountHint": "Appearance, language, password and two-factor sign-in for your own account.",
+      "notifications": "Notifications",
+      "notificationsHint": "Which events to report, through which channels, from which thresholds. Plus the heartbeat for an external watcher and the mail CA.",
+      "access": "Sign-in & access",
+      "accessHint": "Session lifetime and protection against guessed passwords, SSO sign-in, separation of duties and remote access to the firewall web interface.",
+      "operation": "Operation",
+      "operationHint": "The safety net when rolling out, sampling intervals and retention, log collection and rule cleanup.",
+      "data": "Backup & export",
+      "dataHint": "Scheduled backups of the firewall configurations (offsite too) and forwarding the audit log to syslog or a webhook.",
+      "system": "System",
+      "systemHint": "Update OPNexus, reopen the setup assistant and version information."
     }
   },
   "nav": {
