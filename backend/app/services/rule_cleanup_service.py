@@ -89,6 +89,7 @@ from sqlalchemy.orm.attributes import set_committed_value
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
 
+from app import runtime_settings
 from app.config import settings
 from app.errors import ErrorCode, api_error
 from app.models.governance import GovernanceSettings
@@ -146,13 +147,13 @@ async def _commit(db: AsyncSession) -> None:
 
 
 def _window() -> timedelta:
-    return timedelta(seconds=settings.deploy_confirm_window_seconds)
+    return timedelta(seconds=runtime_settings.value("deploy_confirm_window_seconds"))
 
 
 def _budget(items: int, nodes: int) -> timedelta:
     """Upper bound for the remote calls of one run: a toggle and a read-back per item, a sample, an apply and a
     read per node, each at most one client timeout."""
-    return timedelta(seconds=(2 * items + 3 * nodes) * settings.opnsense_timeout)
+    return timedelta(seconds=(2 * items + 3 * nodes) * runtime_settings.value("opnsense_timeout"))
 
 
 def _truthy(value) -> bool:
@@ -805,7 +806,7 @@ async def preview(db: AsyncSession, host: OpnsenseHost, *, actor: str, actor_id=
                                                 audit_service.ADMIN_ONLY_DETAILS: {"plan": plan}})))
     await db.commit()
     return {"preview_id": str(op.id), "expires_at": _iso(op.expires_at), "kind": kind, "plan": plan,
-            "max_rules": limits.max_rules, "window_seconds": settings.deploy_confirm_window_seconds}
+            "max_rules": limits.max_rules, "window_seconds": runtime_settings.value("deploy_confirm_window_seconds")}
 
 
 async def cancel(db: AsyncSession, host: OpnsenseHost, op_id, *, actor: str) -> dict:

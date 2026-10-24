@@ -23,10 +23,11 @@ import httpx
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.config import settings
 from app.models.audit import AuditEvent
 from app.models.audit_export import AuditExportSettings
-from app.services import notification_secret_store
+from app.services import notification_secret_store, url_guard
 from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -75,17 +76,28 @@ def _frame_tcp(lines: list[bytes]) -> bytes:
     return b"".join(str(len(line)).encode() + b" " + line for line in lines)
 
 
-def _send_syslog_sync(row: AuditExportSettings, lines: list[bytes]) -> None:
+def _send_syslog_sync(row: AuditExportSettings, lines: list[bytes], addresses: list[str]) -> None:
+    """``addresses`` are the already checked addresses of ``syslog_host``: connect to those, never to the name."""
     host, port = row.syslog_host, row.syslog_port
     if row.syslog_protocol == "udp":
-        with socket.socket(socket.AF_INET6 if ":" in (host or "") else socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        address = addresses[0]
+        with socket.socket(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_DGRAM) as sock:
             for line in lines:
-                sock.sendto(line[:8000], (host, port))
+                sock.sendto(line[:8000], (address, port))
         return
-    with socket.create_connection((host, port), timeout=settings.opnsense_timeout) as raw:
+    last: OSError | None = None
+    for address in addresses:
+        try:
+            raw = socket.create_connection((address, port), timeout=runtime_settings.value("opnsense_timeout"))
+            break
+        except OSError as exc:
+            last = exc
+    else:
+        raise last or OSError("keine Adresse")
+    with raw:
         if row.syslog_protocol == "tls":
-            context = ssl.create_default_context(cafile=settings.smtp_ca_file or None)
-            with context.wrap_socket(raw, server_hostname=host) as tls:
+            context = runtime_settings.smtp_ssl_context()
+            with context.wrap_socket(raw, server_hostname=host) as tls:  # Zertifikat gegen den Namen, nicht die IP
                 tls.sendall(_frame_tcp(lines))
         else:
             raw.sendall(_frame_tcp(lines))
@@ -95,7 +107,13 @@ async def send_syslog(row: AuditExportSettings, events: list[dict]) -> None:
     if not row.syslog_host:
         raise ExportError("Kein Syslog-Ziel konfiguriert")
     try:
-        await asyncio.to_thread(_send_syslog_sync, row, [syslog_line(e) for e in events])
+        addresses = await url_guard.checked_addresses(row.syslog_host, row.syslog_port)
+    except ValueError as exc:
+        raise ExportError(f"Syslog-Ziel nicht erlaubt: {exc}") from None
+    except OSError as exc:
+        raise ExportError(f"Syslog-Zustellung fehlgeschlagen ({type(exc).__name__})") from None
+    try:
+        await asyncio.to_thread(_send_syslog_sync, row, [syslog_line(e) for e in events], addresses)
     except (OSError, ssl.SSLError) as exc:
         raise ExportError(f"Syslog-Zustellung fehlgeschlagen ({type(exc).__name__})") from None
 
@@ -110,13 +128,18 @@ async def send_webhook(row: AuditExportSettings, events: list[dict]) -> None:
         if not secret:
             raise ExportError("Signaturschlüssel ist konfiguriert, aber nicht lesbar – bitte neu setzen")
         headers["X-OPNexus-Signature"] = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
-    try:
-        async with httpx.AsyncClient(timeout=settings.opnsense_timeout) as client:
-            (await client.post(row.webhook_url, content=raw, headers=headers)).raise_for_status()
-    except httpx.HTTPError as exc:
-        # The URL often is the credential: never put it in a message.
-        reason = f"HTTP {exc.response.status_code}" if isinstance(exc, httpx.HTTPStatusError) else type(exc).__name__
-        raise ExportError(f"Webhook-Zustellung fehlgeschlagen ({reason})") from None
+    # Die URL ist oft selbst das Zugangsdatum: das Anfrage-Log von httpx bleibt währenddessen stumm.
+    with url_guard.muted():
+        try:
+            url_guard.validate_url(row.webhook_url)
+            await url_guard.ensure_resolved_safe(row.webhook_url)
+        except ValueError as exc:
+            raise ExportError(f"Webhook-Ziel nicht erlaubt: {exc}") from None
+        try:
+            async with url_guard.guarded_client(timeout=runtime_settings.value("opnsense_timeout"), follow_redirects=False) as client:
+                (await client.post(row.webhook_url, content=raw, headers=headers)).raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ExportError(f"Webhook-Zustellung fehlgeschlagen ({url_guard.failure_reason(exc)})") from None
 
 
 def active(row: AuditExportSettings) -> bool:

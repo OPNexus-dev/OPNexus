@@ -15,8 +15,15 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.audit_export import AuditExportSettings
 from app.services import audit_export_service as svc
-from app.services import notification_secret_store
+from app.services import notification_secret_store, url_guard
 from tests.test_api_tokens import _login
+
+
+@pytest.fixture(autouse=True)
+def _loopback_allowed(monkeypatch):
+    """Diese Tests sprechen echte Sockets auf 127.0.0.1 an; der Zieladress-Schutz selbst steht in
+    tests/test_audit_export_guard.py."""
+    monkeypatch.setattr(url_guard, "_forbidden", lambda ip: False)
 
 
 async def _event(n: int, *, age_s: float = 60, status="accepted", details=None) -> AuditEvent:

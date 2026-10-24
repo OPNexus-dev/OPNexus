@@ -15,6 +15,10 @@ or directly (passphrase in FULL_BACKUP_PASSPHRASE):
     python -m app.full_backup create  > file.opxfull
     python -m app.full_backup info    < file.opxfull       # manifest only
     python -m app.full_backup restore < file.opxfull
+
+Files of the server itself (the .env and the proxy's internal CA) are not visible to the backend. The CLI hands them
+over as a tar on stdin (``create --host-files``); they are stored under ``host/`` and only ever handed back as a tar
+on stdout (``host-files``) for the CLI to place: ``restore`` never writes them.
 """
 import io
 import json
@@ -87,13 +91,30 @@ def _head_revision() -> str:
     return ScriptDirectory.from_config(migrate._config()).get_current_head()
 
 
-def create(passphrase: str, *, dump=_dump_database, revision=None) -> bytes:
-    if len(passphrase) < MIN_PASSPHRASE:
-        raise FullBackupError(f"Die Passphrase braucht mindestens {MIN_PASSPHRASE} Zeichen")
-    manifest = {
-        "format": FORMAT, "app_version": APP_VERSION, "db_revision": revision or _head_revision(),
-        "created_at": datetime.now(timezone.utc).isoformat(), "data": sorted(_DATA_DIRS),
-    }
+# Die Geheimnis-Verzeichnisse ändern sich genau dann, wenn sich ein Objekt in der Datenbank ändert. Ein
+# Schreibschutz über Datenbank und Dateien gleichzeitig gibt es nicht, deshalb wird eine Änderung während
+# der Sicherung erkannt und die Sicherung wiederholt. (Die Verzeichnisse der Firewall-Backups und des Overlays
+# gehören nicht dazu: sie ändern sich laufend und eine neue Datei darin macht die Sicherung nicht unstimmig.)
+_STABLE_DIRS = tuple(name for name in _DATA_DIRS if name.endswith("secrets"))
+ATTEMPTS = 3
+
+
+def _fingerprint() -> frozenset:
+    seen = set()
+    for name in _STABLE_DIRS:
+        root = _dir(name)
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            try:
+                st = path.stat()
+            except OSError:  # vom Löschen überholt: zählt als Änderung beim nächsten Vergleich
+                continue
+            seen.add((name, str(path.relative_to(root)), st.st_mtime_ns, st.st_size))
+    return frozenset(seen)
+
+
+def _pack(manifest: dict, dump, host_files: bytes | None = None) -> bytes:
     plain = io.BytesIO()
     with tempfile.TemporaryDirectory() as tmp, tarfile.open(fileobj=plain, mode="w:gz") as tar:
         raw = json.dumps(manifest, indent=1).encode()
@@ -107,7 +128,69 @@ def create(passphrase: str, *, dump=_dump_database, revision=None) -> bytes:
             path = _dir(name)
             if path.is_dir():
                 tar.add(path, arcname=f"data/{name}")
-    return backup_crypto.encrypt(plain.getvalue(), passphrase)
+        for member, content in _host_members(host_files):
+            tar.addfile(member, io.BytesIO(content) if content is not None else None)
+    return plain.getvalue()
+
+
+_HOST_TOP = ("env", "caddy-ca")
+_HOST_MAX_BYTES = 10_000_000
+
+
+def _host_members(host_files: bytes | None) -> list[tuple[tarfile.TarInfo, bytes | None]]:
+    """The regular files and directories of the CLI's tar, re-rooted under host/. Anything else (links, devices,
+    absolute or escaping paths, unknown top-level names) is refused: this tar comes from outside the container."""
+    if host_files is None:
+        return []
+    if len(host_files) > _HOST_MAX_BYTES:
+        raise FullBackupError("Die Dateien des Servers sind zu groß")
+    try:
+        src = tarfile.open(fileobj=io.BytesIO(host_files), mode="r:")
+    except tarfile.TarError:
+        raise FullBackupError("Die Dateien des Servers sind kein gültiges tar") from None
+    out = []
+    with src:
+        for member in src.getmembers():
+            parts = [p for p in Path(member.name).parts if p not in (".", "")]
+            if not parts:
+                continue
+            if member.name.startswith(("/", "\\")) or ".." in parts or parts[0] not in _HOST_TOP:
+                raise FullBackupError(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}")
+            if not (member.isfile() or member.isdir()):
+                raise FullBackupError(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}")
+            info = tarfile.TarInfo("host/" + "/".join(parts))
+            info.mtime, info.mode = member.mtime, (0o600 if member.isfile() else 0o700)
+            if member.isdir():
+                info.type = tarfile.DIRTYPE
+                out.append((info, None))
+            else:
+                content = src.extractfile(member).read()
+                info.size = len(content)
+                out.append((info, content))
+    if not out:
+        raise FullBackupError("Die Dateien des Servers sind leer")
+    return out
+
+
+def create(passphrase: str, *, dump=_dump_database, revision=None, host_files: bytes | None = None) -> bytes:
+    if len(passphrase) < MIN_PASSPHRASE:
+        raise FullBackupError(f"Die Passphrase braucht mindestens {MIN_PASSPHRASE} Zeichen")
+    manifest = {
+        "format": FORMAT, "app_version": APP_VERSION, "db_revision": revision or _head_revision(),
+        "created_at": datetime.now(timezone.utc).isoformat(), "data": sorted(_DATA_DIRS),
+    }
+    members = _host_members(host_files)  # validated before the (slow) dump
+    if members:
+        manifest["host"] = sorted({m.name.split("/")[1] for m, _ in members})
+    for _ in range(ATTEMPTS):
+        before = _fingerprint()
+        blob = _pack(manifest, dump, host_files)
+        if _fingerprint() == before:
+            return backup_crypto.encrypt(blob, passphrase)
+    raise FullBackupError(
+        "Während der Sicherung haben sich Geheimnisse geändert (jemand legt gerade Objekte an oder löscht sie). "
+        "Die Sicherung wäre in sich unstimmig; bitte gleich noch einmal versuchen."
+    )
 
 
 def _open(blob: bytes, passphrase: str) -> tarfile.TarFile:
@@ -178,6 +261,25 @@ def restore(blob: bytes, passphrase: str, *, restore_db=_restore_database, head=
         return {**manifest, "files_restored": len(restored)}
 
 
+def host_files(blob: bytes, passphrase: str) -> bytes:
+    """The host/ part as a tar (paths without the host/ prefix) for the CLI; empty tar when the backup has none."""
+    out = io.BytesIO()
+    with _open(blob, passphrase) as tar, tarfile.open(fileobj=out, mode="w") as dst:
+        _manifest(tar)
+        for member in tar.getmembers():
+            parts = Path(member.name).parts
+            if len(parts) < 2 or parts[0] != "host" or ".." in parts or not (member.isfile() or member.isdir()):
+                continue
+            info = tarfile.TarInfo("/".join(parts[1:]))
+            info.mtime, info.mode, info.type = member.mtime, member.mode, member.type
+            if member.isfile():
+                info.size = member.size
+                dst.addfile(info, tar.extractfile(member))
+            else:
+                dst.addfile(info)
+    return out.getvalue()
+
+
 def _older_or_equal(revision: str | None, head: str | None) -> bool:
     """Revisions are zero-padded numbers ('0009'): a dump from an older schema is fine, the app migrates it."""
     try:
@@ -188,13 +290,18 @@ def _older_or_equal(revision: str | None, head: str | None) -> bool:
 
 def _main(argv: list[str]) -> int:
     passphrase = os.environ.get("FULL_BACKUP_PASSPHRASE", "")
-    if len(argv) != 2 or argv[1] not in ("create", "info", "restore"):
+    args = argv[1:]
+    with_host = args[1:] == ["--host-files"] and args[0] == "create"
+    if not (len(args) == 1 and args[0] in ("create", "info", "restore", "host-files")) and not with_host:
         print(__doc__, file=sys.stderr)
         return 2
     try:
-        if argv[1] == "create":
-            sys.stdout.buffer.write(create(passphrase))
-        elif argv[1] == "info":
+        if args[0] == "create":
+            host = sys.stdin.buffer.read(_HOST_MAX_BYTES + 1) if with_host else None
+            sys.stdout.buffer.write(create(passphrase, host_files=host))
+        elif args[0] == "host-files":
+            sys.stdout.buffer.write(host_files(sys.stdin.buffer.read(), passphrase))
+        elif args[0] == "info":
             print(json.dumps(info(sys.stdin.buffer.read(), passphrase), indent=1))
         else:
             print(json.dumps(restore(sys.stdin.buffer.read(), passphrase), indent=1))

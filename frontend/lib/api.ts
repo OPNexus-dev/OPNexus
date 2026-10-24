@@ -1298,6 +1298,20 @@ export interface UpdaterJob {
   from_version: string | null;
 }
 
+export type SystemSetting = {
+  key: string;
+  group: "security" | "operation" | "monitoring" | "integrations";
+  kind: "int" | "float" | "secret_url" | "pem";
+  unit: string;
+  min: number | null;
+  max: number | null;
+  value: number | string | null;
+  default: number | null;
+  /** default: built-in value; ui: changed here; server: set in the server's .env (read-only here) */
+  source: "default" | "ui" | "server";
+  env: string | null;
+  is_set?: boolean;
+};
 export type UpdateCheckSettings = { enabled: boolean; feed_url: string; managed_by_server: boolean };
 export interface UpdaterStatus {
   /** false = Updater nicht aktiviert/erreichbar (`reason` sagt warum). */
@@ -1394,6 +1408,8 @@ export const api = {
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
   versionCheck: () => request<VersionCheck>("/system/version-check"),
+  systemSettings: () => request<{ settings: SystemSetting[] }>("/settings/system"),
+  saveSystemSettings: (values: Record<string, number | string | null>) => request<{ settings: SystemSetting[] }>("/settings/system", { method: "PUT", body: JSON.stringify({ values }) }),
   updateCheck: () => request<UpdateCheckSettings>("/system/update-check"),
   updateUpdateCheck: (body: { enabled?: boolean; feed_url?: string }) => request<UpdateCheckSettings>("/system/update-check", { method: "PUT", body: JSON.stringify(body) }),
   updaterStatus: () => request<UpdaterStatus>("/system/updater"),
@@ -1969,6 +1985,8 @@ export interface NotificationSettings {
   service_down_enabled: boolean;
   rollout_problems_enabled: boolean;
   api_rights_enabled: boolean;
+  server_disk_enabled: boolean;
+  server_disk_threshold_pct: number;
   gateway_loss_threshold_pct: number;
   gateway_delay_threshold_ms: number;
   disk_threshold_pct: number;
@@ -2027,6 +2045,8 @@ export interface NotificationSettingsUpdate {
   service_down_enabled?: boolean;
   rollout_problems_enabled?: boolean;
   api_rights_enabled?: boolean;
+  server_disk_enabled?: boolean;
+  server_disk_threshold_pct?: number;
   gateway_loss_threshold_pct?: number;
   gateway_delay_threshold_ms?: number;
   disk_threshold_pct?: number;
@@ -2064,7 +2084,7 @@ export type ProblemType =
   | "backup_offsite_failed"
   | "compliance_finding"
   | "gateway_down" | "resource_threshold" | "service_down" | "api_rights_missing"
-  | "rollout_paused" | "rollout_start_failed";
+  | "rollout_paused" | "rollout_start_failed" | "server_disk";
 
 export interface CarpEvent {
   id: string;

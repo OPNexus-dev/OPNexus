@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 
 from app.config import settings
+from app.services import url_guard
 
 
 class S3Error(Exception):
@@ -58,6 +59,10 @@ class S3Client:
         if parts.scheme == "http" and not settings.allow_insecure_offsite:
             # Credentials and (encrypted, but still) backups must not travel in the clear.
             raise S3Error("Der Endpunkt muss https:// sein")
+        try:
+            url_guard.validate_url(endpoint)
+        except ValueError as exc:  # z. B. localhost, Link-Local, Metadaten-Dienst
+            raise S3Error(f"Ungültiger Endpunkt: {exc}") from None
         # httpx leaves a scheme's default port out of the Host header, so the signed host must not carry it either.
         port = parts.port
         default = {"https": 443, "http": 80}[parts.scheme]
@@ -82,10 +87,11 @@ class S3Client:
             secret_key=self.secret_key, region=self.region, now=datetime.now(timezone.utc),
         )
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            # Verbindet nur zu Adressen, die die Prüfung bestanden haben (auch nach DNS-Rebinding und Weiterleitungen).
+            async with url_guard.guarded_client(timeout=60) as client:
                 return await client.request(method, url, content=body if method == "PUT" else None, headers=headers)
         except httpx.HTTPError as exc:
-            raise S3Error(f"Verbindung fehlgeschlagen ({type(exc).__name__})") from None
+            raise S3Error(f"Verbindung fehlgeschlagen ({url_guard.failure_reason(exc)})") from None
 
     @staticmethod
     def _check(response: httpx.Response, what: str) -> None:

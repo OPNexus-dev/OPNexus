@@ -78,6 +78,9 @@ class NotificationSettings(Base):
     # OPNexus threshold on the measured values (0 = off).
     gateway_loss_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=20, server_default="20")
     gateway_delay_threshold_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=500, server_default="500")
+    # The disk OPNexus itself runs on (1.34): a full disk stops the database, and with it every alert. On by default.
+    server_disk_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    server_disk_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=90, server_default="90")
     # Resources (0 = that threshold is off). Load is per CPU thread.
     disk_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=90, server_default="90")
     memory_threshold_pct: Mapped[int] = mapped_column(Integer, nullable=False, default=95, server_default="95")

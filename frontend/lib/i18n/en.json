@@ -72,7 +72,8 @@
         "resourceThreshold": "Resource threshold exceeded (disk, memory, swap, CPU load; off by default)",
         "serviceDown": "Watched service stopped (off by default)",
         "rolloutProblems": "Rollout paused or not started automatically",
-        "apiRights": "API rights missing (gateway or service status not readable)"
+        "apiRights": "API rights missing (gateway or service status not readable)",
+        "serverDisk": "Disk of the OPNexus server almost full"
       },
       "pollInterval": "Check interval (seconds)",
       "pollHint": "At least 60 seconds, so the firewalls are not queried needlessly.",
@@ -88,7 +89,8 @@
         "confirmSamples": "Gateways and services: consecutive measurements",
         "resourceSamples": "Resources: consecutive measurements",
         "watchlist": "Watched services",
-        "watchlistHint": "OPNsense service names, comma-separated. OPNexus reports a service only if it ran before and has stopped now. Remove services you stopped on purpose."
+        "watchlistHint": "OPNsense service names, comma-separated. OPNexus reports a service only if it ran before and has stopped now. Remove services you stopped on purpose.",
+        "serverDiskLimit": "OPNexus server: disk full from (%)"
       }
     },
     "logs": {
@@ -245,6 +247,99 @@
         "teams": "Workflow webhook address",
         "matrix": "Access token"
       }
+    },
+    "system": {
+      "intro": "These values used to live only in the server's .env. A value set there still applies and is locked here. Addresses, TLS and database access deliberately stay in the .env: a wrong value would lock you out of this very interface.",
+      "saved": "Settings saved",
+      "changed": "changed",
+      "fromServer": "from server ({env})",
+      "reset": "Reset to default",
+      "remove": "Remove",
+      "secretSet": "set (enter a new URL to change it)",
+      "pemFromServer": "Set by the server through SMTP_CA_FILE.",
+      "defaultIs": "Default: {value}",
+      "bounds": "allowed {min}–{max}",
+      "group": {
+        "security": "Sign-in and sessions",
+        "operation": "Rollouts and firewall access",
+        "monitoring": "Sampling and retention",
+        "integrations": "External monitoring and mail"
+      },
+      "groupHint": {
+        "security": "Protection against guessed passwords and how long sign-ins last.",
+        "operation": "The safety net when rolling out and patience with slow firewalls.",
+        "monitoring": "How often OPNexus measures and how long it keeps the data. Shorter intervals mean more requests to the firewalls.",
+        "integrations": "Heartbeat for an external watcher and trust for a mail server with its own CA."
+      },
+      "unit": {
+        "seconds": "seconds",
+        "minutes": "minutes",
+        "hours": "hours",
+        "days": "days",
+        "count": "count"
+      },
+      "field": {
+        "session_lifetime_days": {
+          "label": "Session lifetime",
+          "hint": "How long a sign-in stays valid. Applies to new sign-ins."
+        },
+        "login_max_attempts": {
+          "label": "Failed attempts per account",
+          "hint": "This many wrong passwords per account and sender, then it is locked."
+        },
+        "login_ip_max_attempts": {
+          "label": "Failed attempts per sender",
+          "hint": "This many failed sign-ins from one address (across all accounts), then it is locked."
+        },
+        "login_window_seconds": {
+          "label": "Window for failed attempts",
+          "hint": "Failed attempts are counted within this period."
+        },
+        "login_lockout_seconds": {
+          "label": "Lockout duration",
+          "hint": "How long a lock lasts after too many failed attempts."
+        },
+        "deploy_confirm_window_seconds": {
+          "label": "Confirmation window when rolling out",
+          "hint": "How long you have after a rollout to confirm a change. Without confirmation OPNexus reverts it automatically (lockout protection). Applies to new rollouts."
+        },
+        "opnsense_timeout": {
+          "label": "Timeout for firewall requests",
+          "hint": "How long OPNexus waits for the firewall API to answer. Raise it for slow links (tunnels, mobile)."
+        },
+        "migration_backup_keep": {
+          "label": "Backups kept before updates",
+          "hint": "How many automatic database backups taken before schema changes are kept."
+        },
+        "resource_poll_interval_seconds": {
+          "label": "Resource sampling interval",
+          "hint": "How often memory, load, disk, gateways and services of the firewalls are measured."
+        },
+        "resource_sample_retention_days": {
+          "label": "Keep resource samples",
+          "hint": "How long resource samples are stored."
+        },
+        "rule_observe_interval_seconds": {
+          "label": "Rule history interval",
+          "hint": "How often the firewalls' rules and counters are read for the history and the rule analysis."
+        },
+        "update_check_interval_hours": {
+          "label": "Version check interval",
+          "hint": "How often OPNexus asks for a new version (only while the version check is on)."
+        },
+        "heartbeat_url": {
+          "label": "Heartbeat URL",
+          "hint": "Ping URL of an external watcher (healthchecks.io, Uptime Kuma, ntfy). OPNexus calls it after every successful check cycle; when the calls stop, the watcher raises the alarm. https:// only. The URL is not shown and never logged."
+        },
+        "smtp_ca_pem": {
+          "label": "Mail server CA",
+          "hint": "Only needed when the mail server (or the TLS syslog of the audit export) uses a certificate from a private CA. Paste the CA certificate in PEM format."
+        },
+        "notification_smtp_timeout_seconds": {
+          "label": "Mail timeout",
+          "hint": "How long OPNexus waits for the mail server."
+        }
+      }
     }
   },
   "nav": {
@@ -373,10 +468,12 @@
       "gateway_down": "Gateway",
       "resource_threshold": "Resource",
       "service_down": "Service",
-      "api_rights_missing": "API rights"
+      "api_rights_missing": "API rights",
+      "server_disk": "OPNexus disk"
     },
     "moreGateways": "+ {count} more gateways (on the firewall page)",
-    "apiRightsLine": "{name}: API right missing ({read})"
+    "apiRightsLine": "{name}: API right missing ({read})",
+    "serverDiskLine": "Disk of the OPNexus server {pct} % full ({free} GB free)"
   },
   "hosts": {
     "add": "Add host",
@@ -917,7 +1014,8 @@
     "HOST_CONNECTION_FAILED": "The firewall could not be reached with these details: {reason}",
     "ZIEL_HOST_NACH_AUSROLLEN_FEST": "The target host can no longer be changed once the entry has been deployed. Delete the entry (this also removes it from the firewall) and create it again for the new host.",
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "This ACME account is used by certificate requests; you can only change its host once no request uses it any more.",
-    "VPN_DEPLOY_LAEUFT_BEREITS": "A deployment or removal is already running for this VPN. Wait a moment and try again."
+    "VPN_DEPLOY_LAEUFT_BEREITS": "A deployment or removal is already running for this VPN. Wait a moment and try again.",
+    "SETTING_INVALID": "Setting “{setting}”: {reason}"
   },
   "workflow": {
     "attention": "Check errors",
@@ -3041,12 +3139,14 @@
       "badge": "API rights missing: {reads}",
       "hint": "OPNexus's API user may not read these values, so the alerts based on them cannot fire. In OPNsense, add to the user or group under System > Access:",
       "read": {
+        "base": "Basic readings (memory, load, disk)",
         "gateways": "Gateways",
         "services": "Services",
         "swap": "Swap",
         "cpu": "CPU"
       },
       "acl": {
+        "base": "Lobby: Dashboard",
         "gateways": "System: Gateways",
         "services": "Status: Services",
         "swap": "Lobby: Dashboard",

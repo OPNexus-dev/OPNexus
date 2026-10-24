@@ -17,4 +17,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Unprivilegierter Benutzer. Der Container startet über scripts/start.sh noch als
+# root, stellt die Datenvolumes um und gibt die Rechte dann ab (Begründung dort).
+# wg-hub und gui-gateway überschreiben den Befehl und umgehen das Skript bewusst:
+# der Hub braucht root für die WireGuard-Schnittstelle, das Gateway läuft per
+# Compose als nobody.
+RUN groupadd --system --gid 10001 opnexus \
+    && useradd --system --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin opnexus \
+    && chmod +x /app/scripts/start.sh
+
+CMD ["/app/scripts/start.sh", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

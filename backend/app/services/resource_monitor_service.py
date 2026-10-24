@@ -110,12 +110,22 @@ async def _optional(operation, name: str, denied: list[str], ok: list[str]):
 
 
 async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
-    resources = await client.get_system_resources(host)
-    system_time = await client.get_system_time(host)
-    disk = await client.get_system_disk(host)
-    interfaces = await client.get_interface_statistics(host)
     denied: list[str] = []
     ok: list[str] = []
+    try:
+        resources = await client.get_system_resources(host)
+        system_time = await client.get_system_time(host)
+        disk = await client.get_system_disk(host)
+        interfaces = await client.get_interface_statistics(host)
+        ok.append("base")
+    except OpnsenseForbiddenError:
+        # Dem API-Schlüssel fehlen schon die Basis-Rechte (Dashboard): ohne Messwerte gäbe es nie einen Messpunkt und
+        # der Rechte-Alarm könnte nicht auslösen. Ein leerer Punkt trägt den Befund ("base" in denied); die
+        # Schwellenwert-Alarme sehen darin "unbekannt", nicht "in Ordnung".
+        db.add(HostResourceSample(host_id=host.id, sampled_at=_now(), mem_used_pct=None, load_avg_1m=None,
+                                  disk_used_pct=None, raw={"denied": ["base"], "ok": []}))
+        logger.warning("Resource-Sampling für Host %s: dem API-Schlüssel fehlen die Basis-Rechte (403)", host.name)
+        return
     swap, cpu_type, gateways, services = await asyncio.gather(
         _optional(client.get_system_swap(host), "swap", denied, ok),
         _optional(client.get_cpu_type(host), "cpu", denied, ok),

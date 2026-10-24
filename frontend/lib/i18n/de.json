@@ -72,7 +72,8 @@
         "resourceThreshold": "Ressourcen-Schwelle überschritten (Festplatte, Speicher, Swap, CPU-Last; standardmäßig aus)",
         "serviceDown": "Überwachter Dienst ausgefallen (standardmäßig aus)",
         "rolloutProblems": "Rollout angehalten oder nicht automatisch gestartet",
-        "apiRights": "API-Rechte fehlen (Gateway- oder Dienststatus nicht lesbar)"
+        "apiRights": "API-Rechte fehlen (Gateway- oder Dienststatus nicht lesbar)",
+        "serverDisk": "Platte des OPNexus-Servers fast voll"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
       "pollHint": "Mindestens 60 Sekunden, um die Firewalls nicht unnötig zu belasten.",
@@ -88,7 +89,8 @@
         "confirmSamples": "Gateways und Dienste: Messungen in Folge",
         "resourceSamples": "Ressourcen: Messungen in Folge",
         "watchlist": "Überwachte Dienste",
-        "watchlistHint": "OPNsense-Dienstnamen, kommagetrennt. OPNexus meldet einen Dienst nur, wenn er zuvor lief und jetzt nicht mehr. Absichtlich gestoppte Dienste hier entfernen."
+        "watchlistHint": "OPNsense-Dienstnamen, kommagetrennt. OPNexus meldet einen Dienst nur, wenn er zuvor lief und jetzt nicht mehr. Absichtlich gestoppte Dienste hier entfernen.",
+        "serverDiskLimit": "OPNexus-Server: Platte voll ab (%)"
       }
     },
     "logs": {
@@ -245,6 +247,99 @@
         "teams": "Webhook-Adresse des Workflows",
         "matrix": "Zugriffstoken"
       }
+    },
+    "system": {
+      "intro": "Diese Werte standen früher nur in der .env des Servers. Steht ein Wert dort, gilt er weiter und ist hier gesperrt. Adressen, TLS und Datenbank-Zugang bleiben bewusst in der .env: ein falscher Wert würde dich aus dieser Oberfläche aussperren.",
+      "saved": "Einstellungen gespeichert",
+      "changed": "geändert",
+      "fromServer": "vom Server ({env})",
+      "reset": "Auf Standard zurücksetzen",
+      "remove": "Entfernen",
+      "secretSet": "gesetzt (zum Ändern neue Adresse eingeben)",
+      "pemFromServer": "Wird vom Server über SMTP_CA_FILE vorgegeben.",
+      "defaultIs": "Standard: {value}",
+      "bounds": "erlaubt {min}–{max}",
+      "group": {
+        "security": "Anmeldung und Sitzungen",
+        "operation": "Ausrollen und Firewall-Zugriff",
+        "monitoring": "Messungen und Aufbewahrung",
+        "integrations": "Überwachung von außen und Mail"
+      },
+      "groupHint": {
+        "security": "Schutz vor erratenen Passwörtern und wie lange Anmeldungen gelten.",
+        "operation": "Sicherheitsnetz beim Ausrollen und Geduld mit langsamen Firewalls.",
+        "monitoring": "Wie oft OPNexus misst und wie lange es die Daten behält. Kürzere Intervalle bedeuten mehr Anfragen an die Firewalls.",
+        "integrations": "Heartbeat für einen externen Überwacher und Vertrauen in einen Mailserver mit eigener CA."
+      },
+      "unit": {
+        "seconds": "Sekunden",
+        "minutes": "Minuten",
+        "hours": "Stunden",
+        "days": "Tage",
+        "count": "Anzahl"
+      },
+      "field": {
+        "session_lifetime_days": {
+          "label": "Sitzungsdauer",
+          "hint": "Wie lange eine Anmeldung gültig bleibt. Gilt für neue Anmeldungen."
+        },
+        "login_max_attempts": {
+          "label": "Fehlversuche je Konto",
+          "hint": "So viele falsche Passwörter je Konto und Absender, dann wird gesperrt."
+        },
+        "login_ip_max_attempts": {
+          "label": "Fehlversuche je Absender",
+          "hint": "So viele falsche Anmeldungen von einer Adresse (über alle Konten), dann wird gesperrt."
+        },
+        "login_window_seconds": {
+          "label": "Zeitfenster für Fehlversuche",
+          "hint": "In diesem Zeitraum werden Fehlversuche gezählt."
+        },
+        "login_lockout_seconds": {
+          "label": "Sperrdauer",
+          "hint": "So lange bleibt eine Sperre nach zu vielen Fehlversuchen bestehen."
+        },
+        "deploy_confirm_window_seconds": {
+          "label": "Bestätigungsfrist beim Ausrollen",
+          "hint": "So lange hast du nach dem Ausrollen Zeit, eine Änderung zu bestätigen. Ohne Bestätigung nimmt OPNexus sie automatisch zurück (Schutz vor Aussperren). Gilt für neue Ausrollvorgänge."
+        },
+        "opnsense_timeout": {
+          "label": "Zeitlimit für Firewall-Anfragen",
+          "hint": "Wie lange OPNexus auf eine Antwort der Firewall-API wartet. Für langsame Verbindungen (Tunnel, Mobilfunk) erhöhen."
+        },
+        "migration_backup_keep": {
+          "label": "Sicherungen vor Updates behalten",
+          "hint": "Wie viele automatische Datenbank-Sicherungen vor Schema-Änderungen aufbewahrt werden."
+        },
+        "resource_poll_interval_seconds": {
+          "label": "Messintervall Systemauslastung",
+          "hint": "Wie oft Speicher, Last, Platte, Gateways und Dienste der Firewalls gemessen werden."
+        },
+        "resource_sample_retention_days": {
+          "label": "Messwerte aufbewahren",
+          "hint": "Wie lange die Messwerte der Systemauslastung gespeichert bleiben."
+        },
+        "rule_observe_interval_seconds": {
+          "label": "Intervall Regelverlauf",
+          "hint": "Wie oft die Regeln und Zähler der Firewalls für Verlauf und Regel-Analyse gelesen werden."
+        },
+        "update_check_interval_hours": {
+          "label": "Intervall der Versionsprüfung",
+          "hint": "Wie oft nach einer neuen OPNexus-Version gefragt wird (nur wenn die Versionsprüfung an ist)."
+        },
+        "heartbeat_url": {
+          "label": "Heartbeat-Adresse",
+          "hint": "Ping-Adresse eines externen Überwachers (healthchecks.io, Uptime Kuma, ntfy). OPNexus ruft sie nach jedem erfolgreichen Prüfzyklus auf; bleibt das aus, schlägt der Überwacher Alarm. Nur https://. Die Adresse wird nicht angezeigt und nie protokolliert."
+        },
+        "smtp_ca_pem": {
+          "label": "CA des Mailservers",
+          "hint": "Nur nötig, wenn der Mailserver (oder das TLS-Syslog des Audit-Exports) ein Zertifikat einer eigenen CA nutzt. Das CA-Zertifikat im PEM-Format einfügen."
+        },
+        "notification_smtp_timeout_seconds": {
+          "label": "Zeitlimit Mailversand",
+          "hint": "Wie lange OPNexus auf den Mailserver wartet."
+        }
+      }
     }
   },
   "nav": {
@@ -373,10 +468,12 @@
       "gateway_down": "Gateway",
       "resource_threshold": "Ressource",
       "service_down": "Dienst",
-      "api_rights_missing": "API-Rechte"
+      "api_rights_missing": "API-Rechte",
+      "server_disk": "OPNexus-Platte"
     },
     "moreGateways": "+ {count} weitere Gateways (auf der Seite der Firewall)",
-    "apiRightsLine": "{name}: API-Recht fehlt ({read})"
+    "apiRightsLine": "{name}: API-Recht fehlt ({read})",
+    "serverDiskLine": "Platte des OPNexus-Servers zu {pct} % belegt ({free} GB frei)"
   },
   "hosts": {
     "add": "Host hinzufügen",
@@ -917,7 +1014,8 @@
     "HOST_CONNECTION_FAILED": "Die Firewall konnte mit diesen Angaben nicht erreicht werden: {reason}",
     "ZIEL_HOST_NACH_AUSROLLEN_FEST": "Der Ziel-Host lässt sich nach dem Ausrollen nicht mehr ändern. Lösche den Eintrag (das entfernt ihn auch von der Firewall) und lege ihn für den neuen Host neu an.",
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "Dieses ACME-Konto wird von Zertifikatsanfragen verwendet; den Host kannst du erst ändern, wenn keine Anfrage es mehr nutzt.",
-    "VPN_DEPLOY_LAEUFT_BEREITS": "Für dieses VPN läuft gerade ein Ausrollen oder Entfernen. Warte einen Moment und versuche es erneut."
+    "VPN_DEPLOY_LAEUFT_BEREITS": "Für dieses VPN läuft gerade ein Ausrollen oder Entfernen. Warte einen Moment und versuche es erneut.",
+    "SETTING_INVALID": "Einstellung „{setting}“: {reason}"
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -3041,12 +3139,14 @@
       "badge": "API-Rechte fehlen: {reads}",
       "hint": "Der API-Benutzer von OPNexus darf diese Messwerte nicht lesen, die Alarme dazu können nicht auslösen. In OPNsense beim Benutzer oder der Gruppe unter System ▸ Zugang ergänzen:",
       "read": {
+        "base": "Grundwerte (Speicher, Last, Platte)",
         "gateways": "Gateways",
         "services": "Dienste",
         "swap": "Swap",
         "cpu": "CPU"
       },
       "acl": {
+        "base": "Lobby: Dashboard",
         "gateways": "System: Gateways",
         "services": "Status: Services",
         "swap": "Lobby: Dashboard",

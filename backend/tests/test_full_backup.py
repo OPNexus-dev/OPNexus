@@ -140,3 +140,46 @@ def test_command_line_reads_the_passphrase_from_the_environment(data, monkeypatc
     monkeypatch.setenv("FULL_BACKUP_PASSPHRASE", "")
     assert fb._main(["full_backup", "create"]) == 1
     assert fb._main(["full_backup", "bogus"]) == 2
+
+
+def test_a_secret_changing_during_the_backup_triggers_a_new_attempt(data):
+    calls = []
+
+    def dump(path: Path) -> None:
+        calls.append(1)
+        if len(calls) == 1:  # ein Objekt wird mitten in der Sicherung angelegt
+            (data / "opnsense_secrets" / "host-2.secret").write_text("API-SECRET-2")
+        path.write_bytes(b"PGDMP-fake-database")
+
+    blob = fb.create(PASS, dump=dump, revision="0009")
+    assert len(calls) == 2
+    for f in data.rglob("*"):
+        if f.is_file():
+            f.unlink()
+    fb.restore(blob, PASS, restore_db=lambda p: None, head="0012")
+    assert (data / "opnsense_secrets" / "host-2.secret").read_text() == "API-SECRET-2"
+
+
+def test_a_backup_that_never_holds_still_is_refused_instead_of_written_inconsistent(data):
+    n = []
+
+    def dump(path: Path) -> None:
+        n.append(1)
+        (data / "totp_secrets" / f"u{len(n)}.secret").write_text("x")
+        path.write_bytes(b"PGDMP-fake-database")
+
+    with pytest.raises(fb.FullBackupError, match="Geheimnisse geändert"):
+        fb.create(PASS, dump=dump, revision="0009")
+    assert len(n) == fb.ATTEMPTS
+
+
+def test_new_firewall_config_backups_do_not_count_as_a_change(data):
+    calls = []
+
+    def dump(path: Path) -> None:
+        calls.append(1)
+        (data / "opnsense_backups" / "host-1" / f"new-{len(calls)}.xml").write_text("<opnsense/>")
+        path.write_bytes(b"PGDMP-fake-database")
+
+    fb.create(PASS, dump=dump, revision="0009")
+    assert len(calls) == 1

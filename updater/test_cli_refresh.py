@@ -144,3 +144,60 @@ class RefreshCli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RefreshCliOnDisk(RefreshCli):
+    """B18: in the release bundle (CLI next to docker-compose.yml) the file on disk is replaced as well, so a later
+    `rollback` runs the new CLI; a repo checkout (scripts/opnexus -> updater/opnexus) is never touched."""
+
+    def run_copy(self, *, with_compose: bool):
+        bundle = self.tmp / "bundle"
+        bundle.mkdir()
+        copy = bundle / "opnexus"
+        shutil.copy2(SCRIPT, copy)
+        if with_compose:
+            (bundle / "docker-compose.yml").write_text("services: {}\n")
+        self.cli.write_text(NEW_CLI)
+        env = {**os.environ, "PATH": f"{self.tmp / 'bin'}:{os.environ['PATH']}", "OPNEXUS_DIR": str(self.tmp),
+               "FAKE_LOG": str(self.log), "FAKE_CLI": str(self.cli), "FAKE_DIGEST": DIGEST, "TMPDIR": str(self.tmp)}
+        for name in ("OPNEXUS_NO_CLI_REFRESH", "CLI_REFRESHED"):
+            env.pop(name, None)
+        body = f'source <(sed "/^case \\"\\${{1:-}}\\" in/,\\$d" "{copy}"); refresh_cli 9.9.9; echo CONTINUED'
+        result = subprocess.run(["bash", "-c", body, str(copy)], env=env, capture_output=True, text=True, timeout=30)
+        return result, copy
+
+    def test_bundle_cli_on_disk_is_replaced_with_a_backup(self):
+        r, copy = self.run_copy(with_compose=True)
+        self.assertIn("NEW-CLI __refreshed update 9.9.9", r.stdout)
+        self.assertEqual(copy.read_text(), NEW_CLI)
+        self.assertEqual(Path(str(copy) + ".bak").read_text(), SCRIPT.read_text())
+        self.assertTrue(os.access(copy, os.X_OK))
+
+    def test_a_cli_without_a_compose_file_next_to_it_is_left_alone(self):
+        r, copy = self.run_copy(with_compose=False)
+        self.assertIn("NEW-CLI __refreshed update 9.9.9", r.stdout)
+        self.assertEqual(copy.read_text(), SCRIPT.read_text())
+        self.assertFalse(Path(str(copy) + ".bak").exists())
+
+
+class RefreshedCliInstallsItself(unittest.TestCase):
+    """The first hop is started by an OLD CLI (no on-disk replacement in its refresh_cli): the new one, running from
+    its temp copy with __refreshed, puts itself into the bundle so a later `rollback` runs the new code."""
+
+    def test_the_refreshed_cli_replaces_the_bundle_file(self):
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        bundle = tmp / "bundle"
+        bundle.mkdir()
+        (bundle / "opnexus").write_text("#!/bin/bash\necho old\n")
+        (bundle / "docker-compose.yml").write_text("services: {}\n")
+        (bundle / ".env").write_text("OPNEXUS_IMAGE_REPO=registry.example/opnexus\n")  # a real install always has one
+        running = tmp / "opnexus-cli.abc123"
+        shutil.copy2(SCRIPT, running)
+        env = {**os.environ, "OPNEXUS_DIR": str(bundle)}
+        r = subprocess.run(["bash", str(running), "__refreshed", "no-such-command"], env=env, capture_output=True,
+                           text=True, timeout=30)
+        self.assertEqual((bundle / "opnexus").read_text(), SCRIPT.read_text())
+        self.assertEqual((bundle / "opnexus.bak").read_text(), "#!/bin/bash\necho old\n")
+        self.assertFalse(running.exists())  # the temp copy is cleaned up as before
+        self.assertIn("CLI auf der Platte aktualisiert", r.stdout)

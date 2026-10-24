@@ -23,5 +23,9 @@ COPY --from=builder /app/.next/static ./.next/static
 # next/image nicht, sie wären nur totes Gewicht.
 RUN if [ "$TARGETARCH" != "$BUILDARCH" ]; then rm -rf node_modules/@img node_modules/sharp; fi
 
+# Läuft als unprivilegierter Benutzer des Node-Images (uid 1000); die App schreibt
+# nichts in ihr eigenes Verzeichnis.
+USER node
+
 EXPOSE 3000
 CMD ["node", "server.js"]

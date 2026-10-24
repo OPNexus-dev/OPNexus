@@ -136,6 +136,19 @@ async def ensure_resolved_safe(url: str) -> None:
         raise ValueError("Der Name zeigt auf eine nicht erlaubte Adresse (lokal, Link-Local oder Metadaten-Dienst)")
 
 
+async def checked_addresses(host: str, port: int | None = None) -> list[str]:
+    """Addresses a non-HTTP target (syslog) may be connected to, all of them checked. Raises ValueError for a
+    forbidden target and OSError when the name does not resolve. The caller connects to these addresses, not to the
+    name, so a second answer from DNS cannot change the destination."""
+    bare = (host or "").strip().strip("[]")
+    if not bare or bare.lower() in ("localhost", "localhost.localdomain"):
+        raise ValueError("Diese Adresse (lokal, Link-Local oder Metadaten-Dienst) ist als Ziel nicht erlaubt")
+    addresses = await resolve_host(bare, port)
+    if not addresses or _any_forbidden(addresses):
+        raise ValueError("Diese Adresse (lokal, Link-Local oder Metadaten-Dienst) ist als Ziel nicht erlaubt")
+    return addresses
+
+
 # ── connection-time guard (DNS rebinding) ─────────────────────────────────
 
 BLOCKED_MESSAGE = "Zieladresse nicht erlaubt"

@@ -47,6 +47,8 @@ version="${tag#v}"
 src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
 git archive "$tag" | tar -x -C "$src"
 (cd "$src" && scripts/check_version.sh "${tag%%-*}")
+# Die Release-Fassung der Compose-Datei ins Updater-Image: `opnexus update` übernimmt sie von dort (B18).
+(cd "$src" && scripts/release_compose.sh "$version" "$repo" > updater/docker-compose.release.yml)
 
 tags=("$version")
 if [[ "$version" != *-* ]]; then   # nur stabile Versionen bekommen Kurz-Tags und latest

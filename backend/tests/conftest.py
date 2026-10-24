@@ -72,6 +72,16 @@ async def _clean_tables():
 
 
 @pytest.fixture(autouse=True)
+def _reset_runtime_settings():
+    # Saved settings live in a module-level cache (app/runtime_settings.py); the table is cleaned after each test,
+    # the cache must be too, or a value saved by one test changes the next.
+    from app import runtime_settings
+    runtime_settings._cache.clear()
+    yield
+    runtime_settings._cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def _reset_login_throttle():
     # The throttle is a module-level singleton (by design — it must survive
     # across requests/sessions in production), so it leaks between tests

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import DBAPIError
 
+from app import runtime_settings
 from app.errors import ErrorCode
 
 from app import models  # noqa: F401 - registers models with Base.metadata
@@ -65,6 +66,8 @@ from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
 from app.services import rule_history_service
 from app.services import rule_cleanup_service
+from app.services import heartbeat_service
+from app import leader
 
 # Without this, Python's root logger defaults to WARNING with no handler,
 # so every logger.info() call in the 5 background loops below (CARP role
@@ -87,7 +90,7 @@ _SWEEP_INTERVAL_SECONDS = 10
 # work once the table is non-trivially sized.
 _LOG_PRUNE_EVERY_N_CYCLES = 20
 # Same rationale as _LOG_PRUNE_EVERY_N_CYCLES, but the resource-sampling
-# loop's own cadence (settings.resource_poll_interval_seconds, default 60s).
+# loop's own cadence (runtime_settings.value("resource_poll_interval_seconds"), default 60s).
 _RESOURCE_PRUNE_EVERY_N_CYCLES = 20
 
 
@@ -96,6 +99,7 @@ async def _deploy_revert_sweep_loop():
     RuleDeployment whose confirm window passed without a human confirming
     (see rule_deploy_service.sweep_expired_deployments)."""
     while True:
+        await leader.checkpoint()
         try:
             async with SessionLocal() as db:
                 reverted = await sweep_expired_deployments(db)
@@ -164,12 +168,15 @@ async def _notification_poll_loop():
     NotificationSettings.poll_interval_seconds, floored by
     settings.notification_poll_min_interval_seconds."""
     while True:
+        await leader.checkpoint()
         interval = settings.notification_poll_min_interval_seconds
         try:
             async with SessionLocal() as db:
                 await notification_service.run_notification_checks(db)
                 row = await notification_settings_service.get_settings(db)
                 interval = max(row.poll_interval_seconds, settings.notification_poll_min_interval_seconds)
+            # Only after a cycle that went through: the external watcher must hear nothing when the checks fail.
+            await heartbeat_service.ping()
         except Exception:
             logger.exception("Notification poll failed")
         try:
@@ -194,6 +201,7 @@ async def _log_ingest_poll_loop():
     every _LOG_PRUNE_EVERY_N_CYCLES cycles (see constant above)."""
     cycle = 0
     while True:
+        await leader.checkpoint()
         interval = settings.log_poll_min_interval_seconds
         cycle += 1
         try:
@@ -227,11 +235,12 @@ async def _log_ingest_poll_loop():
 
 async def _resource_poll_loop():
     """Fourth background loop, same shape as _log_ingest_poll_loop but with
-    a fixed interval (settings.resource_poll_interval_seconds) — v1
+    a fixed interval (runtime_settings.value("resource_poll_interval_seconds")) — v1
     deliberately has no admin-editable settings row for this, see
     resource_monitor_service.py's module docstring."""
     cycle = 0
     while True:
+        await leader.checkpoint()
         cycle += 1
         try:
             async with SessionLocal() as db:
@@ -242,7 +251,7 @@ async def _resource_poll_loop():
                         result["hosts_failed"], result["hosts_polled"],
                     )
                 if cycle % _RESOURCE_PRUNE_EVERY_N_CYCLES == 0:
-                    deleted = await resource_monitor_service.prune_old_samples(db, settings.resource_sample_retention_days)
+                    deleted = await resource_monitor_service.prune_old_samples(db, runtime_settings.value("resource_sample_retention_days"))
                     if deleted:
                         logger.info("Resource-Sample-Retention: %d alte Einträge gelöscht", deleted)
                     pruned = await rule_history_service.prune(db)
@@ -250,7 +259,7 @@ async def _resource_poll_loop():
                         logger.info("Regelverlauf-Retention: %d alte Einträge gelöscht", pruned)
         except Exception:
             logger.exception("Resource-Poll fehlgeschlagen")
-        await asyncio.sleep(settings.resource_poll_interval_seconds)
+        await asyncio.sleep(runtime_settings.value("resource_poll_interval_seconds"))
 
 
 _SCHEDULED_MAINTENANCE_POLL_SECONDS = 60
@@ -262,6 +271,7 @@ async def _scheduled_maintenance_poll_loop():
     A fixed 60s cadence is plenty — these are human-picked timestamps, not
     a sub-minute-precision cron."""
     while True:
+        await leader.checkpoint()
         try:
             async with SessionLocal() as db:
                 result = await scheduled_maintenance_service.fire_due(db)
@@ -295,6 +305,7 @@ async def _compliance_poll_loop():
     is plenty; the first run waits a little so a restart is not a thundering herd."""
     await asyncio.sleep(_COMPLIANCE_FIRST_RUN_SECONDS)
     while True:
+        await leader.checkpoint()
         try:
             async with SessionLocal() as db:
                 await compliance_service.check_all(db)
@@ -310,6 +321,7 @@ async def _audit_export_poll_loop():
     """Seventh background loop: forwards new audit events (syslog / webhook) when configured.
     Cheap when off (one settings read); keeps draining while batches come back full."""
     while True:
+        await leader.checkpoint()
         shipped = 0
         try:
             async with SessionLocal() as db:
@@ -326,6 +338,7 @@ async def _backup_poll_loop():
     """Eighth background loop: takes due scheduled config backups, prunes, copies offsite."""
     await asyncio.sleep(90)
     while True:
+        await leader.checkpoint()
         try:
             async with SessionLocal() as db:
                 result = await backup_schedule_service.run_due(db)
@@ -345,6 +358,7 @@ async def _rule_observe_loop():
     Writes only to the database. The first look at a firewall only stores the starting point."""
     await asyncio.sleep(_RULE_OBSERVE_FIRST_RUN_SECONDS)
     while True:
+        await leader.checkpoint()
         try:
             async with SessionLocal() as db:
                 result = await rule_history_service.observe_all(db)
@@ -352,7 +366,7 @@ async def _rule_observe_loop():
                 logger.info("Regelverlauf: %s", result)
         except Exception:
             logger.exception("Regelverlauf fehlgeschlagen")
-        await asyncio.sleep(max(settings.rule_observe_interval_seconds, settings.rule_observe_min_interval_seconds))
+        await asyncio.sleep(max(runtime_settings.value("rule_observe_interval_seconds"), settings.rule_observe_min_interval_seconds))
 
 
 @asynccontextmanager
@@ -362,6 +376,7 @@ async def lifespan(app: FastAPI):
         # A GUI-gateway slot must never be a trusted OPNexus origin (CORS with credentials).
         raise RuntimeError(f"OPNEXUS_GUI_SITES overlaps FRONTEND_ORIGIN: {', '.join(conflicts)} — refusing to start")
     await migrate.run()
+    await runtime_settings.refresh()  # values from Settings › Betrieb; refreshed in every process (leader or not)
     async with SessionLocal() as db:
         await auth_service.bootstrap_admin(db)
         try:
@@ -376,32 +391,30 @@ async def lifespan(app: FastAPI):
     if settings.allow_insecure_firewall_urls:
         logger.warning("ALLOW_INSECURE_FIREWALL_URLS is on: firewall API credentials may travel over plain HTTP.")
 
-    sweep_task = asyncio.create_task(_deploy_revert_sweep_loop())
-    notification_task = asyncio.create_task(_notification_poll_loop())
-    log_ingest_task = asyncio.create_task(_log_ingest_poll_loop())
-    resource_task = asyncio.create_task(_resource_poll_loop())
-    scheduled_maintenance_task = asyncio.create_task(_scheduled_maintenance_poll_loop())
-    compliance_task = asyncio.create_task(_compliance_poll_loop())
-    audit_export_task = asyncio.create_task(_audit_export_poll_loop())
-    backup_task = asyncio.create_task(_backup_poll_loop())
-    rule_observe_task = asyncio.create_task(_rule_observe_loop())
+    # Only the process holding the leader lock runs these (app/leader.py); a second backend on the same database waits.
+    leader.gate = leader.LeaderGate({
+        "revert-sweep": _deploy_revert_sweep_loop,
+        "notifications": _notification_poll_loop,
+        "log-ingest": _log_ingest_poll_loop,
+        "resources": _resource_poll_loop,
+        "scheduled-maintenance": _scheduled_maintenance_poll_loop,
+        "compliance": _compliance_poll_loop,
+        "audit-export": _audit_export_poll_loop,
+        "backups": _backup_poll_loop,
+        "rule-observe": _rule_observe_loop,
+    })
+    gate_task = asyncio.create_task(leader.gate.run(), name="leader-gate")
+    settings_task = asyncio.create_task(runtime_settings.refresh_loop(), name="runtime-settings")
     try:
         yield
     finally:
-        sweep_task.cancel()
-        notification_task.cancel()
-        log_ingest_task.cancel()
-        resource_task.cancel()
-        scheduled_maintenance_task.cancel()
-        compliance_task.cancel()
-        audit_export_task.cancel()
-        backup_task.cancel()
-        rule_observe_task.cancel()
-        for task in (sweep_task, notification_task, log_ingest_task, resource_task, scheduled_maintenance_task, compliance_task, audit_export_task, backup_task, rule_observe_task):
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+        settings_task.cancel()
+        gate_task.cancel()
+        try:
+            await gate_task
+        except asyncio.CancelledError:
+            pass
+        await leader.gate.stop()
 
 
 API_DESCRIPTION = (
@@ -517,7 +530,9 @@ app.include_router(port_forward.router, prefix="/api")
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok"}
+    # role: leader (runs the background loops), standby/takeover (another process does, or about to start),
+    # replica (database in recovery), starting. The HTTP status stays 200 in every role: the API works in all of them.
+    return {"status": "ok", "role": leader.current_role()}
 
 app.include_router(one_to_one.router, prefix="/api")
 

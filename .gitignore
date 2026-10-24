@@ -9,3 +9,4 @@ backend/.pytest_cache/
 .opnexus-update-state
 dist/
 .public-repo/
+updater/docker-compose.release.yml

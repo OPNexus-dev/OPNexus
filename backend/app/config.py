@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # Quellcode gebaut; dann gibt es keine Updates per Klick (nur der Hinweis in den Einstellungen).
     opnexus_image_repo: str = ""
 
+    # ── Heartbeat (app/services/heartbeat_service.py) ──────────────────
+    # Optionale Adresse eines externen Überwachers (healthchecks-Stil, ntfy, Uptime Kuma Push …). OPNexus ruft sie
+    # nach jedem erfolgreichen Prüfzyklus der Benachrichtigungen per GET auf: bleibt der Aufruf aus, ist OPNexus
+    # ausgefallen oder kommt nicht mehr an seine Datenbank. Nur https://, die Adresse wird nie protokolliert.
+    # Leer = aus.
+    heartbeat_url: str = ""
+
     # ── Updates aus dem Webinterface (app/services/updater_client.py) ─────
     # Optionaler Updater-Container (Compose-Profil "updater"). Das Backend hat
     # nie Zugriff auf den Docker-Socket; es reicht nur "aktualisieren" /
@@ -182,7 +189,9 @@ class Settings(BaseSettings):
     # entity id — see acme_secret_store.py.
     acme_secret_dir: str = "/data/acme-secrets"
 
-    model_config = SettingsConfigDict(case_sensitive=False)
+    # env_ignore_empty: Compose passes unset variables as "" ("${X:-}"); they must mean "not set", so the value from
+    # the web interface (app/runtime_settings.py) applies and a number field does not fail to parse.
+    model_config = SettingsConfigDict(case_sensitive=False, env_ignore_empty=True)
 
 
 settings = Settings()

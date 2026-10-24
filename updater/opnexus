@@ -7,14 +7,20 @@
 #                             bei Fehler automatisch zurückrollen
 #   opnexus rollback          Letztes Update rückgängig machen
 #   opnexus backup            Sofort-Backup der OPNexus-Datenbank
-#   opnexus backup --full [DATEI]
+#   opnexus backup --full [DATEI] [--with-env] [--with-ca]
 #                             Vollsicherung: Datenbank UND alle Geheimnisse
 #                             (Firewall-Zugänge, 2FA, VPN-/Zertifikatsschlüssel,
 #                             Konfigurations-Backups) in einer verschlüsselten
 #                             Datei (.opxfull). Passphrase wird abgefragt
-#                             (oder OPNEXUS_BACKUP_PASSPHRASE).
-#   opnexus restore DATEI     Vollsicherung zurückspielen (überschreibt Datenbank
-#                             und Geheimnisse dieser Installation; --yes: ohne Rückfrage)
+#                             (oder OPNEXUS_BACKUP_PASSPHRASE). Optional auch
+#                             die .env und die CA des Proxys (für einen Umzug).
+#   opnexus restore DATEI [--with-env] [--with-ca] [--yes]
+#                             Vollsicherung zurückspielen (überschreibt Datenbank
+#                             und Geheimnisse dieser Installation)
+#   opnexus migrate-host ZIEL [--dir PFAD] [--yes]
+#                             Umzug auf einen anderen Server (ssh ZIEL, dort ist
+#                             OPNexus schon installiert): Quelle anhalten, sichern,
+#                             am Ziel zurückspielen, prüfen. Siehe Handbuch, "Umzug".
 #   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
 #                             anzeigen (--yes: ohne Rückfrage)
 #   opnexus export [--out VERZEICHNIS] [--kinds a,b]
@@ -71,7 +77,7 @@ protect_env() {
 # Variablen im Aufrufer (dort als local deklarieren).
 read_update_state() {
   local key value
-  for key in started prev_version prev_setting prev_db_revision target; do
+  for key in started prev_version prev_setting prev_db_revision target prev_compose prev_compose_sha; do
     value=$(sed -n "s/^$key=//p" "$STATE_FILE" | tail -n1)
     [[ "$value" =~ ^[A-Za-z0-9._-]*$ ]] || die "$STATE_FILE enthält einen ungültigen Wert für $key — er wird nicht verwendet."
     printf -v "$key" '%s' "$value"
@@ -188,7 +194,7 @@ cmd_status_porcelain() {
   for svc in "${SERVICES[@]}"; do echo "service.$svc=$(service_state "$svc")"; done
   if [ -f "$STATE_FILE" ]; then
     # Nur bekannte Schlüssel durchlassen — die Datei wird vom Skript selbst geschrieben.
-    grep -E '^(started|prev_version|prev_setting|prev_db_revision|target)=' "$STATE_FILE" | sed 's/^/last_update./'
+    grep -E '^(started|prev_version|prev_setting|prev_db_revision|target|prev_compose)=' "$STATE_FILE" | sed 's/^/last_update./'
   fi
 }
 
@@ -200,6 +206,14 @@ cmd_status() {
   echo "Laufende Version:  $(running_version)"
   echo "DB-Revision:       $(db_revision)"
   for svc in "${SERVICES[@]}"; do echo "$svc: $(service_state "$svc")"; done
+  if [ -f "$LAST_FULL_FILE" ]; then
+    local t age
+    t=$(sed -n 's/^time=//p' "$LAST_FULL_FILE")
+    age=$(( ( $(date +%s) - $(date -d "$t" +%s 2>/dev/null || date +%s) ) / 86400 ))
+    echo "Letzte Vollsicherung: $t (vor $age Tag(en)): $(sed -n 's/^file=//p' "$LAST_FULL_FILE")"
+  else
+    echo "Letzte Vollsicherung: keine von diesem Server bekannt ('opnexus backup --full')"
+  fi
   [ -f "$STATE_FILE" ] && { echo; echo "Letztes Update (für 'rollback'):"; sed 's/^/  /' "$STATE_FILE"; }
   return 0
 }
@@ -225,23 +239,126 @@ ask_passphrase() {
   printf '%s' "$one"
 }
 
+LAST_FULL_FILE=".opnexus-last-full-backup"
+
+# Dateien dieses Servers, die nicht in den Volumes des Backends liegen: die .env und die interne CA des Proxys
+# (dieselbe CA = Browser, die ihr vertrauen, vertrauen auch nach einem Umzug). Als tar auf stdout.
+host_files_tar() {
+  local with_env="$1" with_ca="$2" tmp
+  tmp=$(mktemp -d) || return 1
+  chmod 700 "$tmp"
+  if [ "$with_env" = 1 ]; then install -m 600 "$ENV_FILE" "$tmp/env" || { rm -rf "$tmp"; return 1; }; fi
+  if [ "$with_ca" = 1 ]; then
+    mkdir -m 700 "$tmp/caddy-ca"
+    # Aus dem Volume, nicht aus dem laufenden Proxy: beim Umzug ist er schon angehalten.
+    c run --rm --no-deps -T --entrypoint tar proxy -C /data/caddy/pki/authorities -cf - local | tar -x -C "$tmp/caddy-ca" \
+      || { rm -rf "$tmp"; die "Die CA des Proxys ließ sich nicht lesen (hat der Proxy schon einmal gestartet?)."; }
+  fi
+  tar -C "$tmp" -cf - . ; local rc=$?
+  rm -rf "$tmp"
+  return $rc
+}
+
 cmd_backup_full() {
-  local out="${1:-./opnexus-full-$(date -u +%Y%m%d-%H%M%S).opxfull}" pass
+  local out="" with_env=0 with_ca=0 pass arg extra=()
+  for arg in "$@"; do
+    case "$arg" in
+      --with-env) with_env=1 ;;
+      --with-ca)  with_ca=1 ;;
+      -*) die "Unbekannte Option: $arg" ;;
+      *) out="$arg" ;;
+    esac
+  done
+  out="${out:-./opnexus-full-$(date -u +%Y%m%d-%H%M%S).opxfull}"
   [ ! -e "$out" ] || die "$out existiert schon."
   c exec -T backend true >/dev/null 2>&1 || die "Das Backend läuft nicht — erst starten (docker compose up -d)."
   pass="$(ask_passphrase confirm)"
-  ( umask 077
-    FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create > "$out.partial" ) \
-    || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen."; }
+  if [ "$with_env" = 1 ] || [ "$with_ca" = 1 ]; then
+    extra=(--host-files)
+    ( umask 077
+      host_files_tar "$with_env" "$with_ca" \
+        | FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create "${extra[@]}" > "$out.partial"
+      rcs=("${PIPESTATUS[@]}"); [ "${rcs[0]}" = 0 ] && [ "${rcs[1]}" = 0 ] ) || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen."; }
+  else
+    ( umask 077
+      FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create > "$out.partial" ) \
+      || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen."; }
+  fi
   mv "$out.partial" "$out"; chmod 600 "$out"
+  printf 'time=%s\nfile=%s\nenv=%s\nca=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(readlink -f "$out")" "$with_env" "$with_ca" > "$LAST_FULL_FILE"
   say "Vollsicherung geschrieben: $out ($(du -h "$out" | cut -f1))"
+  [ "$with_env" = 1 ] && say "Enthält die .env (Zugangsdaten dieses Servers)."
+  [ "$with_ca" = 1 ] && say "Enthält die CA des Proxys."
   say "Ohne die Passphrase ist die Datei wertlos. Beides getrennt vom Server aufbewahren."
 }
 
+# Schlüssel der .env, die beim Zurückspielen NIE aus der Sicherung übernommen werden: die Datenbank dieses Servers
+# (ihr Passwort wurde bei seiner Installation gesetzt, die Sicherung ändert es nicht), die installierte Version und
+# die Adressen, unter denen DIESER Server erreichbar ist.
+ENV_KEEP_KEYS="POSTGRES_PASSWORD POSTGRES_USER POSTGRES_DB OPNEXUS_VERSION OPNEXUS_IMAGE_REPO OPNEXUS_SITES OPNEXUS_DEFAULT_SNI FRONTEND_ORIGIN BIND_ADDRESS PROXY_BIND_ADDRESS GUI_BIND_ADDRESS OPNEXUS_GUI_SITES"
+
+# Übernimmt die übrigen Schlüssel aus der gesicherten .env ($1). Schreibt die gesicherte Datei vollständig als
+# .env.from-backup daneben (zum Nachsehen) und die bisherige als .env.before-restore.
+merge_env_from_backup() {
+  local backup="$1" yes="$2" key value changed=() line
+  install -m 600 "$backup" "$ENV_FILE.from-backup"
+  while IFS= read -r line; do
+    [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
+    key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+    [[ " $ENV_KEEP_KEYS " == *" $key "* ]] && continue
+    [ "$(env_get "$key")" = "$value" ] && grep -q "^$key=" "$ENV_FILE" && continue
+    changed+=("$key")
+  done < "$backup"
+  if [ "${#changed[@]}" = 0 ]; then say ".env: keine abweichenden Einstellungen in der Sicherung."; return 0; fi
+  say ".env: diese Einstellungen kommen aus der Sicherung: ${changed[*]}"
+  say "(Unverändert bleiben Datenbank-Zugang, Version und Adressen dieses Servers; die ganze gesicherte Datei liegt in $ENV_FILE.from-backup.)"
+  if [ "$yes" != 1 ]; then
+    read -rp "Übernehmen? [j/N] " ans </dev/tty
+    [[ "$ans" =~ ^[jJyY]$ ]] || { say ".env unverändert gelassen."; return 0; }
+  fi
+  install -m 600 "$ENV_FILE" "$ENV_FILE.before-restore"
+  for key in "${changed[@]}"; do
+    value=$(sed -n "s/^$key=//p" "$backup" | tail -n1)
+    env_set_literal "$key" "$value"
+  done
+  say ".env aktualisiert (vorher: $ENV_FILE.before-restore)."
+}
+
+# Wie env_set, aber für beliebige Werte (Passwörter, URLs mit | oder &): ohne sed-Ersetzung.
+env_set_literal() {
+  local key="$1" value="$2" tmp
+  tmp=$(mktemp "$ENV_FILE.XXXXXX") && chmod 600 "$tmp"
+  if grep -q "^$key=" "$ENV_FILE"; then
+    awk -v k="$key" -v v="$value" 'BEGIN{FS=OFS="="} index($0, k"=")==1 {print k"="v; next} {print}' "$ENV_FILE" > "$tmp"
+  else
+    cat "$ENV_FILE" > "$tmp"; printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+  mv "$tmp" "$ENV_FILE"
+}
+
+# Die gesicherte CA in das Volume des Proxys legen; die ausgestellten Zertifikate werden verworfen, damit Caddy sie
+# mit dieser CA neu ausstellt. Der Proxy ist dabei gestoppt.
+restore_ca() {
+  local dir="$1"
+  [ -d "$dir/local" ] || die "Die Sicherung enthält keine CA."
+  tar -C "$dir" -cf - local | c run --rm --no-deps -T --entrypoint sh proxy -c \
+    'rm -rf /data/caddy/pki/authorities/local /data/caddy/certificates/local && mkdir -p /data/caddy/pki/authorities && tar -x -C /data/caddy/pki/authorities' \
+    || die "CA konnte nicht zurückgespielt werden."
+  say "CA des Proxys zurückgespielt (Zertifikate werden beim Start neu ausgestellt)."
+}
+
 cmd_restore() {
-  local file="" yes=0 pass arg
-  for arg in "$@"; do case "$arg" in --yes|-y) yes=1 ;; *) file="$arg" ;; esac; done
-  [ -n "$file" ] && [ -f "$file" ] || die "Aufruf: opnexus restore DATEI.opxfull [--yes]"
+  local file="" yes=0 pass arg with_env=0 with_ca=0 hosttmp=""
+  for arg in "$@"; do
+    case "$arg" in
+      --yes|-y) yes=1 ;;
+      --with-env) with_env=1 ;;
+      --with-ca) with_ca=1 ;;
+      -*) die "Unbekannte Option: $arg" ;;
+      *) file="$arg" ;;
+    esac
+  done
+  [ -n "$file" ] && [ -f "$file" ] || die "Aufruf: opnexus restore DATEI.opxfull [--with-env] [--with-ca] [--yes]"
   pass="$(ask_passphrase)"
   say "Prüfe die Datei …"
   FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup info < "$file" \
@@ -258,6 +375,18 @@ cmd_restore() {
   say "Spiele zurück …"
   FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup restore < "$file" \
     || die "Zurückspielen fehlgeschlagen. Der vorherige Stand liegt als Dump in /backups; Dienste sind gestoppt."
+  if [ "$with_env" = 1 ] || [ "$with_ca" = 1 ]; then
+    hosttmp=$(mktemp -d) && chmod 700 "$hosttmp"
+    FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup host-files < "$file" \
+      | tar -x -C "$hosttmp" || { rm -rf "$hosttmp"; die "Die Dateien des Servers (.env/CA) ließen sich nicht lesen. Datenbank und Geheimnisse sind schon zurückgespielt; Dienste sind gestoppt."; }
+    if [ "$with_env" = 1 ]; then
+      if [ -f "$hosttmp/env" ]; then merge_env_from_backup "$hosttmp/env" "$yes"; else say "Die Sicherung enthält keine .env (nicht mit --with-env erstellt)."; fi
+    fi
+    if [ "$with_ca" = 1 ]; then
+      if [ -d "$hosttmp/caddy-ca" ]; then restore_ca "$hosttmp/caddy-ca"; else say "Die Sicherung enthält keine CA (nicht mit --with-ca erstellt)."; fi
+    fi
+    rm -rf "$hosttmp"
+  fi
   say "Starte die Dienste …"
   c up -d backend frontend proxy >/dev/null
   wait_healthy || die "Nicht alle Dienste sind gesund — 'docker compose logs' prüfen."
@@ -339,10 +468,86 @@ refresh_cli() {
   fi
   [ "$keep" = 1 ] || docker rmi "$ref" >/dev/null 2>&1 || true
   if cmp -s "$tmp" "$(readlink -f "$0")"; then rm -f "$tmp"; return 0; fi
+  # Im Release-Bundle (CLI neben docker-compose.yml) auch die Datei auf der Platte ersetzen: sonst liefen ein späteres
+  # `rollback` oder `status` mit der alten CLI, die neue Schritte (z. B. die Compose-Datei zurücklegen) nicht kennt.
+  # Über eine neue Datei und Umbenennen: die laufende Bash liest ihr Skript weiter aus der alten.
+  local self; self="$(readlink -f "$0")"
+  if [ -f "$(dirname "$self")/docker-compose.yml" ] && [ -w "$self" ] && [ -w "$(dirname "$self")" ]; then
+    cp -p "$self" "$self.bak" 2>/dev/null || true
+    if install -m 0755 "$tmp" "$self.new" && mv -f "$self.new" "$self"; then
+      say "CLI auf der Platte aktualisiert (vorherige: $(basename "$self").bak)."
+    fi
+  fi
   say "Die CLI des Zielreleases (Signatur geprüft) ist neuer — starte sie."
   chmod 0700 "$tmp"
   export OPNEXUS_DIR="$PWD"
   exec bash "$tmp" __refreshed update "$target"
+}
+
+# Die Compose-Datei des Zielreleases übernehmen (B18): `update` tauschte bisher nur Images, neue Einstellungen der Dienste
+# (z. B. Härtung, neue Variablen) kamen nie an. Quelle ist das signierte Updater-Image des Ziels (wie bei refresh_cli),
+# nie das Netz direkt. Wurde die Datei hier angepasst (Prüfsumme weicht von der zuletzt übernommenen ab), bleibt sie, und
+# die neue Fassung liegt als docker-compose.yml.new daneben: eigene Anpassungen gehören in docker-compose.override.yml.
+COMPOSE_SHA_FILE=".opnexus-compose-sha"
+COMPOSE_BACKUP=""
+COMPOSE_PREV_SHA=""
+
+refresh_compose() {
+  local target="$1" repo ref digest tmp keep=0 cur_sha rec_sha label
+  [ "${OPNEXUS_NO_COMPOSE_REFRESH:-}" != 1 ] || return 0
+  repo=$(env_get OPNEXUS_IMAGE_REPO)
+  [ -n "$repo" ] || return 0
+  if ! command -v cosign >/dev/null 2>&1 || [ ! -f cosign.pub ]; then
+    say "Compose-Datei nicht abgeglichen (ohne cosign und cosign.pub wird keine Datei aus einem Image übernommen)."; return 0
+  fi
+  ref="$repo/opnexus-updater:$target"
+  if updater_enabled; then keep=1; fi
+  docker pull -q "$ref" >/dev/null 2>&1 || { say "Compose-Datei nicht abgeglichen (Updater-Image des Ziels nicht ladbar)."; return 0; }
+  digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$ref" 2>/dev/null || true)
+  if [[ "$digest" != *@sha256:* ]]; then
+    [ "$keep" = 1 ] || docker rmi "$ref" >/dev/null 2>&1 || true
+    say "Compose-Datei nicht abgeglichen (Digest des Updater-Images unbekannt)."; return 0
+  fi
+  cosign verify --key cosign.pub --insecure-ignore-tlog=true "$digest" >/dev/null 2>&1 \
+    || die "Signatur des Updater-Images $ref ist ungültig oder fehlt — nichts wurde verändert."
+  tmp=$(mktemp "${TMPDIR:-/tmp}/opnexus-compose.XXXXXX") || return 0
+  if ! docker run --rm --pull never --entrypoint cat "$digest" /usr/share/opnexus/docker-compose.yml > "$tmp" 2>/dev/null \
+      || ! grep -q '^services:' "$tmp" || ! grep -q 'opnexus-backend:' "$tmp"; then
+    rm -f "$tmp"; [ "$keep" = 1 ] || docker rmi "$ref" >/dev/null 2>&1 || true
+    say "Das Zielrelease liefert keine Compose-Datei mit (vor 1.34) — die vorhandene bleibt."; return 0
+  fi
+  [ "$keep" = 1 ] || docker rmi "$ref" >/dev/null 2>&1 || true
+  if cmp -s "$tmp" docker-compose.yml; then
+    rm -f "$tmp"; sha256sum docker-compose.yml | cut -d' ' -f1 > "$COMPOSE_SHA_FILE"; return 0
+  fi
+  cur_sha=$(sha256sum docker-compose.yml | cut -d' ' -f1)
+  rec_sha=$(cat "$COMPOSE_SHA_FILE" 2>/dev/null || true)
+  if [ -n "$rec_sha" ] && [ "$rec_sha" != "$cur_sha" ]; then
+    install -m 644 "$tmp" docker-compose.yml.new; rm -f "$tmp"
+    say "docker-compose.yml wurde hier angepasst und bleibt unverändert. Die Fassung von $target liegt als docker-compose.yml.new daneben;"
+    say "Anpassungen gehören in docker-compose.override.yml (dann übernimmt das nächste Update die Datei selbst)."
+    return 0
+  fi
+  label=$(running_version); label="${label:-alt}"
+  COMPOSE_BACKUP="docker-compose.yml.bak-$label"
+  [ -e "$COMPOSE_BACKUP" ] && COMPOSE_BACKUP="docker-compose.yml.bak-$label-$(date -u +%Y%m%d%H%M%S)"
+  COMPOSE_PREV_SHA="$rec_sha"
+  cp -p docker-compose.yml "$COMPOSE_BACKUP"
+  install -m 644 "$tmp" docker-compose.yml; rm -f "$tmp"
+  sha256sum docker-compose.yml | cut -d' ' -f1 > "$COMPOSE_SHA_FILE"
+  say "Compose-Datei von $target übernommen (vorherige: $COMPOSE_BACKUP)."
+  if [ -z "$rec_sha" ]; then
+    say "Falls du die alte Datei angepasst hattest: 'diff $COMPOSE_BACKUP docker-compose.yml' zeigt den Unterschied;"
+    say "eigene Anpassungen gehören in docker-compose.override.yml."
+  fi
+}
+
+# Beim Rollback die Compose-Datei von vorher zurücklegen (nur wenn das Update sie getauscht hatte).
+restore_compose() {
+  [ -n "${prev_compose:-}" ] && [ -f "$prev_compose" ] || return 0
+  cp -p "$prev_compose" docker-compose.yml
+  if [ -n "${prev_compose_sha:-}" ]; then echo "$prev_compose_sha" > "$COMPOSE_SHA_FILE"; else rm -f "$COMPOSE_SHA_FILE"; fi
+  say "Compose-Datei von vorher wiederhergestellt ($prev_compose)."
 }
 
 cmd_update() {
@@ -366,7 +571,15 @@ cmd_update() {
   OPNEXUS_VERSION="$target" c pull "${pull_services[@]}" || die "Pull fehlgeschlagen — nichts wurde verändert."
   verify_signatures "$target" "${pull_services[@]}"
   refresh_cli "$target"
-  preflight_proxy_config "$target"
+  refresh_compose "$target"
+  # In einer Subshell: scheitert die Vorprüfung, kommt die eben getauschte Compose-Datei zurück ("nichts verändert").
+  if ! ( preflight_proxy_config "$target" ); then
+    if [ -n "$COMPOSE_BACKUP" ]; then
+      cp -p "$COMPOSE_BACKUP" docker-compose.yml
+      if [ -n "$COMPOSE_PREV_SHA" ]; then echo "$COMPOSE_PREV_SHA" > "$COMPOSE_SHA_FILE"; else rm -f "$COMPOSE_SHA_FILE"; fi
+    fi
+    exit 1
+  fi
 
   started=$(date -u +%Y%m%dT%H%M%SZ)
   cat > "$STATE_FILE" <<STATE
@@ -375,6 +588,8 @@ prev_version=$prev_version
 prev_setting=$prev_setting
 prev_db_revision=$prev_rev
 target=$target
+prev_compose=$COMPOSE_BACKUP
+prev_compose_sha=$COMPOSE_PREV_SHA
 STATE
 
   env_set OPNEXUS_VERSION "$target"
@@ -409,7 +624,7 @@ latest_pre_upgrade_dump() {
 cmd_rollback() {
   require_release_mode
   [ -f "$STATE_FILE" ] || die "Kein Update-Zustand ($STATE_FILE) — es gibt nichts zurückzurollen."
-  local started prev_version prev_setting prev_db_revision target
+  local started prev_version prev_setting prev_db_revision target prev_compose prev_compose_sha
   read_update_state
   [ -n "${prev_version:-}" ] || die "$STATE_FILE ist unvollständig."
 
@@ -463,6 +678,7 @@ cmd_rollback() {
   fi
 
   env_set OPNEXUS_VERSION "$prev_version"
+  restore_compose
   phase switching
   local rb_targets=()
   mapfile -t rb_targets < <(up_targets)
@@ -573,9 +789,97 @@ cmd_apply() {
   exit "$code"
 }
 
+# ── Umzug auf einen anderen Server (HA-Plan H1: gehärtete Kaltreserve) ─────────────────────────────────────────
+# Am Ziel ist OPNexus schon nach Anleitung installiert (gleiche oder neuere Version). Ablauf: Vorprüfung →
+# Quelle anhalten (keine Änderungen mehr) → Vollsicherung inkl. .env und CA → am Ziel zurückspielen → prüfen.
+# Die Passphrase ist zufällig, lebt nur in diesem Lauf und geht über stdin zum Ziel (nie in eine Befehlszeile).
+# Die Quelle bleibt angehalten, nicht gelöscht: zurück geht es mit `docker compose up -d` hier.
+remote() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$MIG_TARGET" "$@"; }
+
+cmd_migrate_host() {
+  local yes=0 dir="" arg t0 pass tmpfile remote_cli remote_file rv lv hosts_before hosts_after st
+  MIG_TARGET=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --yes|-y) yes=1 ;;
+      --dir) shift; dir="${1:-}" ;;
+      -*) die "Unbekannte Option: $1" ;;
+      *) MIG_TARGET="$1" ;;
+    esac
+    shift
+  done
+  [ -n "$MIG_TARGET" ] || die "Aufruf: opnexus migrate-host BENUTZER@ZIEL [--dir PFAD] [--yes]"
+  require_release_mode
+  dir="${dir:-$PWD}"
+  t0=$SECONDS
+
+  say "Vorprüfung …"
+  remote true || die "Keine SSH-Verbindung zu $MIG_TARGET (Schlüssel-Anmeldung nötig)."
+  remote_cli=$(remote "cd '$dir' 2>/dev/null && { [ -x ./opnexus ] && echo ./opnexus || { [ -x scripts/opnexus ] && echo scripts/opnexus; }; }") \
+    || die "Auf $MIG_TARGET gibt es $dir nicht (--dir angeben)."
+  [ -n "$remote_cli" ] || die "Auf $MIG_TARGET liegt in $dir kein opnexus-Werkzeug: dort zuerst OPNexus installieren."
+  st=$(remote "cd '$dir' && $remote_cli status --porcelain") || die "Am Ziel antwortet '$remote_cli status' nicht."
+  rv=$(sed -n 's/^running_version=//p' <<<"$st"); lv=$(running_version)
+  [ -n "$rv" ] || die "Am Ziel läuft OPNexus nicht (erst starten: docker compose up -d)."
+  [ "$(printf '%s\n%s\n' "$lv" "$rv" | sort -V | head -n1)" = "$lv" ] \
+    || die "Am Ziel läuft $rv, hier $lv: das Ziel muss gleich oder neuer sein ('$remote_cli update $lv' dort)."
+  grep -qE '^service\.backend=healthy$' <<<"$st" || die "Das Backend am Ziel ist nicht gesund."
+  hosts_before=$(psql_db -c "SELECT count(*) FROM opnsense_hosts")
+  say "Quelle: $lv, $hosts_before Firewall(s). Ziel $MIG_TARGET:$dir: $rv."
+
+  if [ "$yes" != 1 ]; then
+    echo "Danach ist OPNexus HIER angehalten und das Ziel enthält diese Installation (seine bisherigen Daten werden überschrieben)."
+    read -rp "Umzug starten? [j/N] " ans </dev/tty
+    [[ "$ans" =~ ^[jJyY]$ ]] || die "Abgebrochen."
+  fi
+
+  pass=$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 40)
+  tmpfile=$(mktemp --suffix=.opxfull) && rm -f "$tmpfile"
+  say "Halte Proxy und Oberfläche an (ab jetzt keine Änderungen mehr) …"
+  c stop proxy frontend >/dev/null 2>&1 || true
+  say "Vollsicherung mit .env und CA …"
+  ( export OPNEXUS_BACKUP_PASSPHRASE="$pass"
+    cmd_backup_full "$tmpfile" --with-env --with-ca >/dev/null ) \
+    || { c up -d >/dev/null 2>&1; die "Vollsicherung fehlgeschlagen; die Quelle läuft wieder."; }
+  c stop >/dev/null 2>&1 || true
+  rm -f "$LAST_FULL_FILE"  # die Datei wird gleich gelöscht, sie taugt nicht als "letzte Vollsicherung"
+
+  remote_file="/tmp/opnexus-migrate-$$.opxfull"
+  say "Übertrage ($(du -h "$tmpfile" | cut -f1)) …"
+  scp -q -o BatchMode=yes "$tmpfile" "$MIG_TARGET:$remote_file" && remote "chmod 600 '$remote_file'" \
+    || { rm -f "$tmpfile"; die "Übertragung fehlgeschlagen. Die Quelle ist angehalten: 'docker compose up -d' startet sie wieder."; }
+  rm -f "$tmpfile"
+
+  say "Spiele am Ziel zurück …"
+  if ! printf '%s\n' "$pass" | remote "read -r OPNEXUS_BACKUP_PASSPHRASE; export OPNEXUS_BACKUP_PASSPHRASE; cd '$dir' && $remote_cli restore '$remote_file' --with-env --with-ca --yes; rc=\$?; rm -f '$remote_file'; exit \$rc"; then
+    die "Zurückspielen am Ziel fehlgeschlagen (Ausgabe oben). Die Quelle ist angehalten: 'docker compose up -d' startet sie wieder."
+  fi
+  st=$(remote "cd '$dir' && $remote_cli status --porcelain") || st=""
+  hosts_after=$(remote "cd '$dir' && docker compose exec -T postgres sh -c 'psql -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -Atc \"SELECT count(*) FROM opnsense_hosts\"'" 2>/dev/null | tr -d '\r')
+  [ "$hosts_after" = "$hosts_before" ] \
+    || die "Am Ziel stehen $hosts_after statt $hosts_before Firewall(s). Bitte prüfen; die Quelle ist angehalten ('docker compose up -d' startet sie wieder)."
+  grep -qE '^service\.backend=healthy$' <<<"$st" || die "Das Backend am Ziel ist nach dem Zurückspielen nicht gesund."
+  say "Umzug fertig nach $(( SECONDS - t0 )) s: $MIG_TARGET führt OPNexus mit $hosts_after Firewall(s)."
+  echo
+  echo "Noch zu tun:"
+  echo "  - Adresse umstellen: virtuelle IP, DNS-Namen oder Lesezeichen auf das Ziel zeigen lassen."
+  echo "  - Firewalls, die nur bestimmte Absender an ihre API lassen, die Adresse des Ziels erlauben."
+  echo "  - Mit Management-Overlay: der Tunnel-Endpunkt (öffentliche Adresse, UDP-Port) muss zum Ziel zeigen."
+  echo "  - Hier bleibt alles angehalten (startet auch nach einem Neustart nicht). Zurück: am Ziel"
+  echo "    'docker compose stop', hier 'docker compose up -d'."
+}
+
 # Interner Neustart durch refresh_cli: Marker setzen und die eigene Temp-Datei aufräumen (bash hat sie offen).
 if [ "${1:-}" = __refreshed ]; then
   CLI_REFRESHED=1; shift
+  # Gestartet von einer älteren CLI, deren refresh_cli die Datei im Bundle noch nicht ersetzt (vor 1.34): das hier
+  # nachholen, sonst liefe ein späteres `rollback` mit der alten CLI.
+  disk="${OPNEXUS_DIR:-}/opnexus"
+  if [ -n "${OPNEXUS_DIR:-}" ] && [ -f "$disk" ] && [ -f "$OPNEXUS_DIR/docker-compose.yml" ] && [ -w "$OPNEXUS_DIR" ] \
+     && ! cmp -s "$0" "$disk"; then
+    cp -p "$disk" "$disk.bak" 2>/dev/null || true
+    if install -m 0755 "$0" "$disk.new" && mv -f "$disk.new" "$disk"; then say "CLI auf der Platte aktualisiert (vorherige: opnexus.bak)."; fi
+  fi
   case "$0" in */opnexus-cli.*) rm -f "$0" ;; esac
 fi
 
@@ -588,5 +892,6 @@ case "${1:-}" in
   rollback) cmd_rollback ;;
   backup)   if [ "${2:-}" = "--full" ]; then shift 2; cmd_backup_full "$@"; else cmd_backup; fi ;;
   restore)  shift; cmd_restore "$@" ;;
-  *) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  migrate-host) shift; cmd_migrate_host "$@" ;;
+  *) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

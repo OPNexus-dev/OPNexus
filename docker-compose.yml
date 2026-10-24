@@ -117,10 +117,14 @@ services:
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       UPDATE_CHECK_URL: ${UPDATE_CHECK_URL:-}
       OPNEXUS_IMAGE_REPO: ${OPNEXUS_IMAGE_REPO:-}
+      # 1 = Backend wie früher als root betreiben (Notausgang, siehe backend/scripts/start.sh).
+      OPNEXUS_RUN_AS_ROOT: ${OPNEXUS_RUN_AS_ROOT:-0}
       ALLOW_INSECURE_FIREWALL_URLS: ${ALLOW_INSECURE_FIREWALL_URLS:-false}
       ALLOW_INSECURE_SMTP_AUTH: ${ALLOW_INSECURE_SMTP_AUTH:-false}
       SMTP_CA_FILE: ${SMTP_CA_FILE:-}
       UPDATE_CHECK_INTERVAL_HOURS: ${UPDATE_CHECK_INTERVAL_HOURS:-12}
+      # Optionaler Heartbeat an einen externen Überwacher (nur https://), siehe Handbuch.
+      HEARTBEAT_URL: ${HEARTBEAT_URL:-}
       # Optionaler Updater-Dienst (Profil "updater", siehe unten). Ohne ihn
       # zeigt das Webinterface nur an, wie man ihn aktiviert.
       UPDATER_URL: ${UPDATER_URL:-http://updater:8080}
@@ -146,6 +150,9 @@ services:
       # Zugriffstoken des Updaters (nur lesen). Leer, solange der Updater
       # nicht aktiviert ist.
       - updater_state:/updater:ro
+    # Das Backend startet als root nur, um die Volumes umzustellen, und läuft dann
+    # als uid 10001 (backend/scripts/start.sh). Neue Rechte kann es nicht mehr erlangen.
+    security_opt: ["no-new-privileges:true"]
     # Bound to loopback only by default — reachable from this host, not
     # the network. Set BIND_ADDRESS in .env (e.g. to 0.0.0.0, or a
     # specific interface IP) for network-wide access instead of editing
@@ -173,6 +180,10 @@ services:
       # not via loopback) but breaks any in-container check (e.g. the
       # healthcheck below) that queries localhost.
       HOSTNAME: "0.0.0.0"
+    # Läuft als unprivilegierter Benutzer (frontend/Dockerfile) und braucht keine
+    # Capabilities.
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     depends_on:
       backend:
         condition: service_healthy

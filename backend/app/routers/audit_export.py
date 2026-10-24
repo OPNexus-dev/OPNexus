@@ -10,7 +10,7 @@ from app.models.user import AdminUser
 from app.routers.auth import current_user
 from app.schemas.audit_export import AuditExportRead, AuditExportUpdate
 from app.services import audit_export_service as svc
-from app.services import notification_secret_store
+from app.services import notification_secret_store, url_guard
 
 router = APIRouter(prefix="/settings/audit-export", tags=["audit-export"])
 
@@ -29,6 +29,11 @@ async def read(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(cur
 @router.put("", response_model=AuditExportRead)
 async def update(payload: AuditExportUpdate, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)):
     _require_admin(user)
+    if payload.webhook_url:
+        try:
+            payload.webhook_url = url_guard.validate_url(payload.webhook_url)
+        except ValueError as exc:
+            raise api_error(422, ErrorCode.NOTIFICATION_WEBHOOK_URL_INVALID, reason=str(exc)) from None
     row = await svc.get_settings(db)
     was_active = svc.active(row)
     for field in ("syslog_enabled", "syslog_host", "syslog_port", "syslog_protocol", "webhook_enabled", "webhook_url"):

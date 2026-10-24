@@ -113,3 +113,5 @@ __all__ += ["RuleCleanupOperation", "RuleCleanupItem"]
 # app.reset_2fa) otherwise fails at the first query because OpnsenseHost refers to classes nobody imported.
 from app.models.host_variable import HostVariable
 __all__ += ["HostVariable"]
+from app.models.runtime_setting import RuntimeSetting
+__all__ += ["RuntimeSetting"]

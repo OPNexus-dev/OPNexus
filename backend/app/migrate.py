@@ -41,6 +41,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 import app.models
+from app import runtime_settings
 from app import legacy_schema_patches
 from app.config import settings
 from app.database import Base, engine
@@ -146,7 +147,7 @@ async def _ensure_pg_client_matches_server() -> None:
 
 def _prune_backups(directory: Path) -> None:
     dumps = sorted(directory.glob(f"{_BACKUP_PREFIX}*.dump"), key=lambda p: p.stat().st_mtime)
-    for old in dumps[: max(0, len(dumps) - settings.migration_backup_keep)]:
+    for old in dumps[: max(0, len(dumps) - runtime_settings.value("migration_backup_keep"))]:
         old.unlink(missing_ok=True)
 
 
@@ -208,6 +209,10 @@ async def _migrate() -> None:
         logger.info("Datenbankschema ist aktuell (Revision %s)", head)
         return
 
+    try:  # the kept-backups count may be set in the web interface; an old schema without the table keeps the default
+        await runtime_settings.refresh()
+    except Exception:
+        pass
     await _backup_before_migration(current, head)
     logger.info("Migriere Datenbankschema %s → %s", current, head)
     async with engine.begin() as conn:

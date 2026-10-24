@@ -225,6 +225,26 @@ Internet ist das nicht geeignet.
 
 ---
 
+## Betriebseinstellungen im Webinterface
+
+Unter **Einstellungen › Betriebseinstellungen** stellst du ein, wofür früher die `.env` des Servers nötig war:
+
+| Bereich | Einstellungen |
+|---|---|
+| Anmeldung und Sitzungen | Sitzungsdauer, Fehlversuche je Konto und je Absender, Zeitfenster, Sperrdauer |
+| Ausrollen und Firewall-Zugriff | Bestätigungsfrist beim Ausrollen, Zeitlimit für Firewall-Anfragen, Sicherungen vor Updates |
+| Messungen und Aufbewahrung | Messintervall Systemauslastung, Aufbewahrung der Messwerte, Intervall Regelverlauf, Intervall der Versionsprüfung |
+| Überwachung von außen und Mail | Heartbeat-Adresse, CA des Mailservers (PEM einfügen), Zeitlimit Mailversand |
+
+Jedes Feld nennt Standard und erlaubten Bereich; „Auf Standard zurücksetzen“ nimmt eine Änderung zurück. Änderungen
+gelten sofort (spätestens nach 15 Sekunden auch in einem zweiten Backend) und stehen im Audit-Log; die Heartbeat-
+Adresse und die CA nur als „gesetzt“. Ändern dürfen nur Admins.
+
+Steht ein Wert **in der `.env`**, gilt weiterhin dieser; das Feld ist dann gesperrt und zeigt „vom Server“. So bleiben
+automatisiert eingerichtete Server steuerbar. Bewusst **nur** in der `.env` bleiben: Adressen und TLS von OPNexus
+selbst (ein falscher Wert sperrt dich aus genau dieser Oberfläche aus), der Datenbank-Zugang, das erste Admin-Konto,
+die Zusatzdienste (`COMPOSE_PROFILES`) und die Notausgänge (`ALLOW_INSECURE_*`, `OPNEXUS_RUN_AS_ROOT`).
+
 ## Konfiguration (`.env`)
 
 Alle Einstellungen stehen in der `.env` neben der `docker-compose.yml`. Nach einer
@@ -243,10 +263,12 @@ Alle Einstellungen stehen in der `.env` neben der `docker-compose.yml`. Nach ein
 | `BIND_ADDRESS` | Schnittstelle für Backend und Frontend (Standard `127.0.0.1`). |
 | `BACKEND_PORT`, `FRONTEND_PORT` | Host-Ports (Standard 8100 und 3100), z. B. für eine zweite Instanz. |
 | `OPNEXUS_IMAGE_REPO`, `OPNEXUS_VERSION` | Registry und Version der Release-Images. `OPNEXUS_VERSION` ist die „Spur“, siehe [Updates](#opnexus-aktualisieren). |
-| `UPDATE_CHECK_URL`, `UPDATE_CHECK_INTERVAL_HOURS` | Hinweis auf neue Versionen, standardmäßig **aus**. Einstellbar auch im Webinterface; ein Wert in der `.env` hat Vorrang. |
+| `UPDATE_CHECK_URL`, `UPDATE_CHECK_INTERVAL_HOURS` | Hinweis auf neue Versionen, standardmäßig **aus**. Beides auch im Webinterface (Versionsprüfung bzw. Betriebseinstellungen). Die Adresse in der `.env` hat Vorrang; das Intervall dort ist nur der Standard, den das Webinterface überschreiben kann. |
 | `COMPOSE_PROFILES=updater` | Aktiviert den optionalen Updater für Updates per Klick. |
+| `HEARTBEAT_URL` | Heartbeat-Adresse, siehe [Ausfall von OPNexus bemerken](#ausfall-von-opnexus-bemerken-heartbeat). Einfacher im Webinterface (Betriebseinstellungen); ein Wert hier hat Vorrang. |
+| `OPNEXUS_RUN_AS_ROOT` | `1` lässt das Backend wie in älteren Versionen als root laufen. Normalerweise läuft es als unprivilegierter Benutzer (uid 10001) und stellt seine Datenvolumes beim Start selbst darauf um. Nur für Sonderfälle, etwa Datenverzeichnisse, die sich nicht umstellen lassen. |
 | `ALLOW_INSECURE_FIREWALL_URLS` | Erlaubt `http://`-Adressen für Firewalls. Nur für isolierte Labore. |
-| `SMTP_CA_FILE`, `ALLOW_INSECURE_SMTP_AUTH` | Eigene CA für den Mailserver bzw. SMTP-Anmeldung ohne Verschlüsselung (bleibt standardmäßig gesperrt). |
+| `SMTP_CA_FILE`, `ALLOW_INSECURE_SMTP_AUTH` | Eigene CA für den Mailserver (einfacher: PEM in den Betriebseinstellungen einfügen; die Datei hier hat Vorrang) bzw. SMTP-Anmeldung ohne Verschlüsselung (bleibt standardmäßig gesperrt). |
 
 ---
 
@@ -1700,6 +1722,38 @@ mit den Rechten des Tokens: ein „Lesen“-Token sieht auch hier keine Geheimni
 | `caddy_data`, `caddy_config` | Schlüssel der internen CA und Proxy-Konfiguration |
 | `updater_state` | Token des Updaters (nur mit aktivem Updater) |
 
+### Ausfall von OPNexus bemerken (Heartbeat)
+
+Fällt OPNexus aus, schweigt auch jeder Alarm, den es senden würde. Dagegen hilft ein Überwacher außerhalb: Trage
+unter **Einstellungen › Betriebseinstellungen › Überwachung von außen und Mail** die Ping-Adresse eines solchen
+Dienstes ein (healthchecks.io oder selbst gehostet, ein Push-Monitor in Uptime Kuma, ein ntfy-Thema). OPNexus ruft
+sie nach **jedem erfolgreichen Prüfzyklus** der Benachrichtigungen per `GET` auf, also etwa einmal pro Minute.
+Bleibt der Aufruf aus, ist OPNexus ausgefallen oder erreicht seine Datenbank nicht mehr; den Alarm schlägt dann der
+Überwacher. Stell dessen Karenzzeit auf ein Mehrfaches des Prüfintervalls (z. B. 5 Minuten).
+
+Erlaubt ist nur `https://`; lokale Adressen, Link-Local und Metadaten-Dienste sind wie bei den Benachrichtigungen
+ausgeschlossen. Die Adresse enthält meist einen geheimen Schlüssel: sie wird nach dem Speichern nicht mehr angezeigt
+und nie protokolliert. Alternativ geht `HEARTBEAT_URL` in der `.env` (hat dann Vorrang).
+
+**Platte des OPNexus-Servers.** Läuft die Platte voll, auf der OPNexus läuft, bleibt die Datenbank stehen und mit ihr
+jeder Alarm. Der Alarm „Platte des OPNexus-Servers fast voll“ (Einstellungen › Benachrichtigungen, standardmäßig an,
+ab 90 %) warnt vorher; die Metrik `opnexus_server_disk_used_percent` zeigt den Füllstand. Gemessen wird das
+Dateisystem der Docker-Volumes (bei einer Standardinstallation dieselbe Platte wie die Datenbank).
+
+### Mehrere Backends an einer Datenbank
+
+Die Hintergrunddienste (Rücknahme unbestätigter Änderungen, Benachrichtigungen, Log-Abruf, Messwerte, geplante
+Wartung und Rollouts, Sicherheitslage, Audit-Export, geplante Sicherungen, Regelverlauf) laufen immer nur in
+**einem** Backend-Prozess, dem *Leader*. Er hält dafür eine Sperre in der Datenbank. Ein zweites Backend an
+derselben Datenbank (etwa während eines Umzugs oder später als Reserve) beantwortet die API normal, wartet mit den
+Hintergrunddiensten aber in *Bereitschaft*. Fällt der Leader aus oder verliert er die Verbindung zur Datenbank,
+hält er seine Dienste sofort an; ein wartendes Backend übernimmt innerhalb einer halben Minute. An einer Datenbank, die
+gerade Replica ist, startet nie ein Leader.
+
+Welche Rolle ein Backend hat, zeigen `GET /api/health` (`"role": "leader"`, `"standby"`, `"takeover"`, `"replica"`)
+und die Metrik `opnexus_leader`. Für eine einzelne Installation ändert sich nichts: ihr einziges Backend ist der
+Leader, die Hintergrunddienste starten nach dem Hochfahren mit etwa 12 Sekunden Verzögerung.
+
 ### Sichern und Wiederherstellen
 
 **Automatisch:** Der Dienst `postgres-backup` schreibt beim Start und danach alle
@@ -1714,9 +1768,47 @@ Konfigurationssicherungen) in **eine mit Passphrase verschlüsselte Datei** (`.o
 wird abgefragt (oder `OPNEXUS_BACKUP_PASSPHRASE`). Auf einer frischen Installation (gleiche oder
 neuere Version) spielt `./opnexus restore DATEI` alles zurück: Es prüft die Datei, fragt nach, stoppt die
 Dienste, legt eine Sicherheitskopie des jetzigen Zustands an, spielt Datenbank und Volumes ein und
-startet neu. Nicht enthalten: Log-Erfassung, Messwerte und `caddy_data` (die interne CA: nach einer
-Wiederherstellung auf neuer Hardware importierst du das CA-Zertifikat im Browser erneut).
-Datei und Passphrase getrennt vom Server aufbewahren.
+startet neu. Nicht enthalten: Log-Erfassung und Messwerte. Datei und Passphrase getrennt vom Server aufbewahren.
+
+Mit `--with-env` und `--with-ca` nimmt die Vollsicherung zusätzlich die `.env` und die interne CA des Proxys
+(`caddy_data`) mit; `./opnexus restore DATEI --with-env --with-ca` spielt sie zurück. Von der `.env` übernimmt der
+Restore alles **außer** den Datenbank-Zugangsdaten, der Version und den Adressen des Zielservers (`POSTGRES_*`,
+`OPNEXUS_VERSION`, `OPNEXUS_IMAGE_REPO`, `OPNEXUS_SITES`, `OPNEXUS_DEFAULT_SNI`, `FRONTEND_ORIGIN`, `*_BIND_ADDRESS`,
+`OPNEXUS_GUI_SITES`); er zeigt die übernommenen Namen und fragt nach. Die gesicherte Datei liegt danach vollständig
+als `.env.from-backup` daneben, die vorherige als `.env.before-restore`. Mit der CA vertrauen Browser, die ihr schon
+vertrauen, auch dem neuen Server. `./opnexus status` zeigt, wann die letzte Vollsicherung entstand.
+
+### Umzug und Notfall (Kaltreserve)
+
+Fällt der OPNexus-Server aus, laufen die Firewalls unverändert weiter; nur Verwaltung, Alarme und geplante
+Wartungen stehen still. Für diesen Fall hält man eine **Kaltreserve**: eine Vollsicherung mit `.env` und CA und
+einen zweiten Server, auf dem OPNexus installiert werden kann.
+
+**Notfall (der alte Server ist weg):** neuen Server nach [Installation aus dem Release-Bundle](#installation-aus-dem-release-bundle)
+mit gleicher oder neuerer Version einrichten, dann `./opnexus restore DATEI --with-env --with-ca`. Danach die Adresse
+(virtuelle IP, DNS-Name) auf den neuen Server zeigen lassen. Unbestätigte Änderungen, deren Frist während des Ausfalls
+abgelaufen ist, nimmt der neue Server sofort zurück: im Zweifel gilt der alte Stand.
+
+**Geplanter Umzug (beide Server laufen):** am alten Server
+
+```bash
+./opnexus migrate-host root@neuer-server            # --dir PFAD, wenn OPNexus dort woanders liegt
+```
+
+Voraussetzungen: Anmeldung per SSH-Schlüssel am Ziel, dort OPNexus installiert und gestartet (gleiche oder neuere
+Version). Das Werkzeug prüft das Ziel, hält den alten Server an (ab da keine Änderungen mehr), erstellt eine
+Vollsicherung mit `.env` und CA (zufällige Passphrase, die nur über die SSH-Verbindung geht), spielt sie am Ziel
+zurück, vergleicht die Zahl der Firewalls und meldet die Dauer. Im Lab dauerte ein Umzug mit drei Firewalls
+**90 Sekunden** von der Vorprüfung bis zum gesunden Ziel; der Rückweg auf den alten Server gut 30 Sekunden. Der alte Server bleibt angehalten, nicht gelöscht: zurück geht es mit `docker compose stop` am
+Ziel und `docker compose up -d` am alten Server.
+
+**Danach zu prüfen:**
+- Firewalls, die ihre API nur bestimmten Absendern öffnen, müssen die Adresse des neuen Servers erlauben.
+- Mit [Management-Overlay](#firewalls-hinter-nat-management-tunnel) wählen sich Firewalls über eine öffentliche
+  Adresse ein; sie muss auf den neuen Server zeigen (die Schlüssel kommen mit der Sicherung mit).
+- Geöffnete Fenster der Firewall-Oberfläche über OPNexus brechen ab und werden neu geöffnet.
+
+
 
 **Was nicht im Dump ist:**
 - Die Tabellen der **Log-Erfassung** und der **Systemauslastung** (nur das Schema).
@@ -1765,6 +1857,16 @@ gesetzt); `backup` und `password` funktionieren in jeder Installation.
 Patch-Releases, `1` folgt allen 1.x. Ohne Argument holt `opnexus update` die neueste
 Version der Spur, mit Argument wird die Spur umgestellt. Nach einem Rollback steht
 die Version fest auf dem alten Stand.
+
+**Die Compose-Datei kommt mit (ab 1.34).** `opnexus update` übernimmt auch die `docker-compose.yml` des Zielreleases,
+damit neue Einstellungen der Dienste ankommen. Sie stammt aus dem signierten Updater-Image (nur mit `cosign` und
+`cosign.pub`, wie die CLI selbst). Die bisherige Datei bleibt als `docker-compose.yml.bak-<version>` liegen, ein
+Rollback legt sie zurück. Hast du die Datei **selbst angepasst** (sie weicht von der zuletzt übernommenen ab), bleibt
+sie unverändert; die neue Fassung liegt dann als `docker-compose.yml.new` daneben. Eigene Anpassungen gehören deshalb
+in eine `docker-compose.override.yml` im selben Verzeichnis: Compose liest sie automatisch mit, und Updates können die
+Hauptdatei weiter austauschen. Beim ersten Update mit dieser Funktion ist noch keine Prüfsumme bekannt; dann wird
+getauscht und `diff docker-compose.yml.bak-<version> docker-compose.yml` zeigt, was sich geändert hat.
+`OPNEXUS_NO_COMPOSE_REFRESH=1` schaltet das Übernehmen ab.
 
 **Rollback mit Datenbank-Wiederherstellung** bedeutet: alles steht auf dem Stand vor
 dem Update, was danach geschrieben wurde, ist weg, und Log-Historie und

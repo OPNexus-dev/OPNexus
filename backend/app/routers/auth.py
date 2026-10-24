@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.errors import ErrorCode, api_error
 from app.config import settings
 from app.database import get_db
@@ -58,7 +59,7 @@ def _set_session_cookie(response: Response, token: str, max_age: int | None = No
     response.set_cookie(
         key=session_cookie_name(),
         value=token,
-        max_age=max_age or settings.session_lifetime,
+        max_age=max_age or runtime_settings.value("session_lifetime_days"),
         httponly=True,
         samesite="lax",
         secure=settings.cookie_secure,

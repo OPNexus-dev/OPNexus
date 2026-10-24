@@ -29,7 +29,52 @@ in der App auf der Login-Seite, im Footer jeder Seite, auf `/about` und in
 den Einstellungen.
 
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
-ansteht): Saker …
+ansteht): wird beim nächsten MINOR-Release festgelegt (Saker ist mit 1.33.0 vergeben).
+
+## [1.34.0] "Griffon" — 2026-10-24
+
+- **Zum Update:** Das erste Update auf diese Version übernimmt auch die `docker-compose.yml` (siehe unten; braucht wie die
+  CLI-Aktualisierung `cosign` und `cosign.pub`), migriert die Datenbank (Revision 0032; ein Rollback spielt die Sicherung davor
+  zurück) und stellt das Backend auf einen unprivilegierten Benutzer um. Nichts davon braucht einen Handgriff.
+- **Nur ein Backend führt die Hintergrunddienste aus (HA, Stufe H0):** Laufen zwei Backends an derselben Datenbank, verschickten
+  beide jeden Alarm und brachen Zyklen mit `UniqueViolation` ab. Jetzt führt nur der Prozess mit der Leader-Sperre in der
+  Datenbank die neun Hintergrundschleifen aus; die anderen warten in Bereitschaft und übernehmen innerhalb einer halben Minute,
+  wenn der Leader ausfällt. Verliert der Leader seine Datenbankverbindung, hält er alle Schleifen sofort an (geprüft alle 5 Sekunden
+  und vor jedem Durchlauf). An einer Replica startet kein Leader. Rolle in `GET /api/health` und als Metrik `opnexus_leader`.
+  Zwei gleichzeitige Erststarts legen das Admin-Konto nur einmal an.
+- **Umzug und Kaltreserve (HA, Stufe H1):** `opnexus backup --full --with-env --with-ca` nimmt zusätzlich die `.env` und die
+  interne CA des Proxys mit, `opnexus restore DATEI --with-env --with-ca` spielt sie zurück (ohne Datenbank-Zugang, Version und
+  Adressen des Zielservers; die CA bleibt dieselbe, Browser vertrauen weiter). Neu: `opnexus migrate-host BENUTZER@ZIEL` zieht
+  eine Installation in einem Schritt auf einen anderen Server um (Vorprüfung, Quelle anhalten, Sicherung mit Zufalls-Passphrase,
+  Restore, Kontrolle). Im Lab 90 Sekunden mit drei Firewalls. `opnexus status` zeigt das Alter der letzten Vollsicherung.
+  Handbuch: „Umzug und Notfall“.
+- **Betriebseinstellungen im Webinterface:** Was bisher nur in der `.env` oder gar nur im Code stand, lässt sich unter
+  Einstellungen › Betriebseinstellungen ändern: Sitzungsdauer und Anmeldesperren, Bestätigungsfrist beim Ausrollen, Zeitlimit für
+  Firewall-Anfragen, Messintervalle und Aufbewahrung, Intervall der Versionsprüfung, Heartbeat-Adresse, CA des Mailservers (PEM
+  einfügen statt Datei einbinden), Zeitlimit Mailversand. Mit Grenzen, Standardwert, Zurücksetzen und Audit-Eintrag. Ein Wert in der
+  `.env` hat weiter Vorrang und wird als „vom Server“ angezeigt. Adressen, TLS und Datenbank-Zugang bleiben bewusst in der `.env`.
+- **Heartbeat für einen externen Überwacher:** Die Heartbeat-Adresse (nur `https://`) wird nach jedem erfolgreichen Prüfzyklus
+  aufgerufen; bleibt der Aufruf aus, schlägt der Überwacher Alarm. Die Adresse wird nie angezeigt oder protokolliert.
+- **Updates bringen die Compose-Datei mit:** Bisher tauschte `opnexus update` nur die Images; Änderungen an der
+  `docker-compose.yml` (neue Variablen, Härtung) kamen bei bestehenden Installationen nie an. Jetzt übernimmt das Update die Datei
+  des Zielreleases aus dem signierten Updater-Image, sichert die alte als `docker-compose.yml.bak-<version>` und legt sie beim
+  Rollback zurück. Eine hier angepasste Datei wird nicht überschrieben (neue Fassung als `docker-compose.yml.new`); eigene
+  Anpassungen gehören in `docker-compose.override.yml`.
+- **Alarm „Platte des OPNexus-Servers fast voll“** (standardmäßig an, ab 90 %, einstellbar): eine volle Platte hält die Datenbank
+  an und damit jeden anderen Alarm. Auch im Dashboard und als Metrik `opnexus_server_disk_used_percent`.
+- **Härtung aus einem externen Audit:**
+  - **Kein root mehr in den Containern:** Backend (uid 10001) und Frontend (`node`) laufen unprivilegiert, ohne neue Rechte (`no-new-privileges`), das Frontend zusätzlich
+    ohne Capabilities. Das Backend startet über `backend/scripts/start.sh` noch kurz als root, stellt die vorhandenen Datenvolumes einmalig um und gibt dann alle Rechte ab:
+    ein Update braucht keinen Handgriff, ein Rückweg auf eine ältere Version bleibt möglich. Notausgang für Sonderfälle: `OPNEXUS_RUN_AS_ROOT=1` in der `.env`.
+    `wg-hub` (braucht root für WireGuard) und `gui-gateway` (läuft schon als nobody) sind unverändert. Der Proxy (Caddy) und der optionale Updater (Docker-Socket) laufen weiter wie bisher.
+  - **Vollsicherung konsistent:** Ändern sich Geheimnisse, während die Sicherung läuft (jemand legt gerade ein Objekt an oder löscht eines), wird sie bis zu dreimal wiederholt;
+    gelingt das nicht, bricht sie mit einer klaren Meldung ab, statt ein unstimmiges Archiv zu schreiben.
+  - **Zieladress-Schutz überall:** Audit-Export (Webhook und Syslog), Offsite-S3 und der Update-Feed verbinden nur noch zu Adressen, die die Prüfung bestanden haben
+    (kein Loopback, Link-Local, Metadaten-Dienst; auch nicht über DNS-Rebinding oder Weiterleitungen). Adressen im eigenen Netz bleiben erlaubt. Der Update-Feed wird beim Lesen auf 1 MB begrenzt, nicht erst danach.
+- **Fehlende Basis-Rechte werden sichtbar:** Fehlen dem API-Schlüssel schon die Rechte für die Grundmessungen (Speicher, Last, Platte), schlug das ganze Sampling still fehl und der
+  Rechte-Alarm konnte nie auslösen. Jetzt entsteht ein Befund „Grundwerte“ (Recht „Lobby: Dashboard“), der sich nach Korrektur von selbst schließt.
+- **Installation:** Die `INSTALL.txt` im Bundle und die Anleitung auf der Website legen die `.env` jetzt mit `install -m 600` an (nur für dich lesbar), statt mit `cp`.
+- **Oberfläche:** Die Aktionsknöpfe der Backup-Tabelle auf der Host-Seite werden auf schmalen Bildschirmen als Symbole gezeigt, statt abgeschnitten zu werden.
 
 ## [1.33.0] "Saker" — 2026-10-24
 

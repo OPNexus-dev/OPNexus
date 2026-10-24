@@ -30,6 +30,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.config import settings
 from app.models.notification import CHANNEL_TYPES, NotificationChannel, NotificationProblem
 from app.services import notification_delivery, notification_secret_store, url_guard
@@ -224,7 +225,7 @@ async def send(channel: NotificationChannel, problem: NotificationProblem, trans
         except ValueError as exc:
             raise NotificationDeliveryError(f"{label}: {exc}") from None
         try:
-            async with url_guard.guarded_client(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
+            async with url_guard.guarded_client(timeout=runtime_settings.value("opnsense_timeout"), follow_redirects=False) as client:
                 resp = await client.request(method, url, json=payload, headers=headers)
                 resp.raise_for_status()
                 if ok_key and not (resp.json() or {}).get(ok_key):

@@ -11,6 +11,7 @@ bekannte Stand bleibt erhalten, und nichts davon darf je einen Request
 scheitern lassen oder länger als `_TIMEOUT_SECONDS` blockieren.
 """
 import asyncio
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -19,8 +20,10 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.config import settings
 from app.models.update_check_settings import DEFAULT_FEED_URL, UpdateCheckSettings
+from app.services import url_guard
 from app.version import APP_VERSION
 
 logger = logging.getLogger(__name__)
@@ -96,15 +99,19 @@ def _safe_url(value: object) -> str | None:
 
 
 async def _fetch(url: str) -> tuple[str, str | None]:
-    async with httpx.AsyncClient(timeout=_TIMEOUT_SECONDS, follow_redirects=True, max_redirects=3) as http:
-        response = await http.get(
-            url,
-            headers={"Accept": "application/json", "User-Agent": f"OPNexus/{APP_VERSION}"},
-        )
-    response.raise_for_status()
-    if len(response.content) > _MAX_BYTES:
-        raise ValueError("response too large")
-    data = response.json()
+    # Geschützter Client: der Feed ist eine vom Admin einstellbare Adresse, Weiterleitungen eingeschlossen. Die
+    # Antwort wird beim Lesen auf _MAX_BYTES begrenzt, nicht erst danach.
+    async with url_guard.guarded_client(timeout=_TIMEOUT_SECONDS, follow_redirects=True, max_redirects=3) as http:
+        async with http.stream(
+            "GET", url, headers={"Accept": "application/json", "User-Agent": f"OPNexus/{APP_VERSION}"},
+        ) as response:
+            response.raise_for_status()
+            body = bytearray()
+            async for chunk in response.aiter_bytes():
+                body += chunk
+                if len(body) > _MAX_BYTES:
+                    raise ValueError("response too large")
+    data = json.loads(body)
     tag = data["tag_name"]
     if not isinstance(tag, str):
         raise ValueError("tag_name is not a string")
@@ -133,7 +140,7 @@ async def check(db: AsyncSession) -> dict:
             reset_cache()
             _state.url = url
         now = datetime.now(timezone.utc)
-        interval = timedelta(hours=max(1, settings.update_check_interval_hours))
+        interval = timedelta(hours=max(1, runtime_settings.value("update_check_interval_hours")))
         fresh = _state.checked_at is not None and now - _state.checked_at < interval
         backing_off = _state.error is not None and _state.attempted_at is not None and now - _state.attempted_at < _RETRY_AFTER
         if not fresh and not backing_off:

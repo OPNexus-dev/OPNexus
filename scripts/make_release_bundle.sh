@@ -19,12 +19,8 @@ out="dist/$name"
 rm -rf "$out" "dist/$name.tar.gz"
 mkdir -p "$out"
 
-# Standardwerte in der Compose-Datei durch die Release-Werte ersetzen.
-sed -e "s|\${OPNEXUS_IMAGE_REPO:-local}|\${OPNEXUS_IMAGE_REPO:-$repo}|g" \
-    -e "s|\${OPNEXUS_VERSION:-latest}|\${OPNEXUS_VERSION:-$version}|g" \
-    docker-compose.yml > "$out/docker-compose.yml"
-grep -q "OPNEXUS_IMAGE_REPO:-$repo" "$out/docker-compose.yml" || { echo "Compose-Defaults nicht ersetzt" >&2; exit 1; }
-! grep -qE '^\s+build:' "$out/docker-compose.yml" || { echo "build: im Release-Compose" >&2; exit 1; }
+# Standardwerte in der Compose-Datei durch die Release-Werte ersetzen (dieselbe Datei steckt im Updater-Image).
+scripts/release_compose.sh "$version" "$repo" > "$out/docker-compose.yml"
 
 # .env.example mit gesetzter Registry und Version (der Updater liest .env).
 sed -e "s|^# OPNEXUS_IMAGE_REPO=.*|OPNEXUS_IMAGE_REPO=$repo|" \
@@ -37,7 +33,7 @@ cp cosign.pub "$out/"
 cat > "$out/INSTALL.txt" <<TXT
 OPNexus $version
 
-1. cp .env.example .env     und POSTGRES_PASSWORD (und was sonst nötig ist) eintragen
+1. install -m 600 .env.example .env     und POSTGRES_PASSWORD (und was sonst nötig ist) eintragen
 2. docker compose pull && docker compose up -d --no-build
 3. Anmelden:  ./opnexus password          (zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war)
               dann im Browser öffnen — der Einrichtungsassistent führt durch den Rest

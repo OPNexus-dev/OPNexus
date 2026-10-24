@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 
+from app import runtime_settings
 from app.config import settings
 from app.models.host import OpnsenseHost
 from app.services import firewall_url, opnsense_secret_store, overlay_service, tls_pin_service
@@ -60,7 +61,7 @@ def _client(host: OpnsenseHost) -> httpx.AsyncClient:
         base_url=host.base_url.rstrip("/") + "/api",
         auth=(host.api_key, secret),
         verify=tls_pin_service.verify_argument(host.verify_tls, host.tls_ca_pem),
-        timeout=settings.opnsense_timeout,
+        timeout=runtime_settings.value("opnsense_timeout"),
         # Firewalls reached through the management overlay (WireGuard hub) go via the hub's CONNECT proxy.
         proxy=overlay_service.proxy_for(host.base_url),
     )

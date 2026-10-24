@@ -401,25 +401,27 @@ export default function HostDetailPage() {
                 <tbody>
                   {backups.map((backup, index) => (
                     <tr key={backup.id} className="border-b border-slate-100 last:border-0">
-                      <td className="px-5 py-3 text-slate-900">{new Date(backup.created_at).toLocaleString(locale)}</td>
-                      <td className="px-5 py-3 text-slate-500">{formatSize(backup.size)}</td>
-                      <td className="px-5 py-3 text-right">
+                      <td className="px-3 py-3 text-slate-900 sm:px-5">{new Date(backup.created_at).toLocaleString(locale)}</td>
+                      <td className="px-3 py-3 text-slate-500 sm:px-5">{formatSize(backup.size)}</td>
+                      <td className="px-3 py-3 sm:px-5">
+                        <div className="flex justify-end gap-x-1">
                         {index + 1 < backups.length && (
-                          <Button variant="ghost" onClick={() => setDiffTarget({ older: backups[index + 1].id, newer: backup.id })}>
+                          <Button variant="ghost" className="!px-2 sm:!px-3.5" title={t("hostDetail.changes")} aria-label={t("hostDetail.changes")} onClick={() => setDiffTarget({ older: backups[index + 1].id, newer: backup.id })}>
                             <GitCompare size={14} />
-                            {t("hostDetail.changes")}
+                            <span className="hidden sm:inline">{t("hostDetail.changes")}</span>
                           </Button>
                         )}
                         {!readOnly && (
-                          <Button variant="ghost" onClick={() => handleDownloadBackup(backup.id)}>
+                          <Button variant="ghost" className="!px-2 sm:!px-3.5" title={t("hostDetail.download")} aria-label={t("hostDetail.download")} onClick={() => handleDownloadBackup(backup.id)}>
                             <Download size={14} />
-                            {t("hostDetail.download")}
+                            <span className="hidden sm:inline">{t("hostDetail.download")}</span>
                           </Button>
                         )}
-                        <Button variant="ghost" onClick={() => setRestoreTarget(backup.id)}>
+                        <Button variant="ghost" className="!px-2 sm:!px-3.5" title={t("hostDetail.restore")} aria-label={t("hostDetail.restore")} onClick={() => setRestoreTarget(backup.id)}>
                           <RotateCcw size={14} />
-                          {t("hostDetail.restore")}
+                          <span className="hidden sm:inline">{t("hostDetail.restore")}</span>
                         </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}

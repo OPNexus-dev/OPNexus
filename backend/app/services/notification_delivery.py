@@ -14,6 +14,7 @@ from email.message import EmailMessage
 
 import httpx
 
+from app import runtime_settings
 from app.config import settings
 from app.models.notification import NotificationProblem, NotificationSettings
 from app.services import notification_secret_store, url_guard
@@ -41,6 +42,7 @@ _LABELS = {
     "resource_threshold": "Ressourcen-Schwelle überschritten",
     "service_down": "Dienst ausgefallen",
     "api_rights_missing": "API-Rechte fehlen",
+    "server_disk": "Platte des OPNexus-Servers fast voll",
     "rollout_paused": "Rollout angehalten",
     "rollout_start_failed": "Rollout nicht automatisch gestartet",
     "test": "Testbenachrichtigung",
@@ -97,7 +99,7 @@ async def send_webhook(settings_row: NotificationSettings, problem: Notification
         raise NotificationDeliveryError(f"Webhook-Adresse nicht erlaubt: {exc}") from None
     try:
         # follow_redirects stays off: a redirect must not move the request to an address the check above never saw.
-        async with url_guard.guarded_client(timeout=settings.opnsense_timeout, follow_redirects=False) as client:
+        async with url_guard.guarded_client(timeout=runtime_settings.value("opnsense_timeout"), follow_redirects=False) as client:
             with url_guard.muted():
                 resp = await client.post(settings_row.webhook_url, content=raw, headers=headers)
                 resp.raise_for_status()
@@ -112,7 +114,7 @@ def _tls_context() -> ssl.SSLContext:
     """Verifying context (certificate chain AND hostname). smtplib's own default
     when no context is passed is an *unverifying* one — the connection would be
     encrypted but could be impersonated."""
-    return ssl.create_default_context(cafile=settings.smtp_ca_file or None)
+    return runtime_settings.smtp_ssl_context()
 
 
 def _send_email_sync(settings_row: NotificationSettings, subject: str, body: str) -> None:
@@ -130,7 +132,7 @@ def _send_email_sync(settings_row: NotificationSettings, subject: str, body: str
     message["To"] = ", ".join(settings_row.smtp_to_addresses)
     message.set_content(body)
 
-    timeout = settings.notification_smtp_timeout_seconds
+    timeout = runtime_settings.value("notification_smtp_timeout_seconds")
     if settings_row.smtp_security == "ssl":
         client = smtplib.SMTP_SSL(
             settings_row.smtp_host, settings_row.smtp_port, timeout=timeout, context=_tls_context()

@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import leader
 from app.models.carp_event import CarpEvent
 from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
@@ -24,7 +25,7 @@ from app.models.resource_sample import HostResourceSample
 from app.models.rollout import RolloutRun
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.routers.dashboard import collect_pending_actions
-from app.services import compliance_service, gateway_health_service, notification_settings_service
+from app.services import compliance_service, gateway_health_service, notification_checks, notification_settings_service
 from app.version import APP_VERSION
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -59,6 +60,12 @@ async def render(db: AsyncSession) -> str:
 
     out.family("opnexus_info", "OPNexus version (always 1).")
     out.sample("opnexus_info", 1, version=APP_VERSION)
+    out.family("opnexus_leader", "1 if this backend process runs the background loops (leader lock held), else 0.")
+    out.sample("opnexus_leader", 1 if leader.current_role() == leader.LEADER else 0, role=leader.current_role())
+    disk = notification_checks.server_disk_usage()
+    if disk is not None:
+        out.family("opnexus_server_disk_used_percent", "Used share of the disk holding OPNexus' Docker volumes (this backend's view).")
+        out.sample("opnexus_server_disk_used_percent", round(disk[0], 1))
 
     hosts = (await db.scalars(select(OpnsenseHost).order_by(OpnsenseHost.name))).all()
     latest_sample = (

@@ -30,9 +30,10 @@ from datetime import datetime, timedelta, timezone
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.config import settings
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser, Session
@@ -46,6 +47,9 @@ _ph = PasswordHasher()
 _DUMMY_HASH = _ph.hash(secrets.token_urlsafe(32))
 
 SESSION_TOKEN_BYTES = 32
+
+# Serializes the first-start account creation of several backends (policy_lock and leader.py use 728194031-33).
+_BOOTSTRAP_LOCK_KEY = 728194034
 
 
 # ── Password hashing ─────────────────────────────────────────────────────
@@ -158,7 +162,7 @@ class _LoginThrottle:
         if not force and now - self._last_purge < self._PURGE_EVERY_SECONDS and len(self._records) < self.MAX_RECORDS:
             return
         self._last_purge = now
-        window = settings.login_window_seconds
+        window = runtime_settings.value("login_window_seconds")
         for key in [
             k for k, r in self._records.items()
             if r.locked_until <= now and all(now - t >= window for t in r.failures)
@@ -179,11 +183,11 @@ class _LoginThrottle:
     def _record_key(self, key: str, max_attempts: int) -> None:
         now = time.monotonic()
         rec = self._records.setdefault(key, _AttemptRecord())
-        window = settings.login_window_seconds
+        window = runtime_settings.value("login_window_seconds")
         rec.failures = [t for t in rec.failures if now - t < window]
         rec.failures.append(now)
         if len(rec.failures) >= max_attempts:
-            rec.locked_until = now + settings.login_lockout_seconds
+            rec.locked_until = now + runtime_settings.value("login_lockout_seconds")
             rec.failures.clear()
 
     def retry_after(self, ip: str, username: str) -> int:
@@ -196,8 +200,8 @@ class _LoginThrottle:
 
     def record_failure(self, ip: str, username: str) -> None:
         self._purge(time.monotonic())
-        self._record_key(self._user_key(ip, username), settings.login_max_attempts)
-        self._record_key(self._ip_key(ip), settings.login_ip_max_attempts)
+        self._record_key(self._user_key(ip, username), runtime_settings.value("login_max_attempts"))
+        self._record_key(self._ip_key(ip), runtime_settings.value("login_ip_max_attempts"))
         key = username.lower()
         count, _ = self._failures_since_success.get(key, (0, 0.0))
         self._failures_since_success[key] = (count + 1, time.monotonic())
@@ -262,7 +266,7 @@ async def create_session(
             await db.rollback()
             raise api_error(401, ErrorCode.TOTP_REQUIRED)
     token = secrets.token_urlsafe(SESSION_TOKEN_BYTES)
-    expires_at = _now() + timedelta(seconds=lifetime_seconds or settings.session_lifetime)
+    expires_at = _now() + timedelta(seconds=lifetime_seconds or runtime_settings.value("session_lifetime_days"))
     session = Session(
         user_id=user_id,
         token_hash=_hash_token(token),
@@ -352,9 +356,12 @@ async def finalize_login(db: AsyncSession, user: AdminUser, ip: str) -> None:
 # ── Bootstrap ─────────────────────────────────────────────────────────
 
 async def bootstrap_admin(db: AsyncSession) -> None:
-    """Ensure the admin account exists."""
+    """Ensure the admin account exists. Two backends starting on an empty database at once (HA, a second stack) are
+    serialized here; the second one then sees the account of the first."""
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY})
     existing = await db.execute(select(AdminUser.id).limit(1))
     if existing.first() is not None:
+        await db.commit()  # releases the lock
         return
 
     password = settings.admin_password.strip()

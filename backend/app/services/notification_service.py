@@ -40,6 +40,7 @@ _CHECKS = [
     ("resource_threshold", "resource_threshold_enabled", monitor_checks.check_resource_threshold),
     ("service_down", "service_down_enabled", monitor_checks.check_service_down),
     ("api_rights_missing", "api_rights_enabled", monitor_checks.check_api_rights_missing),
+    ("server_disk", "server_disk_enabled", notification_checks.check_server_disk),
     ("rollout_paused", "rollout_problems_enabled", notification_checks.check_rollout_paused),
     ("rollout_start_failed", "rollout_problems_enabled", notification_checks.check_rollout_start_failed),
 ]

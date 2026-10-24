@@ -102,7 +102,7 @@ async def test_sample_records_only_refused_reads_in_denied(client, respx_mock):
     # forbidden -> denied (sorted); a server error and a missing endpoint are "unknown", no finding about rights
     assert raw["denied"] == ["gateways", "services"]
     assert raw["gateways"] is None and raw["services"] is None and raw["swap_used_pct"] is None
-    assert raw["ok"] == []  # nothing went through
+    assert raw["ok"] == ["base"]  # only the base reading went through
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_sample_denied_is_an_empty_list_when_nothing_is_refused(client, re
     _mock_resource_endpoints(respx_mock)
     _mock_optional_reads(respx_mock)
     raw = await _sample_raw()
-    assert raw["denied"] == [] and raw["ok"] == ["cpu", "gateways", "services", "swap"]
+    assert raw["denied"] == [] and raw["ok"] == ["base", "cpu", "gateways", "services", "swap"]
     # unreachable optional endpoints (connect error / timeout) are not refusals either
     _mock_optional_reads(respx_mock)
     respx_mock.get("https://fw1.test/api/routes/gateway/status").mock(side_effect=httpx.ReadTimeout("slow"))
@@ -120,14 +120,47 @@ async def test_sample_denied_is_an_empty_list_when_nothing_is_refused(client, re
 
 
 @pytest.mark.asyncio
-async def test_base_read_refusal_still_fails_the_sample(client, respx_mock):
+async def test_base_read_refusal_becomes_a_finding_instead_of_a_silent_failure(client, respx_mock):
+    """Fehlen schon die Basis-Rechte, gab es nie einen Messpunkt und der Rechte-Alarm konnte nicht auslösen."""
     _mock_vip(respx_mock)
     await _create_host(client, "fw1", "https://fw1.test")
     _mock_resource_endpoints(respx_mock)
     respx_mock.get("https://fw1.test/api/diagnostics/system/systemResources").respond(403)
     async with SessionLocal() as db:
         result = await resource_monitor_service.poll_all_hosts(db)
+    assert result["hosts_failed"] == 0 and result["sampled"] == 1
+    async with SessionLocal() as db:
+        sample = (await db.scalars(select(HostResourceSample))).one()
+    assert sample.raw == {"denied": ["base"], "ok": []}
+    assert sample.mem_used_pct is None and sample.disk_used_pct is None  # "unbekannt", nicht "in Ordnung"
+
+
+@pytest.mark.asyncio
+async def test_base_read_timeout_is_still_a_failed_sample_not_a_rights_finding(client, respx_mock):
+    _mock_vip(respx_mock)
+    await _create_host(client, "fw1", "https://fw1.test")
+    _mock_resource_endpoints(respx_mock)
+    respx_mock.get("https://fw1.test/api/diagnostics/system/systemResources").respond(500)
+    async with SessionLocal() as db:
+        result = await resource_monitor_service.poll_all_hosts(db)
     assert result["hosts_failed"] == 1 and result["sampled"] == 0
+
+
+@pytest.mark.asyncio
+async def test_base_rights_alert_opens_and_closes_again(client):
+    host = await _create_host(client, "fw1", "https://fw1.test")
+    hid = uuid.UUID(host["id"])
+    key = f"{hid}:base"
+    await _only("api_rights_enabled")
+    await _add_samples(hid, [{"denied": ["base"], "ok": []}] * 3)
+    problems = await _rights_problems()
+    assert list(problems) == [key]
+    assert problems[key]["fehlendes_recht"] == "Lobby: Dashboard" and problems[key]["endpunkt"].endswith("systemResources")
+    async with SessionLocal() as db:
+        await run_notification_checks(db)
+    await _clear_samples()
+    await _add_samples(hid, [{"denied": [], "ok": ["base"]}] * 3)
+    assert dict(await _rights_problems()) == {}
 
 
 # ── The alert ────────────────────────────────────────────────────────────────

@@ -32,6 +32,7 @@ from typing import Any, Awaitable, Callable
 from sqlalchemy import and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import runtime_settings
 from app.config import settings
 from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 
@@ -80,7 +81,7 @@ async def push_to_host(
     write: Callable[[str | None], Awaitable[str]],
     apply: Callable[[], Awaitable[Any]],
 ) -> Any:
-    window = timedelta(seconds=settings.deploy_confirm_window_seconds)
+    window = timedelta(seconds=runtime_settings.value("deploy_confirm_window_seconds"))
     before = {name: getattr(existing, name) for name in _FIELDS} if existing else None
     # An armed "error" row (written, apply not confirmed) holds the UNCONFIRMED payload as last_payload: a retry must
     # keep the original rollback target instead of promoting that payload to it.

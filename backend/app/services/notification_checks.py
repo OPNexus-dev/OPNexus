@@ -2,6 +2,7 @@
 whatever's currently bad. Pure detection — no delivery, no state tracking
 here (see notification_dedup.py for the open/resolved diffing that turns
 these snapshots into actual notifications)."""
+import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -18,6 +19,7 @@ from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.models.rule_deployment import RuleDeployment
 from app.models.scheduled_maintenance import ScheduledMaintenance
+from app.config import settings
 from app.services import backup_store, nat_drift_service, network_drift_service, rule_drift_service
 from app.services.notification_dedup import Problems
 from app.services.host_status_service import get_statuses
@@ -465,3 +467,36 @@ async def check_rollout_start_failed(db: AsyncSession) -> dict[str, dict]:
             "details": _short(error.get("params")),
         }
     return problems
+
+
+def server_disk_usage() -> tuple[float, int, int] | None:
+    """(used %, used bytes, total bytes) of the file system that holds OPNexus' Docker volumes, measured on the
+    firewall-backup volume the backend mounts (in a standard installation the database lives on the same disk)."""
+    try:
+        usage = shutil.disk_usage(settings.opnsense_backup_dir)
+    except OSError:
+        return None
+    if not usage.total:
+        return None
+    return usage.used * 100.0 / usage.total, usage.used, usage.total
+
+
+async def check_server_disk(db: AsyncSession) -> dict[str, dict]:
+    """The disk OPNexus itself runs on. A full disk stops PostgreSQL and with it every other alert, so this one
+    warns while there is still room. Only the leader checks (the loop runs only there)."""
+    from app.services import notification_settings_service
+    cfg = await notification_settings_service.get_settings(db)
+    measured = server_disk_usage()
+    if measured is None:
+        unknown = Problems()
+        unknown.preserve_prefixes.add("server")  # not measurable this round: leave an open problem as it is
+        return unknown
+    pct, used, total = measured
+    if pct < cfg.server_disk_threshold_pct:
+        return {}
+    return {"server": {
+        "belegt_prozent": round(pct, 1), "schwelle_prozent": cfg.server_disk_threshold_pct,
+        "frei_gb": round((total - used) / 1e9, 1), "gesamt_gb": round(total / 1e9, 1),
+        "hinweis": "Platz schaffen (z. B. alte Images mit 'docker image prune', Log-Obergrenze unter Einstellungen › Logs senken) "
+                   "oder die Platte vergrößern. Läuft sie voll, bleibt die Datenbank stehen.",
+    }}
