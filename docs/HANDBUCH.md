@@ -1808,6 +1808,80 @@ Ziel und `docker compose up -d` am alten Server.
   Adresse ein; sie muss auf den neuen Server zeigen (die Schlüssel kommen mit der Sicherung mit).
 - Geöffnete Fenster der Firewall-Oberfläche über OPNexus brechen ab und werden neu geöffnet.
 
+### Hochverfügbarkeit (Warmreserve)
+
+Für einen Wechsel in Minuten statt Stunden betreibt man **zwei Knoten**: den **Primär** (Datenbank schreibbar, voller
+Stack, hält die gemeinsame Adresse, die **VIP**) und den **Standby** (Datenbank als Streaming-Replica, nur `postgres` und
+`backend` laufen). Die Datenbank wird über TLS repliziert und enthält auch die Logs. Gewechselt wird **nur von Hand** am
+Standby (`opnexus ha promote`); es gibt bewusst kein automatisches Failover, denn zwei Knoten ohne dritten Zeugen können
+einen Ausfall nicht von einer Netztrennung unterscheiden, und zwei Primäre mit Zugang zu denselben Firewalls richten mehr
+Schaden an als ein ausgefallenes OPNexus (die Firewalls laufen ohne OPNexus unverändert weiter).
+
+**Voraussetzungen:** zwei Linux-Server im selben Netz (L2), auf beiden OPNexus **derselben Version** aus dem Release-Bundle,
+SSH-Anmeldung per Schlüssel vom Primär zum Standby (als root), `openssl`, NTP auf beiden, eine freie Adresse als VIP. Auf dem
+Standby genug Platz für die Datenbank (Datenbank plus Reserve; die Plattenwarnung des Servers gilt auf beiden Knoten).
+Die HA-Befehle laufen auf dem Host, nicht im Updater-Container (VIP und Cron brauchen den Host).
+
+**Einrichten** (am künftigen Primär; der Standby wird dabei überschrieben):
+
+```bash
+./opnexus ha init root@192.168.1.21 --vip 192.168.1.22/24     # --node-ip, --peer-ip, --vip-dev, --peer-dir, --node, --peer-node
+```
+
+`ha init` erzeugt eine Cluster-CA und ein Serverzertifikat für die Datenbank (SAN: beide Knoten und die VIP), richtet am
+Primär die Replikationsrolle, `pg_hba.conf`, den Replikationsslot und die Obergrenze für zurückgehaltenes WAL (`max_slot_wal_keep_size`
+= 4 GB) ein, veröffentlicht den Datenbank-Port auf der LAN-Adresse (Datei `docker-compose.ha.yml`, ein kurzer Neustart der
+Datenbank), legt einen gemeinsamen SSH-Schlüssel für beide Richtungen an, baut den Standby per Basissicherung auf, setzt die VIP und
+richtet den Cron ein (`/etc/cron.d/opnexus-ha`: Abgleich alle 5 Minuten, VIP nach einem Neustart). `OPNEXUS_SITES` und
+`FRONTEND_ORIGIN` enthalten danach die VIP; die Proxy-CA ist auf beiden Knoten dieselbe, Browser vertrauen also beiden.
+
+**Betrieb:**
+- `./opnexus ha status` zeigt beide Knoten: Rolle, Epoche, Version, Replikationsverzug, Slot-Füllstand, Alter des letzten
+  Geheimnis-Abgleichs, Uhrenabstand und ob für jede Firewall und jedes Zwei-Faktor-Konto die Geheimnis-Datei vorhanden ist.
+- `./opnexus ha sync` (am Primär, sonst vom Cron) überträgt die Geheimnisse (liegen nicht in der Datenbank), die Überlagerung,
+  neue Konfigurationssicherungen der Firewalls, die Proxy-CA und die nicht knotenspezifischen Einstellungen der `.env`. Die
+  Geheimnisse sind also bis zu 5 Minuten alt; `ha promote` prüft vorher, ob für alles in der Datenbank eine Datei da ist.
+- **Klick-Updates im Webinterface sind gesperrt**, solange HA eingerichtet ist, ebenso `opnexus update`. Aktualisiert wird mit
+  `./opnexus ha update [VERSION]` am Primär: erst der Standby (Images ziehen, Signatur prüfen, Backend neu starten; er migriert
+  nie), dann der Primär wie gewohnt (Sicherung, Migration, die per Replikation zum Standby läuft), zuletzt die Prüfung, dass
+  beide Knoten dieselbe Version und Revision haben und der Standby streamt. Ein Auto-Rollback am Primär spielt einen Dump
+  zurück; der Standby folgt von selbst, die Log-Historie ist danach auf beiden leer.
+
+**Wechsel (der Primär ist ausgefallen oder soll gewartet werden):** am Standby
+
+```bash
+./opnexus ha promote
+```
+
+Das Werkzeug prüft Replikationsstand und Geheimnisse, **hält zuerst den alten Primär an** (Fencing: alle Dienste stoppen, VIP
+abgeben, `HA_ROLE=fenced`), stuft die Datenbank hoch, erhöht die **Epoche**, startet das Backend neu und die übrigen Dienste und
+setzt die VIP. Ist der alte Primär nicht erreichbar, bricht es ab: dann ihn sicher abschalten (Strom, Hypervisor), prüfen, dass er
+aus ist, und `./opnexus ha promote --force` aufrufen (verlangt die getippte Bestätigung „alter Primaer ist aus“). Im Lab war
+die VIP nach rund 12 Sekunden wieder erreichbar, die Hintergrunddienste (Alarme, geplante Wartungen) laufen nach etwa einer halben Minute.
+**Den alten Primär** holt man mit `./opnexus ha resync` (dort ausgeführt) als neuen Standby zurück; zurückwechseln muss man nicht.
+
+**Alarme und Metriken:** Der Leader prüft fünf Dinge (ein Schalter unter Einstellungen › Benachrichtigungen, Standard an): Standby
+streamt seit 5 Minuten nicht, Replikationsverzug über 64 MB oder 60 s, Replikationsslot hält mehr als 50 % der Obergrenze zurück oder
+fehlt/ist verloren („Standby neu aufbauen“), letzter Geheimnis-Abgleich älter als eine Stunde, Partner läuft als zweiter Primär
+(Split-Brain). Auf dem Dashboard erscheinen sie bei den Gesundheitsproblemen. Für Prometheus gibt es `opnexus_ha_role`, `opnexus_ha_epoch`,
+`opnexus_ha_replication_lag_bytes`, `opnexus_ha_slot_retained_bytes`, `opnexus_ha_sync_age_seconds` und `opnexus_ha_split_brain` (auch ein
+gesperrter Knoten antwortet auf den Abruf). Einstellungen › System zeigt die Karte „Hochverfügbarkeit“ mit dem Zustand des Paars.
+
+**Schutz vor zwei Primären:** Jedes Backend fragt den Partner (`https://PARTNER/api/health`, bei einem anderen `PROXY_HTTPS_PORT` mit dessen Port; `ha init` prüft die Adresse vorab) nach Rolle und Epoche, bevor es die
+Hintergrunddienste startet, und dann alle 30 Sekunden. Meldet der Partner `leader` mit gleicher oder höherer Epoche, läuft dieser
+Knoten im Zustand `fenced` ohne Hintergrunddienste und meldet `split_brain`, und er lehnt alle ändernden API-Aufrufe mit 503 ab (Lesen und Anmelden gehen weiter); ein nicht erreichbarer Partner ist kein Einwand
+(Anhalten ist Aufgabe des Fencings). Nach einem Neustart setzt ein Primär die VIP nicht, solange der Partner Leader ist.
+
+**Laufende Arbeit beim Wechsel:** Unbestätigte Änderungen mit abgelaufener Frist nimmt der neue Primär zurück. Überfällige
+Rollout-Schritte werden in den 10 Minuten nach einem Wechsel **verschoben** statt als „nicht gestartet“ verworfen. Geplante
+Wartungen, die beim Ausfall mitten im Start waren, schließt der neue Primär nach 15 Minuten als „unterbrochen“ ab (der Vorgang bleibt
+gesperrt, bis jemand die Firewall geprüft hat; ein Rollout pausiert).
+
+**Grenzen:** IPv4, ein Netz (L2) mit gemeinsamer VIP, genau zwei Knoten. Die Replikation ist asynchron: die letzten Sekunden vor einem
+Ausfall können fehlen (die Drift-Erkennung findet Abweichungen an den Firewalls). Fällt der Standby länger aus, als das
+zurückgehaltene WAL reicht (Obergrenze 4 GB, im Mittel rund 12 Stunden), verliert er seinen Slot; der Primär läuft weiter, und
+`ha resync` baut den Standby neu auf. Firewalls, die ihre API nur bestimmten Absendern öffnen, müssen beide Knoten-Adressen zulassen.
+
 
 
 **Was nicht im Dump ist:**

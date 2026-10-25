@@ -1335,6 +1335,27 @@ export interface UpdaterStatus {
   rollback_loses_data: boolean;
   rollback_version: string | null;
   active_rollouts?: number;
+  /** One node of an HA pair: updates and rollbacks by click are disabled (use `opnexus ha update` on the server). */
+  ha?: boolean;
+}
+
+/** Read-only state of the HA pair (GET /system/ha); `configured: false` = this installation is not part of a pair. */
+export interface HaStatus {
+  configured: boolean;
+  node?: string;
+  peer_ip?: string;
+  vip?: string | null;
+  db_role?: "primary" | "replica" | null;
+  backend_role?: string;
+  split_brain?: boolean;
+  epoch?: number;
+  primary_node?: string | null;
+  promoted_at?: string | null;
+  last_sync_at?: string | null;
+  sync_age_seconds?: number | null;
+  replication?: { state: string | null; lag_bytes: number | null; lag_seconds: number | null };
+  slot?: { present: boolean; active: boolean | null; wal_status: string | null; retained_bytes: number | null; limit_bytes: number | null };
+  peer?: { reachable: boolean; role: string | null; epoch: number | null };
 }
 
 export const api = {
@@ -1413,6 +1434,7 @@ export const api = {
   updateCheck: () => request<UpdateCheckSettings>("/system/update-check"),
   updateUpdateCheck: (body: { enabled?: boolean; feed_url?: string }) => request<UpdateCheckSettings>("/system/update-check", { method: "PUT", body: JSON.stringify(body) }),
   updaterStatus: () => request<UpdaterStatus>("/system/updater"),
+  haStatus: () => request<HaStatus>("/system/ha"),
   updaterUpdate: (version: string) => request<{ job: UpdaterJob }>("/system/updater/update", { method: "POST", body: JSON.stringify({ version }) }),
   updaterRollback: () => request<{ job: UpdaterJob }>("/system/updater/rollback", { method: "POST" }),
   getOutboundMode: (id: string) => request<OutboundMode>(`/outbound-nat/hosts/${id}/mode`),
@@ -1985,6 +2007,7 @@ export interface NotificationSettings {
   service_down_enabled: boolean;
   rollout_problems_enabled: boolean;
   api_rights_enabled: boolean;
+  ha_alerts_enabled: boolean;
   server_disk_enabled: boolean;
   server_disk_threshold_pct: number;
   gateway_loss_threshold_pct: number;
@@ -2045,6 +2068,7 @@ export interface NotificationSettingsUpdate {
   service_down_enabled?: boolean;
   rollout_problems_enabled?: boolean;
   api_rights_enabled?: boolean;
+  ha_alerts_enabled?: boolean;
   server_disk_enabled?: boolean;
   server_disk_threshold_pct?: number;
   gateway_loss_threshold_pct?: number;
@@ -2084,7 +2108,8 @@ export type ProblemType =
   | "backup_offsite_failed"
   | "compliance_finding"
   | "gateway_down" | "resource_threshold" | "service_down" | "api_rights_missing"
-  | "rollout_paused" | "rollout_start_failed" | "server_disk";
+  | "rollout_paused" | "rollout_start_failed" | "server_disk"
+  | "ha_standby_down" | "ha_replication_lag" | "ha_slot_retention" | "ha_sync_stale" | "ha_split_brain";
 
 export interface CarpEvent {
   id: string;

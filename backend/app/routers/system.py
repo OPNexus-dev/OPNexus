@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import leader
 from app.config import settings
 from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser
 from app.routers.auth import current_user
-from app.services import rollout_engine
+from app.services import ha_service, rollout_engine
 from app.services import update_check_service, updater_client
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -103,6 +104,8 @@ async def updater_status(db: AsyncSession = Depends(get_db), user: AdminUser = D
         # A restart in the middle of a firmware rollout is safe (its state is in the database), but the
         # UI warns: the run pauses its 15-second steps for as long as OPNexus is down.
         "active_rollouts": await rollout_engine.count_active(db),
+        # One node of an HA pair: click updates are refused by the updater, the UI points to `opnexus ha update`.
+        "ha": ha_service.configured(),
     }
     try:
         updater = await updater_client.status()
@@ -129,6 +132,7 @@ async def updater_status(db: AsyncSession = Depends(get_db), user: AdminUser = D
     result["major_change"] = bool(check["latest"]) and _major(check["latest"]) != _major(check["current"])
     result["can_update"] = (
         mode == "release" and not running and bool(check["update_available"]) and not result["major_change"]
+        and not result["ha"] and not updater.get("ha_role")
     )
     return result
 
@@ -162,3 +166,45 @@ async def _forward(call) -> dict:
         if rejected.code == "busy":
             raise api_error(409, ErrorCode.UPDATER_BUSY)
         raise api_error(409, ErrorCode.UPDATER_REJECTED, reason=rejected.code)
+
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+@router.get("/ha")
+async def ha_status(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)) -> dict:
+    """Read-only state of the HA pair for the card in Settings › System (no promote button on purpose: fencing the old
+    primary needs control over that host, so a switch is done with `opnexus ha promote`)."""
+    _admin(user)
+    if not ha_service.configured():
+        return {"configured": False}
+    snap = await ha_service.collect(db)
+    probe = leader.http_partner(settings.ha_peer_ip)
+    view = await probe() if probe else None
+    now = ha_service._now()
+    gate = leader.gate
+    return {
+        "configured": True,
+        "node": settings.ha_node,
+        "peer_ip": settings.ha_peer_ip,
+        "vip": settings.ha_vip.split("/")[0] or None,
+        "db_role": snap.db_role,
+        "backend_role": leader.current_role(),
+        "split_brain": bool(gate is not None and gate.split_brain),
+        "epoch": snap.epoch,
+        "primary_node": snap.primary_node,
+        "promoted_at": _iso(snap.promoted_at),
+        "last_sync_at": _iso(snap.last_sync_at),
+        "sync_age_seconds": None if snap.last_sync_at is None else max(0, int((now - snap.last_sync_at).total_seconds())),
+        "replication": {
+            "state": snap.replication_state, "lag_bytes": snap.replication_lag_bytes,
+            "lag_seconds": snap.replication_lag_seconds,
+        },
+        "slot": {
+            "present": snap.slot_present, "active": snap.slot_active, "wal_status": snap.slot_wal_status,
+            "retained_bytes": snap.slot_retained_bytes, "limit_bytes": snap.slot_limit_bytes,
+        },
+        # The standby runs no proxy, so it only answers while it is a full node (a primary, a fenced node).
+        "peer": {"reachable": view is not None, "role": view[0] if view else None, "epoch": view[1] if view else None},
+    }

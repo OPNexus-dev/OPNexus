@@ -36,7 +36,7 @@ from app.models.maintenance_window import MaintenanceWindow
 from app.models.rollout import RolloutPlan, RolloutRun, RolloutRunHost, RolloutRunWave
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.models.user import AdminUser
-from app.services import audit_service, rollout_health, rollout_service, window_service
+from app.services import audit_service, ha_service, rollout_health, rollout_service, window_service
 from app.services import opnsense_client as client
 from app.services.host_maintenance_service import ensure_no_maintenance, peers
 from app.services.host_status_service import get_statuses
@@ -297,7 +297,10 @@ async def _sync_hosts(db: AsyncSession, run: RolloutRun) -> bool:
             host.status, host.detail, host.finished_at = "failed", _note("schedule_missing"), now
             problem = ("host_failed", {"host": host.host_name, "error": "schedule_missing"})
         elif sched.status == "pending":
-            if host.started_at and now - host.started_at > HOST_START_TIMEOUT:
+            # After a failover (HA) the schedule may have been postponed to the end of the grace period.
+            grace_end = await ha_service.last_grace_end(db)
+            started = max(host.started_at, grace_end) if host.started_at and grace_end else host.started_at
+            if started and now - started > HOST_START_TIMEOUT:
                 # Never leave it pending behind a paused run: it would fire whenever the poll loop comes back.
                 if await requeue_if_pending(db, host):
                     problem = ("host_not_started", {"host": host.host_name})

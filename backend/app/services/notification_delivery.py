@@ -45,6 +45,11 @@ _LABELS = {
     "server_disk": "Platte des OPNexus-Servers fast voll",
     "rollout_paused": "Rollout angehalten",
     "rollout_start_failed": "Rollout nicht automatisch gestartet",
+    "ha_standby_down": "Hochverfügbarkeit: Standby repliziert nicht",
+    "ha_replication_lag": "Hochverfügbarkeit: Replikationsverzug",
+    "ha_slot_retention": "Hochverfügbarkeit: Replikationsslot",
+    "ha_sync_stale": "Hochverfügbarkeit: Geheimnis-Abgleich veraltet",
+    "ha_split_brain": "Hochverfügbarkeit: zwei Primäre (Split-Brain)",
     "test": "Testbenachrichtigung",
 }
 

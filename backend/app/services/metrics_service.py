@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import leader
+from app.config import settings
 from app.models.carp_event import CarpEvent
 from app.models.compliance_result import ComplianceResult
 from app.models.host import OpnsenseHost
@@ -25,7 +26,7 @@ from app.models.resource_sample import HostResourceSample
 from app.models.rollout import RolloutRun
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from app.routers.dashboard import collect_pending_actions
-from app.services import compliance_service, gateway_health_service, notification_checks, notification_settings_service
+from app.services import compliance_service, gateway_health_service, ha_service, notification_checks, notification_settings_service
 from app.version import APP_VERSION
 
 CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
@@ -54,6 +55,27 @@ class _Exposition:
         return "\n".join(self.lines) + "\n"
 
 
+async def _render_ha(out: "_Exposition", db: AsyncSession, now: datetime) -> None:
+    """HA pair (docs/HA-H2-DESIGN.md 3.8): this node's view. A standby reports its own replica state, a primary the standby's."""
+    snap = await ha_service.collect(db)
+    out.family("opnexus_ha_role", "1 for the role of this node's database in the HA pair (primary or replica).")
+    if snap.db_role is not None:
+        out.sample("opnexus_ha_role", 1, node=settings.ha_node, role=snap.db_role)
+    out.family("opnexus_ha_epoch", "HA epoch of this node's database (grows with every promote).")
+    out.sample("opnexus_ha_epoch", snap.epoch)
+    out.family("opnexus_ha_split_brain", "1 if this node's partner guard fenced it because the partner is leader with an epoch at least as high.")
+    out.sample("opnexus_ha_split_brain", 1 if leader.gate is not None and leader.gate.split_brain else 0)
+    if snap.replication_lag_bytes is not None:
+        out.family("opnexus_ha_replication_lag_bytes", "WAL the standby has not replayed yet (primary's view).")
+        out.sample("opnexus_ha_replication_lag_bytes", snap.replication_lag_bytes)
+    if snap.slot_retained_bytes is not None:
+        out.family("opnexus_ha_slot_retained_bytes", "WAL the replication slot holds back (primary's view).")
+        out.sample("opnexus_ha_slot_retained_bytes", snap.slot_retained_bytes)
+    if snap.last_sync_at is not None:
+        out.family("opnexus_ha_sync_age_seconds", "Seconds since the last successful `opnexus ha sync`.")
+        out.sample("opnexus_ha_sync_age_seconds", max(0, int((now - snap.last_sync_at).total_seconds())))
+
+
 async def render(db: AsyncSession) -> str:
     now = datetime.now(timezone.utc)
     out = _Exposition()
@@ -62,6 +84,8 @@ async def render(db: AsyncSession) -> str:
     out.sample("opnexus_info", 1, version=APP_VERSION)
     out.family("opnexus_leader", "1 if this backend process runs the background loops (leader lock held), else 0.")
     out.sample("opnexus_leader", 1 if leader.current_role() == leader.LEADER else 0, role=leader.current_role())
+    if ha_service.configured():
+        await _render_ha(out, db, now)
     disk = notification_checks.server_disk_usage()
     if disk is not None:
         out.family("opnexus_server_disk_used_percent", "Used share of the disk holding OPNexus' Docker volumes (this backend's view).")

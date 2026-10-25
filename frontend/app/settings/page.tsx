@@ -2,6 +2,7 @@
 import { TwoFactorSection } from "@/components/TwoFactorSection";
 import { NotificationChannelsSection } from "@/components/NotificationChannelsSection";
 import { OpnexusUpdateSection } from "@/components/OpnexusUpdateSection";
+import { HaSection } from "@/components/HaSection";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { useEffect, useState } from "react";
 import { api, AppSettings, LogSettings, NotificationSettings, SmtpSecurity, Theme } from "@/lib/api";
@@ -76,6 +77,7 @@ function NotificationsSection() {
   const [serviceDown, setServiceDown] = useState(false);
   const [rolloutProblems, setRolloutProblems] = useState(true);
   const [apiRights, setApiRights] = useState(true);
+  const [haAlerts, setHaAlerts] = useState(true);
   const [serverDisk, setServerDisk] = useState(true);
   const [serverDiskLimit, setServerDiskLimit] = useState(90);
   const [gatewayLoss, setGatewayLoss] = useState(20);
@@ -117,6 +119,7 @@ function NotificationsSection() {
     setServiceDown(data.service_down_enabled);
     setRolloutProblems(data.rollout_problems_enabled ?? true);
     setApiRights(data.api_rights_enabled ?? true);
+    setHaAlerts(data.ha_alerts_enabled ?? true);
     setServerDisk(data.server_disk_enabled ?? true);
     setServerDiskLimit(data.server_disk_threshold_pct ?? 90);
     setGatewayLoss(data.gateway_loss_threshold_pct);
@@ -176,6 +179,7 @@ function NotificationsSection() {
         service_down_enabled: serviceDown,
         rollout_problems_enabled: rolloutProblems,
         api_rights_enabled: apiRights,
+        ha_alerts_enabled: haAlerts,
         server_disk_enabled: serverDisk,
         server_disk_threshold_pct: serverDiskLimit,
         gateway_loss_threshold_pct: gatewayLoss,
@@ -327,6 +331,7 @@ function NotificationsSection() {
             [t("settings.notify.event.rolloutProblems"), rolloutProblems, setRolloutProblems],
             [t("settings.notify.event.apiRights"), apiRights, setApiRights],
             [t("settings.notify.event.serverDisk"), serverDisk, setServerDisk],
+            [t("settings.notify.event.haAlerts"), haAlerts, setHaAlerts],
           ].map(([label, value, setter]) => (
             <label key={label as string} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={value as boolean} onChange={(e) => (setter as (v: boolean) => void)(e.target.checked)} />
@@ -493,7 +498,7 @@ const CATEGORIES: { key: CategoryKey; icon: typeof User; anchors: string[]; admi
   { key: "access", icon: KeyRound, anchors: ["access", "system-security", "sso", "duties", "gui-access"] },
   { key: "operation", icon: SlidersHorizontal, anchors: ["operation", "system-operation", "system-monitoring", "logs", "cleanup"] },
   { key: "data", icon: HardDrive, anchors: ["data", "backups", "audit-export"], adminOnly: true },
-  { key: "system", icon: Info, anchors: ["system", "opnexus-update", "setup", "about"] },
+  { key: "system", icon: Info, anchors: ["system", "opnexus-update", "ha", "setup", "about"] },
 ];
 
 function categoryFromHash(hash: string): { category: CategoryKey; anchor: string | null } | null {
@@ -592,7 +597,7 @@ export default function SettingsPage(){
     access: <><SystemSettingsSection groups={["security"]}/><OidcSection/><GuiAccessSection/></>,
     operation: <><SystemSettingsSection groups={["operation","monitoring"]}/><div id="logs" className="scroll-mt-4"><LogIngestSection/></div><CleanupSettings/></>,
     data: <><BackupSettingsSection/><AuditExportSection/></>,
-    system: <><OpnexusUpdateSection/><div id="setup" className="scroll-mt-4"><SetupAssistantSection/></div>{about}</>,
+    system: <><OpnexusUpdateSection/><HaSection/><div id="setup" className="scroll-mt-4"><SetupAssistantSection/></div>{about}</>,
   };
   const shown = categories.some((c)=>c.key===active) ? active : "account";
 

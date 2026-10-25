@@ -23,6 +23,7 @@ from jwt import PyJWK
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app.models.oidc import OidcLoginState, OidcSettings
 from app.models.user import AdminUser
 from app.services import notification_secret_store, url_guard
@@ -46,14 +47,10 @@ class OidcError(Exception):
 
 
 async def get_settings(db: AsyncSession) -> OidcSettings:
-    row = await db.get(OidcSettings, SINGLETON_ID)
-    if row is None:
-        row = OidcSettings(
-            id=SINGLETON_ID, enabled=False, display_name="SSO", client_secret_set=False,
-            scopes="openid profile email", groups_claim="groups",
-        )
-        db.add(row)
-        await db.flush()
+    row = await get_or_create(
+        db, OidcSettings, enabled=False, display_name="SSO", client_secret_set=False,
+        scopes="openid profile email", groups_claim="groups",
+    )
     return row
 
 

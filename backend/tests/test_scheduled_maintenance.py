@@ -69,7 +69,7 @@ async def test_fire_due_reboot_success(client, respx_mock):
         await db.commit()
 
         result = await scheduled_maintenance_service.fire_due(db)
-        assert result == {"due": 1, "fired": 1, "blocked_or_failed": 0}
+        assert result == {"due": 1, "fired": 1, "blocked_or_failed": 0, "postponed": 0}
 
         refreshed = await db.get(ScheduledMaintenance, sched.id)
         assert refreshed.status == "succeeded"
@@ -99,7 +99,7 @@ async def test_fire_due_update_takes_its_own_backup_first(client, respx_mock):
     sched_id = await _due_update(h)
 
     async with SessionLocal() as db:
-        assert await scheduled_maintenance_service.fire_due(db) == {"due": 1, "fired": 1, "blocked_or_failed": 0}
+        assert await scheduled_maintenance_service.fire_due(db) == {"due": 1, "fired": 1, "blocked_or_failed": 0, "postponed": 0}
         assert (await db.get(ScheduledMaintenance, sched_id)).status == "succeeded"
     assert download.call_count == 1 and update.call_count == 1
     assert len(backup_store.list_snapshots(uuid.UUID(h["id"]))) == 1
@@ -114,7 +114,7 @@ async def test_fire_due_update_fails_closed_when_backup_fails(client, respx_mock
     sched_id = await _due_update(h)
 
     async with SessionLocal() as db:
-        assert await scheduled_maintenance_service.fire_due(db) == {"due": 1, "fired": 0, "blocked_or_failed": 1}
+        assert await scheduled_maintenance_service.fire_due(db) == {"due": 1, "fired": 0, "blocked_or_failed": 1, "postponed": 0}
         refreshed = await db.get(ScheduledMaintenance, sched_id)
         assert refreshed.status == "failed"
         assert "Backup" in refreshed.result["error"]
@@ -158,7 +158,7 @@ async def test_fire_due_blocked_by_active_operation_on_cluster_peer(client, resp
         await db.commit()
 
         result = await scheduled_maintenance_service.fire_due(db)
-        assert result == {"due": 1, "fired": 0, "blocked_or_failed": 1}
+        assert result == {"due": 1, "fired": 0, "blocked_or_failed": 1, "postponed": 0}
         refreshed = await db.get(ScheduledMaintenance, sched.id)
         assert refreshed.status == "failed"
 

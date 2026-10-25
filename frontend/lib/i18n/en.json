@@ -73,7 +73,8 @@
         "serviceDown": "Watched service stopped (off by default)",
         "rolloutProblems": "Rollout paused or not started automatically",
         "apiRights": "API rights missing (gateway or service status not readable)",
-        "serverDisk": "Disk of the OPNexus server almost full"
+        "serverDisk": "Disk of the OPNexus server almost full",
+        "haAlerts": "High availability: standby gone, lag, slot, sync stale, split brain"
       },
       "pollInterval": "Check interval (seconds)",
       "pollHint": "At least 60 seconds, so the firewalls are not queried needlessly.",
@@ -196,7 +197,8 @@
         "confirm": "Roll back"
       },
       "badge": "Update available",
-      "resultTime": "Result from {time}"
+      "resultTime": "Result from {time}",
+      "haManaged": "This server is part of an HA pair. Update it on the server with “opnexus ha update” (standby first, then the primary); updates and rollbacks by click are disabled."
     },
     "setup": {
       "title": "Setup assistant",
@@ -355,6 +357,40 @@
       "dataHint": "Scheduled backups of the firewall configurations (offsite too) and forwarding the audit log to syslog or a webhook.",
       "system": "System",
       "systemHint": "Update OPNexus, reopen the setup assistant and version information."
+    },
+    "ha": {
+      "title": "High availability",
+      "hint": "Two nodes: the primary runs OPNexus, the standby keeps a copy of the database ready. A switch is made by hand on the standby with “opnexus ha promote”; there is deliberately no switch by click, because the old primary has to be stopped safely first.",
+      "node": "This node",
+      "role": {
+        "primary": "Primary",
+        "replica": "Standby",
+        "fenced": "Fenced",
+        "unknown": "Unknown"
+      },
+      "epoch": "Epoch",
+      "epochHint": "Counts every switch. The node with the higher epoch wins.",
+      "primaryNode": "Primary according to the database",
+      "promotedAt": "Last switch",
+      "never": "never",
+      "vip": "Shared address (VIP)",
+      "partner": "Partner",
+      "partnerReachable": "answers (role {role}, epoch {epoch})",
+      "partnerSilent": "does not answer over HTTPS (a standby runs no proxy)",
+      "replication": "Replication",
+      "replicationLag": "{state}, lag {mb} MB / {s} s",
+      "replicationNone": "no standby connected",
+      "slot": "Replication slot",
+      "slotValue": "{status}, holds back {mb} MB (limit {limit})",
+      "slotMissing": "missing",
+      "slotNoLimit": "none",
+      "sync": "Last secrets sync",
+      "syncAge": "{age} ago",
+      "syncNever": "never",
+      "unknownValue": "unknown",
+      "splitBrain": "Split brain: this node was fenced because the partner is leader with an epoch at least as high. It runs no background services.",
+      "partnerFenced": "The partner is running as a second primary and has been fenced. Rebuild it with “opnexus ha resync”.",
+      "commands": "Commands on the server: “opnexus ha status”, “opnexus ha promote” (on the standby), “opnexus ha resync”, “opnexus ha update”. See the manual, “High availability”."
     }
   },
   "nav": {
@@ -484,11 +520,19 @@
       "resource_threshold": "Resource",
       "service_down": "Service",
       "api_rights_missing": "API rights",
-      "server_disk": "OPNexus disk"
+      "server_disk": "OPNexus disk",
+      "ha": "HA"
     },
     "moreGateways": "+ {count} more gateways (on the firewall page)",
     "apiRightsLine": "{name}: API right missing ({read})",
-    "serverDiskLine": "Disk of the OPNexus server {pct} % full ({free} GB free)"
+    "serverDiskLine": "Disk of the OPNexus server {pct} % full ({free} GB free)",
+    "haLine": {
+      "ha_standby_down": "High availability: the standby no longer replicates",
+      "ha_replication_lag": "High availability: replication lag",
+      "ha_slot_retention": "High availability: replication slot is filling up or missing",
+      "ha_sync_stale": "High availability: secrets sync is stale",
+      "ha_split_brain": "High availability: two primaries (split brain)"
+    }
   },
   "hosts": {
     "add": "Add host",
@@ -1030,7 +1074,8 @@
     "ZIEL_HOST_NACH_AUSROLLEN_FEST": "The target host can no longer be changed once the entry has been deployed. Delete the entry (this also removes it from the firewall) and create it again for the new host.",
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "This ACME account is used by certificate requests; you can only change its host once no request uses it any more.",
     "VPN_DEPLOY_LAEUFT_BEREITS": "A deployment or removal is already running for this VPN. Wait a moment and try again.",
-    "SETTING_INVALID": "Setting “{setting}”: {reason}"
+    "SETTING_INVALID": "Setting “{setting}”: {reason}",
+    "NODE_FENCED": "This node is fenced (its HA partner runs OPNexus). Changes are not possible here; please work through the partner."
   },
   "workflow": {
     "attention": "Check errors",

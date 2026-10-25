@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app import runtime_settings
 from app.config import settings
 from app.models.update_check_settings import DEFAULT_FEED_URL, UpdateCheckSettings
@@ -65,12 +66,7 @@ def valid_feed_url(value: str) -> bool:
 
 
 async def get_settings(db: AsyncSession) -> UpdateCheckSettings:
-    row = await db.get(UpdateCheckSettings, _SINGLETON_ID)
-    if row is None:
-        row = UpdateCheckSettings(id=_SINGLETON_ID, enabled=False, feed_url=DEFAULT_FEED_URL)
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(db, UpdateCheckSettings, enabled=False, feed_url=DEFAULT_FEED_URL)
 
 
 def managed_by_server() -> bool:

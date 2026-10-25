@@ -137,6 +137,7 @@ def live_status() -> dict:
         "version_setting": env_file.get("OPNEXUS_VERSION") or None,
         "running_version": None,
         "db_revision": None,
+        "ha_role": env_file.get("HA_ROLE") or None,  # set by `opnexus ha init`: this node is part of an HA pair
         "services": {},
         "last_update": None,
     }
@@ -204,6 +205,10 @@ def start_job(action: str, target: str | None) -> dict:
         live = live_status()
         if live["mode"] != "release":
             raise Reject("not_release_mode")
+        if live["ha_role"]:
+            # Updating one node of a pair by click would leave the standby behind the database revision, and a promote
+            # would then fail. `opnexus ha update` does it in the right order (standby first).
+            raise Reject("ha_active")
         if action == "update":
             current = parse_version(live["running_version"])
             wanted = parse_version(target)

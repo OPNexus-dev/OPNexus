@@ -18,6 +18,7 @@ ProblemType = Literal[
     "compliance_finding",
     "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk",
     "rollout_paused", "rollout_start_failed",
+    "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain",
 ]
 ChannelType = Literal["ntfy", "gotify", "telegram", "teams", "matrix"]
 
@@ -54,6 +55,7 @@ class NotificationSettingsRead(BaseModel):
     resource_threshold_enabled: bool = False
     service_down_enabled: bool = False
     rollout_problems_enabled: bool = True
+    ha_alerts_enabled: bool = True
     api_rights_enabled: bool = True
     server_disk_enabled: bool = True
     server_disk_threshold_pct: int = 90
@@ -115,6 +117,7 @@ class NotificationSettingsUpdate(BaseModel):
     resource_threshold_enabled: bool | None = None
     service_down_enabled: bool | None = None
     rollout_problems_enabled: bool | None = None
+    ha_alerts_enabled: bool | None = None
     api_rights_enabled: bool | None = None
     server_disk_enabled: bool | None = None
     server_disk_threshold_pct: int | None = Field(default=None, ge=50, le=99)

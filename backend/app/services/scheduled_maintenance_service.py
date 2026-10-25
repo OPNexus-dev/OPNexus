@@ -40,7 +40,7 @@ from app.models.host_operation import HostOperation
 from app.models.scheduled_maintenance import ScheduledMaintenance
 from contextlib import contextmanager
 
-from app.services import audit_service, backup_store, opnsense_client as client, snapshot_service
+from app.services import audit_service, backup_store, ha_service, opnsense_client as client, snapshot_service
 from app.services.host_maintenance_service import ACTIVE, ensure_no_maintenance, inspect_carp_switch, inspect_host, peers
 from app.services.host_status_service import get_statuses
 
@@ -72,6 +72,9 @@ VERIFY_TIMEOUT = timedelta(minutes=20)
 # e.g. during an update), it no longer belongs to the decision that created it: the window may have closed
 # and the run may have been paused meanwhile. It is then not fired; the rollout engine re-queues the host.
 ROLLOUT_FIRE_GRACE = timedelta(minutes=5)
+# A run that is "running" without a phase was interrupted between the commit that marked it and the one that records
+# the outcome (the process died: the usual cause is a failover). Nothing steps such a row any more.
+INTERRUPTED_AFTER = timedelta(minutes=15)
 
 
 def _now() -> datetime:
@@ -94,7 +97,7 @@ def _rollout_details(sched: ScheduledMaintenance) -> dict:
 
 
 async def fire_due(db: AsyncSession) -> dict:
-    due = fired = blocked = 0
+    due = fired = blocked = postponed = 0
     seen: set = set()
     while True:
         # One row per transaction, locked: a second backend skips it instead of firing it again.
@@ -126,9 +129,56 @@ async def fire_due(db: AsyncSession) -> dict:
         await db.commit()  # never keep the row lock past this row
         if sched.status == "failed":
             blocked += 1
+        elif sched.status == "pending":
+            postponed += 1
         else:
             fired += 1
-    return {"due": due, "fired": fired, "blocked_or_failed": blocked}
+    return {"due": due, "fired": fired, "blocked_or_failed": blocked, "postponed": postponed}
+
+
+async def recover_interrupted(db: AsyncSession) -> int:
+    """Close runs that were interrupted before they got a phase (see INTERRUPTED_AFTER) as failed, so the operator
+    is told and a rollout run pauses, instead of the row hanging as "running" for good. The outcome on the firewall
+    is unknown (the call may or may not have gone out), so the host operation, if still "starting", becomes
+    "unknown": it stays locked until a person has looked. Returns how many were closed."""
+    ids = list((await db.scalars(
+        select(ScheduledMaintenance.id).where(ScheduledMaintenance.status == "running", ScheduledMaintenance.phase.is_(None))
+    )).all())
+    await db.commit()
+    closed = 0
+    for sched_id in ids:
+        sched = await db.scalar(
+            select(ScheduledMaintenance)
+            .where(ScheduledMaintenance.id == sched_id, ScheduledMaintenance.status == "running",
+                   ScheduledMaintenance.phase.is_(None))
+            .with_for_update(skip_locked=True)
+            .execution_options(populate_existing=True)
+        )
+        if sched is None:
+            await db.commit()
+            continue
+        if sched.host_operation_id:
+            op = await db.get(HostOperation, sched.host_operation_id)
+        else:
+            op = await db.scalar(
+                select(HostOperation)
+                .where(HostOperation.host_id == sched.host_id, HostOperation.action == sched.action,
+                       HostOperation.started_at >= sched.created_at)
+                .order_by(HostOperation.started_at.desc()).limit(1))
+        began = (op.started_at if op is not None else None) or sched.run_at
+        if _now() - began < INTERRUPTED_AFTER:
+            await db.commit()
+            continue
+        sched.status = "failed"
+        sched.result = {"error": "Ablauf unterbrochen (OPNexus war beendet oder wurde umgeschaltet), Ausgang auf der "
+                                 "Firewall unklar. Zustand der Firewall prüfen.", "interrupted": True}
+        if op is not None and op.status == "starting":
+            op.status = "unknown"
+            op.message = "Ausgang unklar: der Ablauf wurde unterbrochen. Nicht automatisch wiederholen."
+        await db.commit()
+        closed += 1
+        logger.warning("Geplante Wartung %s: unterbrochen, als fehlgeschlagen abgeschlossen", sched.id)
+    return closed
 
 
 def _reboot_expected(action: str, state: dict) -> bool:
@@ -146,6 +196,15 @@ async def _boot_time(host: OpnsenseHost) -> str | None:
 
 async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
     if sched.origin == "rollout" and _now() - sched.run_at > ROLLOUT_FIRE_GRACE:
+        grace_end = await ha_service.grace_ends_at(db)
+        if grace_end is not None:
+            # Overdue because the node was down and the standby took over (HA): the step belongs to a decision made
+            # minutes ago by the same installation, so it waits for the end of the grace period instead of lapsing.
+            sched.run_at = grace_end
+            await db.commit()
+            logger.warning("Geplante Wartung %s: Rollout-Schritt überfällig nach einem Wechsel, verschoben bis %s",
+                           sched.id, grace_end.isoformat())
+            return
         sched.status = "failed"
         sched.result = {"error": "Rollout-Schritt nicht rechtzeitig gestartet, nichts ausgeführt", "not_fired": True}
         await db.commit()

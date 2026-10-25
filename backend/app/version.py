@@ -6,5 +6,5 @@ convention — but both are bumped together whenever a release ships).
 Versioning scheme: see CHANGELOG.md ("Versionierung").
 """
 
-APP_VERSION = "1.34.1"
-APP_CODENAME = "Griffon"
+APP_VERSION = "1.35.0"
+APP_CODENAME = "Bateleur"

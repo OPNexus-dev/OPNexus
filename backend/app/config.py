@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     # Leer = aus.
     heartbeat_url: str = ""
 
+    # ── Hochverfügbarkeit (docs/HA-H2-DESIGN.md; von `opnexus ha init` in der .env gepflegt) ──
+    # Name dieses Knotens (/api/health meldet ihn) und LAN-Adresse des Partners für den Wächter im Leader-Gate
+    # (app/leader.py). Beides leer = keine HA.
+    ha_node: str = ""
+    ha_peer_ip: str = ""
+    ha_peer_port: int = 443  # HTTPS port of the partner's proxy (its PROXY_HTTPS_PORT)
+    ha_vip: str = ""  # shown in the HA card only
+
     # ── Updates aus dem Webinterface (app/services/updater_client.py) ─────
     # Optionaler Updater-Container (Compose-Profil "updater"). Das Backend hat
     # nie Zugriff auf den Docker-Socket; es reicht nur "aktualisieren" /

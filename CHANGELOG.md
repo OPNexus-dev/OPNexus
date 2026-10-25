@@ -31,6 +31,41 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.35.0] "Bateleur" — 2026-10-25
+
+- **Hochverfügbarkeit, Stufe H2a (Backend für die Warmreserve):**
+  - Neue Tabelle `ha_state` (Epoche, Primär, Zeitpunkt des letzten Wechsels, Migration 0033). `/api/health` meldet zusätzlich
+    `epoch` und `node`.
+  - Alle Einstellungs-Zeilen (Governance, Audit-Export, SSO, Logs, GUI-Zugang, Overlay, Update-Hinweis, Backups,
+    Benachrichtigungen) legt die Migration an; an einer schreibgeschützten Replica scheitert das Anlegen beim ersten Lesen nicht mehr
+    (Standardwerte im Speicher). Damit sind Anmeldung und Einstellungen am Standby möglich.
+  - `migrate.run` migriert eine Replica nie und behandelt eine neuere Revision dort nicht mehr als Fehler (nur Protokoll).
+  - Partner-Wächter im Leader-Gate (`HA_PEER_IP`): meldet der Partner `leader` mit gleicher oder höherer Epoche, führt dieser Knoten
+    keine Hintergrunddienste aus (Rolle `fenced`, Health `split_brain`); ein nicht erreichbarer Partner ist kein Einwand.
+  - Nach einem Wechsel (10 Minuten Schonfrist) werden überfällige Rollout-Schritte verschoben statt als „nicht gestartet“ verworfen;
+    geplante Wartungen, die ohne Phase hängen geblieben sind (Prozess beendet), schließt der neue Leader nach 15 Minuten als
+    unterbrochen ab (Vorgang bleibt gesperrt, Benachrichtigung, Rollout pausiert).
+  - Ein gesperrter Knoten (Rolle `fenced`) lehnt alle ändernden API-Aufrufe mit 503 (`NODE_FENCED`) ab; Lesen und Anmelden bleiben möglich.
+    Der Aufräum-Lauf für hängende Wartungen läuft in jeder Runde, und `/api/health` wartet höchstens eine Sekunde auf die Datenbank.
+
+- **Hochverfügbarkeit, Stufe H2b (Befehle für die Warmreserve):** `opnexus ha init | status | promote | resync | sync | update`.
+  `ha init` richtet Replikation über TLS, Slot (Obergrenze für zurückgehaltenes WAL), VIP, Cluster-SSH-Schlüssel und Cron ein und baut
+  den Standby auf; `ha promote` hält den alten Primär zuerst an (Fencing), stuft hoch und erhöht die Epoche; `ha resync` baut einen Knoten
+  neu als Standby auf (die Standby-Konfiguration schreibt OPNexus selbst, kein `pg_basebackup -R`); `ha sync` gleicht Geheimnisse, Proxy-CA
+  und `.env` zum Standby ab; `ha update` aktualisiert erst den Standby, dann den Primär. Klick-Updates im Webinterface und `opnexus update`
+  sind gesperrt, solange HA eingerichtet ist. Der Partner-Wächter fragt den HTTPS-Port des Partner-Proxys (`HA_PEER_PORT`, `ha init` prüft die Adresse vorab). Neu: `docker-compose.ha.yml` (vom Werkzeug erzeugt), `python -m app.ha_check` (fehlen Geheimnis-Dateien?).
+
+- **Hochverfügbarkeit, Stufe H2c (Alarme, Metriken, Anzeige):** Fünf neue Alarme für das HA-Paar (ein Schalter unter Einstellungen ›
+  Benachrichtigungen, Standard an): Standby repliziert nicht (5 Minuten), Replikationsverzug (> 64 MB oder > 60 s), Replikationsslot hält
+  mehr als die Hälfte der Obergrenze zurück oder fehlt/ist verloren, Geheimnis-Abgleich älter als eine Stunde, zweiter Primär (Split-Brain).
+  Metriken `opnexus_ha_role`, `opnexus_ha_epoch`, `opnexus_ha_replication_lag_bytes`, `opnexus_ha_slot_retained_bytes`,
+  `opnexus_ha_sync_age_seconds`, `opnexus_ha_split_brain`. Einstellungen › System zeigt die Karte „Hochverfügbarkeit“ (nur lesend: Rollen,
+  Epoche, Verzug, Slot, letzter Abgleich, VIP); der Update-Abschnitt weist bei HA auf `opnexus ha update` hin. Migration 0034.
+  Die Alarme teilen sich je Zyklus eine Messung, melden bei einer fehlgeschlagenen Abfrage nichts Neues (offene bleiben offen) und nutzen die Antwort des Partner-Wächters.
+
+- **Proxy: Adresslisten ohne Leerzeichen (B20):** `OPNEXUS_SITES=a,b` (und `OPNEXUS_GUI_SITES`) ließ Caddy die Adressen ablehnen, der Proxy
+  startete in einer Schleife neu. Das Proxy-Image glättet Kommas jetzt vor dem Start (`a,b` und `a, b` sind gleichwertig, leere Einträge entfallen); `opnexus update` schreibt die Listen außerdem in der `.env` in die Form `a, b`, damit auch ein Rollback auf ein älteres Proxy-Image startet.
+
 ## [1.34.1] "Griffon" — 2026-10-24
 
 - **Einstellungen in Bereiche gegliedert:** Mein Konto, Benachrichtigungen, Anmeldung & Zugriff, Betrieb, Sicherung & Export und

@@ -25,6 +25,7 @@ from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app.config import settings
 from app.models.overlay import OverlayPeer, OverlaySettings
 from app.services import secure_files
@@ -136,12 +137,7 @@ def proxy_for(base_url: str) -> str | None:
 # ── settings, hub config ─────────────────────────────────────────────────
 
 async def get_settings(db: AsyncSession) -> OverlaySettings:
-    row = await db.get(OverlaySettings, SINGLETON_ID)
-    if row is None:
-        row = OverlaySettings(id=SINGLETON_ID, enabled=False, subnet="10.99.0.0/24", listen_port=51820)
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(db, OverlaySettings, enabled=False, subnet="10.99.0.0/24", listen_port=51820)
 
 
 def endpoint_with_port(cfg: OverlaySettings) -> str | None:

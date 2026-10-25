@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import NotificationChannel, NotificationProblem, NotificationSettings
-from app.services import monitor_checks, notification_channels, notification_checks, notification_dedup, notification_delivery
+from app.services import ha_checks, monitor_checks, notification_channels, notification_checks, notification_dedup, notification_delivery
 from app.services import notification_settings_service
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,11 @@ _CHECKS = [
     ("server_disk", "server_disk_enabled", notification_checks.check_server_disk),
     ("rollout_paused", "rollout_problems_enabled", notification_checks.check_rollout_paused),
     ("rollout_start_failed", "rollout_problems_enabled", notification_checks.check_rollout_start_failed),
+    ("ha_standby_down", "ha_alerts_enabled", ha_checks.check_standby_down),
+    ("ha_replication_lag", "ha_alerts_enabled", ha_checks.check_replication_lag),
+    ("ha_slot_retention", "ha_alerts_enabled", ha_checks.check_slot_retention),
+    ("ha_sync_stale", "ha_alerts_enabled", ha_checks.check_sync_stale),
+    ("ha_split_brain", "ha_alerts_enabled", ha_checks.check_split_brain),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no

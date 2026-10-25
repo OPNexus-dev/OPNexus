@@ -206,7 +206,14 @@ export function OpnexusUpdateSection() {
             </p>
           )}
 
-          {!status.available && (
+          {status.ha && (
+            <p className={clsx("flex items-start gap-2 rounded-lg border p-3 text-sm", badgeToneClasses.info)}>
+              <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+              {t("settings.update.haManaged")}
+            </p>
+          )}
+
+          {!status.available && !status.ha && (
             <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               {(status.reason === "not_enabled" || status.reason === "unauthorized") && status.mode === "local" ? (
                 <p>{t("settings.update.localMode")}</p>
@@ -294,7 +301,7 @@ export function OpnexusUpdateSection() {
             </Button>
           )}
 
-          {status.available && status.mode === "release" && status.rollback_available && !running && (
+          {status.available && !status.ha && status.mode === "release" && status.rollback_available && !running && (
             <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-sm">
               <Button variant="outline" onClick={() => setConfirm("rollback")} disabled={busy}>
                 {t("settings.update.rollback.button")}

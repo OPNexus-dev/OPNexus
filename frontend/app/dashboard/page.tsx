@@ -182,7 +182,7 @@ export default function DashboardPage() {
     };
   }, [errorMessage, router]);
 
-  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk"].includes(p.problem_type));
+  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk", "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain"].includes(p.problem_type));
   const gatewayOrder: Record<string, number> = { offline: 0, degraded: 1, unknown: 2, forced_down: 3, online: 4 };
   const gatewayRows = (summary?.hosts ?? [])
     .flatMap((host) => (host.gateways ?? []).map((gateway) => ({ host, gateway })))
@@ -352,6 +352,12 @@ export default function DashboardPage() {
                         {t("dashboard.apiRightsLine", { name: String(problem.context.host_name), read: t(`gateway.rights.read.${String(problem.context.lesezugriff)}`) })}
                       </span>
                       <Badge tone="warning" className="shrink-0">{t("dashboard.alert.api_rights_missing")}</Badge>
+                    </Link>
+                  )}
+                  {problem.problem_type.startsWith("ha_") && (
+                    <Link href="/settings#ha" className="flex items-center justify-between gap-3 hover:underline">
+                      <span className="min-w-0 truncate font-medium text-slate-900">{t(`dashboard.haLine.${problem.problem_type}`)}</span>
+                      <Badge tone="danger" className="shrink-0">{t("dashboard.alert.ha")}</Badge>
                     </Link>
                   )}
                   {problem.problem_type === "server_disk" && (

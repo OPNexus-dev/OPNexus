@@ -28,6 +28,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app.config import settings
 from app.errors import ErrorCode
 from app.models.gui_access import GuiAccessSettings, GuiSession, GuiTicket
@@ -102,12 +103,8 @@ def active_slots(row: GuiAccessSettings) -> list[int]:
 
 
 async def get_settings(db: AsyncSession) -> GuiAccessSettings:
-    row = await db.get(GuiAccessSettings, 1)
-    if row is None:
-        row = GuiAccessSettings(id=1, enabled=False, idle_timeout_minutes=15, absolute_timeout_minutes=60, slot_count=MAX_SLOTS)
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(
+        db, GuiAccessSettings, enabled=False, idle_timeout_minutes=15, absolute_timeout_minutes=60, slot_count=MAX_SLOTS)
 
 
 def host_refusal(host: OpnsenseHost) -> str | None:

@@ -15,7 +15,7 @@ from app.errors import ErrorCode
 
 from app import models  # noqa: F401 - registers models with Base.metadata
 from app.auth_middleware import AuthMiddleware
-from app.security_middleware import OriginCheckMiddleware, SecurityHeadersMiddleware
+from app.security_middleware import FencedNodeMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
@@ -274,6 +274,9 @@ async def _scheduled_maintenance_poll_loop():
         await leader.checkpoint()
         try:
             async with SessionLocal() as db:
+                # What a previous process left half done (a failover, a crash): runs without a phase are closed once they
+                # are old enough. Every round, not only the first: a run younger than the limit at takeover must not hang.
+                await scheduled_maintenance_service.recover_interrupted(db)
                 result = await scheduled_maintenance_service.fire_due(db)
                 if result["due"]:
                     logger.info(
@@ -376,7 +379,11 @@ async def lifespan(app: FastAPI):
         # A GUI-gateway slot must never be a trusted OPNexus origin (CORS with credentials).
         raise RuntimeError(f"OPNEXUS_GUI_SITES overlaps FRONTEND_ORIGIN: {', '.join(conflicts)} — refusing to start")
     await migrate.run()
-    await runtime_settings.refresh()  # values from Settings › Betrieb; refreshed in every process (leader or not)
+    try:  # values from Settings › Betrieb; refreshed in every process (leader or not)
+        await runtime_settings.refresh()
+    except Exception:  # a replica whose schema is older than this code (standby updated first) has no such table yet
+        logger.warning("Einstellungen aus dem Webinterface nicht lesbar, Standardwerte gelten bis zum nächsten Versuch",
+                       exc_info=True)
     async with SessionLocal() as db:
         await auth_service.bootstrap_admin(db)
         try:
@@ -483,6 +490,7 @@ app.add_middleware(AuthMiddleware)
 # Inside CORS so preflights are answered first; outside Auth so a forged
 # cross-site write is rejected before any session lookup happens.
 app.add_middleware(OriginCheckMiddleware)
+app.add_middleware(FencedNodeMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 # Added last so it wraps outermost (Starlette runs the last-added
 # middleware first) — CORS must see and answer OPTIONS preflight requests
@@ -531,8 +539,11 @@ app.include_router(port_forward.router, prefix="/api")
 @app.get("/api/health")
 async def health():
     # role: leader (runs the background loops), standby/takeover (another process does, or about to start),
-    # replica (database in recovery), starting. The HTTP status stays 200 in every role: the API works in all of them.
-    return {"status": "ok", "role": leader.current_role()}
+    # replica (database in recovery), fenced (the HA partner is leader with an epoch at least as high), starting.
+    # The HTTP status stays 200 in every role: the API works in all of them. epoch/node: HA (ha_state, HA_NODE); the
+    # partner guard of the other node reads role and epoch from here.
+    return {"status": "ok", "role": leader.current_role(), "epoch": await leader.read_epoch(),
+            "node": settings.ha_node or None}
 
 app.include_router(one_to_one.router, prefix="/api")
 

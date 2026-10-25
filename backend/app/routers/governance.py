@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.governance import GovernanceSettings
@@ -100,12 +101,7 @@ def _read(row: GovernanceSettings, user: AdminUser) -> GovernanceRead:
 
 
 async def get_settings(db: AsyncSession) -> GovernanceSettings:
-    row = await db.get(GovernanceSettings, 1)
-    if row is None:
-        row = GovernanceSettings(id=1, operators_may_deploy=True)
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(db, GovernanceSettings, operators_may_deploy=True)
 
 
 def _suggestion(request: Request, user: AdminUser) -> str | None:

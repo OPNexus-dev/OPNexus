@@ -496,3 +496,151 @@ async def test_0031_adds_gate_probes_to_existing_plans_and_is_idempotent(scratch
     await _alembic(scratch, "upgrade", "head")
     await _alembic(scratch, "upgrade", "head")
     assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+# ── 0033: ha_state and the settings rows ─────────────────────────────────────
+
+def _settings_getters():
+    from app.models.audit_export import AuditExportSettings
+    from app.models.backup_settings import BackupSettings
+    from app.models.governance import GovernanceSettings
+    from app.models.gui_access import GuiAccessSettings
+    from app.models.log_settings import LogSettings
+    from app.models.notification import NotificationSettings
+    from app.models.oidc import OidcSettings
+    from app.models.overlay import OverlaySettings
+    from app.models.update_check_settings import UpdateCheckSettings
+    from app.routers import governance
+    from app.services import (audit_export_service, backup_schedule_service, gui_ticket_service, log_settings_service,
+                              notification_settings_service, oidc_service, overlay_service, update_check_service)
+    return [
+        (GovernanceSettings, governance.get_settings), (AuditExportSettings, audit_export_service.get_settings),
+        (BackupSettings, backup_schedule_service.get_settings), (GuiAccessSettings, gui_ticket_service.get_settings),
+        (LogSettings, log_settings_service.get_settings), (NotificationSettings, notification_settings_service.get_settings),
+        (OidcSettings, oidc_service.get_settings), (OverlaySettings, overlay_service.get_settings),
+        (UpdateCheckSettings, update_check_service.get_settings),
+    ]
+
+
+async def _rows(engine, model) -> list[dict]:
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    async with async_sessionmaker(engine, expire_on_commit=False)() as db:
+        rows = (await db.scalars(__import__("sqlalchemy").select(model).execution_options(populate_existing=True))).all()
+        return [{c.key: getattr(r, c.key) for c in model.__table__.columns if c.key != "updated_at"} for r in rows]
+
+
+async def test_0033_creates_ha_state_and_the_settings_rows_the_code_would_create(scratch):
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    await migrate.run()
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT id, epoch, primary_node, promoted_at FROM ha_state"))).one() == (1, 0, None, None)
+    from_migration = {}
+    for model, getter in _settings_getters():
+        rows = await _rows(scratch, model)
+        assert len(rows) == 1 and rows[0]["id"] == 1, model.__tablename__
+        from_migration[model] = rows[0]
+    # Same rows, created the way the code does it when it finds the table empty: the migration must not drift from the
+    # model defaults (a new column or a changed default shows up here).
+    async with scratch.begin() as conn:
+        for model, _ in _settings_getters():
+            await conn.execute(model.__table__.delete())
+    async with async_sessionmaker(scratch, expire_on_commit=False)() as db:
+        for _, getter in _settings_getters():
+            await getter(db)
+        await db.commit()
+    for model, _ in _settings_getters():
+        (row,) = await _rows(scratch, model)
+        assert row == from_migration[model], model.__tablename__
+
+
+async def test_0033_keeps_changed_settings_and_is_idempotent(scratch):
+    await migrate.run()
+    async with scratch.begin() as conn:
+        await conn.execute(text("UPDATE notification_settings SET webhook_url = 'https://hooks.example/x'"))
+        await conn.execute(text("UPDATE ha_state SET epoch = 7, primary_node = 'b'"))
+    await _alembic(scratch, "downgrade", "0032")
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT to_regclass('ha_state')"))).scalar() is None
+        assert (await conn.execute(text("SELECT webhook_url FROM notification_settings"))).scalar() == "https://hooks.example/x"
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT webhook_url FROM notification_settings"))).scalar() == "https://hooks.example/x"
+        assert (await conn.execute(text("SELECT epoch FROM ha_state"))).scalar() == 0  # the table was dropped and made anew
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []
+
+
+class _RecoveryEngine:
+    """The scratch database, but ``SELECT pg_is_in_recovery()`` answers true: a streaming replica for migrate.run()."""
+
+    def __init__(self, real):
+        self.real = real
+
+    def connect(self):
+        real_connect = self.real.connect()
+
+        class Conn:
+            async def __aenter__(self_inner):
+                self_inner.conn = await real_connect.__aenter__()
+                return self_inner
+
+            async def __aexit__(self_inner, *exc):
+                return await real_connect.__aexit__(*exc)
+
+            async def execute(self_inner, statement, *args, **kwargs):
+                if "pg_is_in_recovery" in str(statement):
+                    return await self_inner.conn.execute(text("SELECT true"))
+                return await self_inner.conn.execute(statement, *args, **kwargs)
+
+            def __getattr__(self_inner, name):
+                return getattr(self_inner.conn, name)
+
+        return Conn()
+
+
+@pytest.mark.parametrize("revision", ["head", "0031", "9999"])
+async def test_a_replica_is_never_migrated_and_an_unknown_revision_is_no_error(scratch, monkeypatch, caplog, revision):
+    await migrate.run()
+    if revision != "head":
+        async with scratch.begin() as conn:
+            await conn.execute(text("UPDATE alembic_version SET version_num = :v"), {"v": revision})
+    expected = _head() if revision == "head" else revision
+    monkeypatch.setattr(migrate, "engine", _RecoveryEngine(scratch))
+    called = []
+    monkeypatch.setattr(migrate, "_migrate", lambda: called.append(1))
+    with caplog.at_level("INFO", logger="app.migrate"):
+        await migrate.run()  # must not raise, not even for a revision this code does not know
+    assert called == []
+    async with scratch.connect() as conn:
+        assert (await conn.execute(text("SELECT version_num FROM alembic_version"))).scalar() == expected
+    assert any(m.startswith("Replica") for m in caplog.messages)
+    if revision == "9999":
+        assert any(r.levelname == "WARNING" for r in caplog.records)
+
+
+async def test_a_replica_without_any_schema_is_left_alone(scratch, monkeypatch):
+    monkeypatch.setattr(migrate, "engine", _RecoveryEngine(scratch))
+    await migrate.run()
+    assert await _version(scratch) is None
+
+
+async def test_0034_adds_the_ha_columns_keeps_data_and_is_idempotent(scratch):
+    await migrate.run()
+    async with scratch.begin() as conn:
+        await conn.execute(text("UPDATE ha_state SET epoch = 3, primary_node = 'b'"))
+        await conn.execute(text("UPDATE notification_settings SET webhook_url = 'https://hooks.example/x'"))
+    await _alembic(scratch, "downgrade", "0033")
+    async with scratch.connect() as conn:
+        cols = set((await conn.execute(text(
+            "SELECT column_name FROM information_schema.columns WHERE table_name IN ('ha_state', 'notification_settings')"))).scalars().all())
+        assert not ({"last_sync_at", "standby_seen_at", "ha_alerts_enabled"} & cols)
+        assert (await conn.execute(text("SELECT epoch FROM ha_state"))).scalar() == 3  # the downgrade drops columns, not rows
+    await _alembic(scratch, "upgrade", "head")
+    await _alembic(scratch, "upgrade", "head")
+    async with scratch.connect() as conn:
+        row = (await conn.execute(text("SELECT epoch, primary_node, last_sync_at, standby_seen_at FROM ha_state"))).one()
+        assert row == (3, "b", None, None)
+        flags = (await conn.execute(text("SELECT ha_alerts_enabled, webhook_url FROM notification_settings"))).one()
+        assert flags == (True, "https://hooks.example/x")  # existing installations get the alarms switched on
+    assert await _version(scratch) == _head() and await _schema_diff(scratch) == []

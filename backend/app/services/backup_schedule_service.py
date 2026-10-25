@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app.models.backup_settings import BackupSettings, BackupUpload
 from app.models.host import OpnsenseHost
 from app.services import backup_crypto, backup_store, notification_secret_store
@@ -28,15 +29,10 @@ MAX_UPLOADS_PER_RUN = 20
 
 
 async def get_settings(db: AsyncSession) -> BackupSettings:
-    row = await db.get(BackupSettings, SINGLETON_ID)
-    if row is None:
-        row = BackupSettings(
-            id=SINGLETON_ID, scheduled_enabled=True, interval_hours=24, keep_count=30, offsite_enabled=False,
-            s3_region="us-east-1", s3_prefix="opnexus", s3_path_style=True, s3_secret_set=False, passphrase_set=False,
-        )
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(
+        db, BackupSettings, scheduled_enabled=True, interval_hours=24, keep_count=30, offsite_enabled=False,
+        s3_region="us-east-1", s3_prefix="opnexus", s3_path_style=True, s3_secret_set=False, passphrase_set=False,
+    )
 
 
 def offsite_ready(cfg: BackupSettings) -> bool:

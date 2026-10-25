@@ -22,6 +22,12 @@ Eine Datenbank, die schon von einer NEUEREN Version migriert wurde (unbekannte
 Revision), wird nicht angefasst — der Start bricht ab, statt mit einem Schema
 zu laufen, das der Code nicht kennt. Rollback = das Pre-Upgrade-Backup
 einspielen oder die neuere Version wieder starten.
+
+Eine Datenbank in Recovery (Streaming-Replica eines HA-Standbys) wird NIE migriert und nie als Fehler abgelehnt: sie ist
+schreibgeschützt, die Migration kommt über die Replikation vom Primär. Ob die Revision zum Code passt, wird nur
+protokolliert (ein Standby mit neueren Images wartet auf die Migration des Primärs, einer mit älteren Images läuft
+weiter, bis er aktualisiert wird). Nach einem Promote startet `opnexus ha promote` das Backend neu; dann gilt wieder
+der normale Ablauf.
 """
 import asyncio
 import importlib
@@ -219,8 +225,36 @@ async def _migrate() -> None:
         await conn.run_sync(_run_alembic, "upgrade", "head")
 
 
+async def _log_replica_state() -> bool:
+    """True if the database is a streaming replica: log how its revision relates to this code and leave it alone."""
+    async with engine.connect() as conn:
+        if not (await conn.execute(text("SELECT pg_is_in_recovery()"))).scalar_one():
+            return False
+        _, current = await _database_state(conn)
+    script = ScriptDirectory.from_config(_config())
+    head = script.get_current_head()
+    if current is None:
+        logger.info("Datenbank ist eine Replica ohne Schema; es wird nicht migriert")
+        return True
+    try:
+        script.get_revision(current)
+    except Exception:
+        logger.warning("Replica: Die Datenbank hat Schema-Revision %s, die diese Version nicht kennt (neuer als der "
+                       "Code). Es wird nicht migriert; dieses Backend sollte auf die Version des Primärs gebracht werden.",
+                       current)
+        return True
+    if current == head:
+        logger.info("Replica: Datenbankschema ist aktuell (Revision %s); es wird nicht migriert", head)
+    else:
+        logger.info("Replica: Datenbank steht auf Revision %s, der Code erwartet %s; es wird nicht migriert "
+                    "(das macht der Primär, die Änderung kommt per Replikation)", current, head)
+    return True
+
+
 async def run() -> None:
     load_models()
+    if await _log_replica_state():
+        return
     async with engine.connect() as lock_conn:
         await lock_conn.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _LOCK_KEY})
         try:

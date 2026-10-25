@@ -131,6 +131,17 @@ class UpdaterTest(unittest.TestCase):
         self.assertEqual(body["mode"], "local")
         self.assertEqual(self.call("POST", "/update", {"version": "1.14.1"})[1], {"error": "not_release_mode"})
 
+    def test_a_node_of_an_ha_pair_refuses_click_updates_and_rollbacks(self):
+        env = server.PROJECT_DIR / ".env"
+        env.write_text(env.read_text() + "HA_ROLE=primary\n")
+        _, body = self.call("GET", "/status")
+        self.assertEqual(body["ha_role"], "primary")
+        self.assertEqual(self.call("POST", "/update", {"version": "1.14.1"}), (409, {"error": "ha_active"}))
+        self.assertEqual(self.call("POST", "/rollback", {})[1], {"error": "ha_active"})
+        env.write_text(env.read_text().replace("HA_ROLE=primary\n", ""))
+        server._status_cache["value"] = None  # the status is cached for a few seconds
+        self.assertIsNone(self.call("GET", "/status")[1]["ha_role"])
+
     # --- Update ------------------------------------------------------------
     def test_update_runs_and_succeeds(self):
         status, body = self.call("POST", "/update", {"version": "1.14.1"})

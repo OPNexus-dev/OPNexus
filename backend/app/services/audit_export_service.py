@@ -23,6 +23,7 @@ import httpx
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.singleton import get_or_create
 from app import runtime_settings
 from app.config import settings
 from app.models.audit import AuditEvent
@@ -44,15 +45,10 @@ class ExportError(Exception):
 
 
 async def get_settings(db: AsyncSession) -> AuditExportSettings:
-    row = await db.get(AuditExportSettings, SINGLETON_ID)
-    if row is None:
-        row = AuditExportSettings(
-            id=SINGLETON_ID, syslog_enabled=False, syslog_port=514, syslog_protocol="udp",
-            webhook_enabled=False, webhook_signing_secret_set=False,
-        )
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(
+        db, AuditExportSettings, syslog_enabled=False, syslog_port=514, syslog_protocol="udp",
+        webhook_enabled=False, webhook_signing_secret_set=False,
+    )
 
 
 def event_dict(event: AuditEvent) -> dict:

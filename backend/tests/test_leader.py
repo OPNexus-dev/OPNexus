@@ -245,7 +245,7 @@ async def test_a_replica_never_becomes_leader():
 @pytest.mark.asyncio
 async def test_health_and_metrics_report_the_role(client):
     leader.gate = None
-    assert (await client.get("/api/health")).json() == {"status": "ok", "role": "starting"}
+    assert (await client.get("/api/health")).json() == {"status": "ok", "role": "starting", "epoch": 0, "node": None}
     tracker = Tracker()
     gate = _gate(tracker, "a")
     leader.gate = gate

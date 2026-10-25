@@ -8,6 +8,7 @@ the row directly in Postgres. Found to be a real gap the hard way: the
 30-day default, combined with two busy real firewalls, grew
 firewall_log_entries to ~8.7M rows / ~9.7GB in 9 days with no way for an
 operator to see or change that from the app itself."""
+from app.singleton import get_or_create
 from app.config import settings
 from app.models.log_settings import LogSettings
 from app.schemas.logs import LogSettingsUpdate
@@ -17,12 +18,7 @@ _SINGLETON_ID = 1
 
 
 async def get_settings(db: AsyncSession) -> LogSettings:
-    row = await db.get(LogSettings, _SINGLETON_ID)
-    if row is None:
-        row = LogSettings(id=_SINGLETON_ID)
-        db.add(row)
-        await db.flush()
-    return row
+    return await get_or_create(db, LogSettings)
 
 
 async def update_settings(db: AsyncSession, payload: LogSettingsUpdate) -> LogSettings:

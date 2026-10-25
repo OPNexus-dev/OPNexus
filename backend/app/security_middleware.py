@@ -26,6 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from app import leader
 from app.config import settings
 from app.errors import ErrorCode
 from app.routers.auth import has_session_cookie
@@ -105,6 +106,19 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
                     status_code=403,
                     content={"detail": {"code": ErrorCode.CROSS_ORIGIN_BLOCKED.value, "params": {}}},
                 )
+        return await call_next(request)
+
+
+class FencedNodeMiddleware(BaseHTTPMiddleware):
+    """A node the HA partner guard fenced (the partner is leader with an epoch at least as high) refuses every API call that
+    changes something. Its background loops are off, but a person who reaches it by its own address could otherwise deploy
+    from a stale database onto the same firewalls the real primary manages. Reading and signing in stay possible."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/auth/")
+                and leader.current_role() == leader.FENCED):
+            return JSONResponse(status_code=503, content={"detail": {"code": ErrorCode.NODE_FENCED.value, "params": {}}})
         return await call_next(request)
 
 

@@ -19,24 +19,33 @@ How it holds:
   (5 s) so a merely sluggish database does not make a single installation drop its loops.
 - A database in recovery (a streaming replica) never yields a leader: advisory locks work there, the loops would
   not (they write). The process stays in standby until the database is promoted.
+- Partner guard (HA, docs/HA-H2-DESIGN.md 3.6): with ``HA_PEER_IP`` set, the gate asks the partner node's /api/health
+  before it takes the lock, once more before it starts the loops, and then every ``partner_interval`` seconds. A
+  partner that reports ``leader`` with an epoch at least as high as ours means two primaries (the old one came back
+  without being fenced): this process becomes ``fenced``, runs no loops and reports ``split_brain``. An unreachable
+  partner raises no objection: stopping the old primary is the operator's job (fencing in ``opnexus ha promote``);
+  the guard only catches the case where that went wrong. Equal epochs fence both sides: the safe way to fail.
 
 The API is served by every process regardless of its role; writes through the API are serialized by the database
 as before. ``role`` is shown by /api/health and the metrics.
 """
 import asyncio
 import logging
+import ipaddress
 from collections.abc import Awaitable, Callable
 
+import httpx
 from sqlalchemy import text
 
-from app.database import engine
+from app.config import settings
+from app.database import SessionLocal, engine
 
 logger = logging.getLogger(__name__)
 
 # Next to policy_lock (728194031) and the admin-role lock (728194032).
 LOCK_KEY = 728194033
 
-STARTING, STANDBY, TAKEOVER, LEADER, REPLICA = "starting", "standby", "takeover", "leader", "replica"
+STARTING, STANDBY, TAKEOVER, LEADER, REPLICA, FENCED = "starting", "standby", "takeover", "leader", "replica", "fenced"
 
 
 class LeadershipLost(Exception):
@@ -44,12 +53,63 @@ class LeadershipLost(Exception):
 
 
 LoopFactory = Callable[[], Awaitable[None]]
+# What the partner's /api/health said: (role, epoch), or None if it could not be asked.
+PartnerView = tuple[str, int] | None
+PartnerProbe = Callable[[], Awaitable[PartnerView]]
+PARTNER_TIMEOUT = 3.0
+HEALTH_DB_TIMEOUT = 1.0
+
+
+def http_partner(peer_ip: str, port: int | None = None) -> PartnerProbe | None:
+    """Probe of the partner node over HTTPS (certificate not verified: only role and epoch are read, and an attacker
+    who can forge them gains nothing a fenced process would not lose anyway). None if the address is no IP."""
+    try:
+        address = ipaddress.ip_address(peer_ip.strip())
+    except ValueError:
+        logger.warning("HA_PEER_IP ist keine IP-Adresse (%r): der Partner-Wächter ist aus", peer_ip)
+        return None
+    host = f"[{address}]" if address.version == 6 else str(address)
+    port = port or settings.ha_peer_port
+    authority = host if port == 443 else f"{host}:{port}"
+
+    async def probe() -> PartnerView:
+        try:
+            async with httpx.AsyncClient(verify=False, timeout=PARTNER_TIMEOUT) as http:
+                response = await http.get(f"https://{authority}/api/health")
+            data = response.json()
+            return str(data.get("role")), int(data.get("epoch") or 0)
+        except Exception:
+            return None
+
+    return probe
+
+
+async def read_epoch() -> int | None:
+    """Epoch of this node's database for /api/health (None if the database cannot be read right now)."""
+    from app.services import ha_service  # late: the services import models that import app.database
+    async def read() -> int:
+        async with SessionLocal() as db:
+            return await ha_service.own_epoch(db)
+
+    try:  # /api/health must answer within the Docker healthcheck's and the partner's timeouts even if the database is slow
+        return await asyncio.wait_for(read(), HEALTH_DB_TIMEOUT)
+    except Exception:
+        return None
 
 
 class LeaderGate:
     def __init__(self, loops: dict[str, LoopFactory], *, check_interval: float = 5.0, check_timeout: float = 5.0,
-                 retry_interval: float = 15.0, takeover_delay: float | None = None, connect=engine.connect):
+                 retry_interval: float = 15.0, takeover_delay: float | None = None, connect=engine.connect,
+                 partner: PartnerProbe | None = None, partner_interval: float = 30.0):
         self._loops = loops
+        self._partner = partner or (http_partner(settings.ha_peer_ip) if settings.ha_peer_ip.strip() else None)
+        self.partner_interval = partner_interval
+        self._partner_at = float("-inf")
+        self._partner_objection = False
+        self._epoch = 0
+        self.partner_view: PartnerView = None  # last answer of the partner, for the alarms and the metrics
+        self.partner_probed = False  # partner_view has been filled at least once (None then means: not reachable)
+        self.split_brain = False
         self.check_interval = check_interval
         self.check_timeout = check_timeout
         self.retry_interval = retry_interval
@@ -77,14 +137,64 @@ class LeaderGate:
         except Exception:
             pass
 
+    async def _own_epoch(self) -> int:
+        """Epoch in this node's database (the last known one if it cannot be read)."""
+        if self._conn is None:
+            return self._epoch
+        try:
+            async with self._conn_lock:
+                value = await asyncio.wait_for(
+                    self._conn.scalar(text("SELECT epoch FROM ha_state WHERE id = 1")), self.check_timeout)
+                await self._conn.commit()
+            self._epoch = int(value or 0)
+        except Exception:
+            try:
+                await asyncio.wait_for(self._conn.rollback(), self.check_timeout)
+            except Exception:
+                pass
+        return self._epoch
+
+    async def _partner_objects(self, *, fresh: bool = False) -> bool:
+        """True if the HA partner is a leader with an epoch at least as high as ours. Throttled; ``fresh`` asks anyway."""
+        if self._partner is None:
+            return False
+        now = asyncio.get_running_loop().time()
+        if not fresh and now - self._partner_at < self.partner_interval:
+            return self._partner_objection
+        view = await self._partner()
+        self.partner_view = view
+        self.partner_probed = True
+        self._partner_at = asyncio.get_running_loop().time()
+        objection = view is not None and view[0] == LEADER and view[1] >= await self._own_epoch()
+        if objection != self._partner_objection:
+            if objection:
+                logger.error("Split-Brain: der Partner ist Leader (Epoche %s, eigene %s); dieser Knoten führt keine "
+                             "Hintergrunddienste aus, bis der Partner gestoppt oder neu aufgebaut ist", view[1], self._epoch)
+            else:
+                logger.warning("Split-Brain-Wächter: der Partner ist nicht mehr Leader mit gleicher oder höherer Epoche")
+        self._partner_objection = objection
+        self.split_brain = objection
+        return objection
+
     async def _try_acquire(self) -> str:
-        """STANDBY (lock held elsewhere or database unreachable), REPLICA, or TAKEOVER (lock is ours)."""
+        """STANDBY (lock held elsewhere or database unreachable), REPLICA, FENCED (the HA partner is leader), or
+        TAKEOVER (lock is ours)."""
         try:
             self._conn = await asyncio.wait_for(self._connect(), self.check_timeout)
             async with self._conn_lock:
                 if await asyncio.wait_for(self._conn.scalar(text("SELECT pg_is_in_recovery()")), self.check_timeout):
                     await self._close()
+                    self.split_brain = self._partner_objection = False
                     return REPLICA
+        except Exception as exc:
+            logger.warning("Leader-Sperre: Datenbank nicht erreichbar (%s)", type(exc).__name__)
+            await self._close()
+            return STANDBY
+        if await self._partner_objects(fresh=True):
+            await self._close()
+            return FENCED
+        try:
+            async with self._conn_lock:
                 got = await asyncio.wait_for(
                     self._conn.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": LOCK_KEY}), self.check_timeout)
                 await self._conn.commit()  # leave no transaction open on a connection that lives for days
@@ -169,14 +279,16 @@ class LeaderGate:
         deadline = asyncio.get_running_loop().time() + self.takeover_delay
         while (left := deadline - asyncio.get_running_loop().time()) > 0:
             await self._wait_or_lost(min(left, self.check_interval))
-            if self._lost.is_set() or not await self.check():
+            if self._lost.is_set() or not await self.check() or await self._partner_objects():
                 return
+        if await self._partner_objects(fresh=True):  # the last look before the loops start
+            return
         self.role = LEADER
         self._start_loops()
         logger.info("Dieser Prozess führt die Hintergrunddienste aus (Leader)")
         while not self._lost.is_set():
             await self._wait_or_lost(self.check_interval)
-            if self._lost.is_set() or not await self.check():
+            if self._lost.is_set() or not await self.check() or await self._partner_objects():
                 return
             self._restart_crashed()
 
@@ -192,15 +304,20 @@ class LeaderGate:
                     # Order matters: no loop may outlive the lock.
                     await self._stop_loops()
                     await self._close()
-                    self.role = STANDBY
-                logger.warning("Hintergrunddienste angehalten (Leader-Sperre verloren); bewerbe mich neu")
+                    self.role = FENCED if self._partner_objection else STANDBY
+                if self._partner_objection:
+                    logger.warning("Hintergrunddienste angehalten (Split-Brain-Wächter); bewerbe mich später neu")
+                else:
+                    logger.warning("Hintergrunddienste angehalten (Leader-Sperre verloren); bewerbe mich neu")
                 announced = None
             else:
                 self.role = state
                 if announced != state:
                     logger.info(
-                        "Bereitschaft: %s", "die Datenbank ist eine Replica" if state == REPLICA
-                        else "ein anderer Prozess führt die Hintergrunddienste aus oder die Datenbank fehlt")
+                        "Bereitschaft: %s", {
+                            REPLICA: "die Datenbank ist eine Replica",
+                            FENCED: "der HA-Partner ist Leader (Split-Brain-Wächter)",
+                        }.get(state, "ein anderer Prozess führt die Hintergrunddienste aus oder die Datenbank fehlt"))
                     announced = state
             await asyncio.sleep(self.retry_interval)
 

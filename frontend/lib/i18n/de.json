@@ -73,7 +73,8 @@
         "serviceDown": "Überwachter Dienst ausgefallen (standardmäßig aus)",
         "rolloutProblems": "Rollout angehalten oder nicht automatisch gestartet",
         "apiRights": "API-Rechte fehlen (Gateway- oder Dienststatus nicht lesbar)",
-        "serverDisk": "Platte des OPNexus-Servers fast voll"
+        "serverDisk": "Platte des OPNexus-Servers fast voll",
+        "haAlerts": "Hochverfügbarkeit: Standby fern, Verzug, Slot, Abgleich veraltet, Split-Brain"
       },
       "pollInterval": "Prüfintervall (Sekunden)",
       "pollHint": "Mindestens 60 Sekunden, um die Firewalls nicht unnötig zu belasten.",
@@ -196,7 +197,8 @@
         "confirm": "Zurücksetzen"
       },
       "badge": "Update verfügbar",
-      "resultTime": "Ergebnis vom {time}"
+      "resultTime": "Ergebnis vom {time}",
+      "haManaged": "Dieser Server gehört zu einem HA-Paar. Aktualisiert wird auf dem Server mit „opnexus ha update“ (erst der Standby, dann der Primär); Updates und Zurückrollen per Klick sind gesperrt."
     },
     "setup": {
       "title": "Einrichtungsassistent",
@@ -355,6 +357,40 @@
       "dataHint": "Geplante Sicherungen der Firewall-Konfigurationen (auch offsite) und die Weitergabe des Audit-Logs an Syslog oder Webhook.",
       "system": "System",
       "systemHint": "OPNexus aktualisieren, den Einrichtungsassistenten erneut öffnen und Versionsinformationen."
+    },
+    "ha": {
+      "title": "Hochverfügbarkeit",
+      "hint": "Zwei Knoten: der Primär führt OPNexus, der Standby hält eine Kopie der Datenbank bereit. Gewechselt wird nur von Hand am Standby mit „opnexus ha promote“; es gibt bewusst keinen Wechsel per Klick, denn dabei muss der alte Primär sicher angehalten werden.",
+      "node": "Dieser Knoten",
+      "role": {
+        "primary": "Primär",
+        "replica": "Standby",
+        "fenced": "Gesperrt",
+        "unknown": "Unbekannt"
+      },
+      "epoch": "Epoche",
+      "epochHint": "Zählt jeden Wechsel. Der Knoten mit der höheren Epoche gilt.",
+      "primaryNode": "Primär laut Datenbank",
+      "promotedAt": "Letzter Wechsel",
+      "never": "nie",
+      "vip": "Gemeinsame Adresse (VIP)",
+      "partner": "Partner",
+      "partnerReachable": "antwortet (Rolle {role}, Epoche {epoch})",
+      "partnerSilent": "antwortet nicht über HTTPS (ein Standby betreibt keinen Proxy)",
+      "replication": "Replikation",
+      "replicationLag": "{state}, Verzug {mb} MB / {s} s",
+      "replicationNone": "kein Standby verbunden",
+      "slot": "Replikationsslot",
+      "slotValue": "{status}, hält {mb} MB zurück (Obergrenze {limit})",
+      "slotMissing": "fehlt",
+      "slotNoLimit": "keine",
+      "sync": "Letzter Geheimnis-Abgleich",
+      "syncAge": "vor {age}",
+      "syncNever": "noch nie",
+      "unknownValue": "unbekannt",
+      "splitBrain": "Split-Brain: Dieser Knoten wurde gesperrt, weil der Partner Leader mit gleicher oder höherer Epoche ist. Er führt keine Hintergrunddienste aus.",
+      "partnerFenced": "Der Partner läuft als zweiter Primär und ist gesperrt. Mit „opnexus ha resync“ neu aufbauen.",
+      "commands": "Befehle auf dem Server: „opnexus ha status“, „opnexus ha promote“ (am Standby), „opnexus ha resync“, „opnexus ha update“. Siehe Handbuch, „Hochverfügbarkeit“."
     }
   },
   "nav": {
@@ -484,11 +520,19 @@
       "resource_threshold": "Ressource",
       "service_down": "Dienst",
       "api_rights_missing": "API-Rechte",
-      "server_disk": "OPNexus-Platte"
+      "server_disk": "OPNexus-Platte",
+      "ha": "HA"
     },
     "moreGateways": "+ {count} weitere Gateways (auf der Seite der Firewall)",
     "apiRightsLine": "{name}: API-Recht fehlt ({read})",
-    "serverDiskLine": "Platte des OPNexus-Servers zu {pct} % belegt ({free} GB frei)"
+    "serverDiskLine": "Platte des OPNexus-Servers zu {pct} % belegt ({free} GB frei)",
+    "haLine": {
+      "ha_standby_down": "Hochverfügbarkeit: der Standby repliziert nicht mehr",
+      "ha_replication_lag": "Hochverfügbarkeit: Replikationsverzug",
+      "ha_slot_retention": "Hochverfügbarkeit: Replikationsslot füllt sich oder fehlt",
+      "ha_sync_stale": "Hochverfügbarkeit: Geheimnis-Abgleich veraltet",
+      "ha_split_brain": "Hochverfügbarkeit: zwei Primäre (Split-Brain)"
+    }
   },
   "hosts": {
     "add": "Host hinzufügen",
@@ -1030,7 +1074,8 @@
     "ZIEL_HOST_NACH_AUSROLLEN_FEST": "Der Ziel-Host lässt sich nach dem Ausrollen nicht mehr ändern. Lösche den Eintrag (das entfernt ihn auch von der Firewall) und lege ihn für den neuen Host neu an.",
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "Dieses ACME-Konto wird von Zertifikatsanfragen verwendet; den Host kannst du erst ändern, wenn keine Anfrage es mehr nutzt.",
     "VPN_DEPLOY_LAEUFT_BEREITS": "Für dieses VPN läuft gerade ein Ausrollen oder Entfernen. Warte einen Moment und versuche es erneut.",
-    "SETTING_INVALID": "Einstellung „{setting}“: {reason}"
+    "SETTING_INVALID": "Einstellung „{setting}“: {reason}",
+    "NODE_FENCED": "Dieser Knoten ist gesperrt (der HA-Partner führt OPNexus). Änderungen sind hier nicht möglich; bitte über den Partner arbeiten."
   },
   "workflow": {
     "attention": "Fehler prüfen",

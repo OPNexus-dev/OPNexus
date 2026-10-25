@@ -115,3 +115,5 @@ from app.models.host_variable import HostVariable
 __all__ += ["HostVariable"]
 from app.models.runtime_setting import RuntimeSetting
 __all__ += ["RuntimeSetting"]
+from app.models.ha_state import HaState
+__all__ += ["HaState"]
