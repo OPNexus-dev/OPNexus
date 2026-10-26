@@ -1,21 +1,24 @@
-# Tests bei jedem Push/PR. Wird auch vom Release-Workflow wiederverwendet,
-# damit ein Release-Tag nie Images baut, deren Tests nicht grün waren.
-#
-# Die Jobs laufen bewusst in Containern (`container:`): dann ist der
-# Postgres-Service überall unter dem Namen "postgres" erreichbar — auf
-# GitHub genauso wie auf einem Forgejo/Gitea-Runner im Docker-Modus.
+# CI auf main/PRs und wiederverwendbare Tests für einen expliziten Release-Tag.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '.github/workflows/release.yml'
+      - '.github/workflows/ci.yml'
   pull_request:
   workflow_call:
+    inputs:
+      source_ref:
+        description: 'Optionaler Git-Tag/Ref für Release-Tests'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   backend:
     runs-on: ubuntu-latest
-    # Volles Image (nicht -slim): enthält git für actions/checkout.
     container: python:3.12
     services:
       postgres:
@@ -23,7 +26,6 @@ jobs:
         env:
           POSTGRES_USER: opnexus
           POSTGRES_PASSWORD: ci
-          # conftest.py erwartet eine DB, deren Name auf _test endet.
           POSTGRES_DB: opnexus_test
         options: >-
           --health-cmd "pg_isready -U opnexus"
@@ -32,7 +34,8 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://opnexus:ci@postgres:5432/opnexus_test
     steps:
       - uses: actions/checkout@v4
-      # pg_dump/pg_restore 16 wie im Backend-Image (Dumps nur gleiche Hauptversion).
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
       - run: backend/scripts/install_pg_client.sh 16
       - run: pip install -r backend/requirements.txt
       - run: python -m pytest -q
@@ -43,21 +46,22 @@ jobs:
     container: node:20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
       - run: npm ci --no-audit --no-fund
         working-directory: frontend
       - run: npm run lint
         working-directory: frontend
-      # next build prüft auch die Typen.
       - run: npm run build
         working-directory: frontend
 
-  # Schnelle Konsistenzprüfungen, die ohne Datenbank und Build auskommen.
   checks:
     runs-on: ubuntu-latest
     container: node:20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.ref }}
       - run: python3 scripts/check_i18n.py
       - run: bash -n scripts/opnexus && bash -n scripts/check_version.sh && bash -n scripts/make_release_bundle.sh
-      # Updater-Container (Zustandsübergänge, Ablehnungen, Auth) ohne Docker-Daemon.
       - run: python3 -m unittest discover -s updater -p 'test_*.py'
