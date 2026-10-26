@@ -1,38 +1,62 @@
-# Baut und veröffentlicht die Release-Images, wenn ein Tag vX.Y.Z gepusht wird.
-#
-# Bewusst registry-neutral: dieselbe Datei läuft auf GitHub (ghcr.io) und auf
-# Forgejo/Gitea mit Actions (Forgejo liest .github/workflows, wenn es kein
-# .forgejo/workflows gibt). Wohin gepusht wird, steht NICHT hier, sondern in
-# den Repository-Einstellungen:
-#   Variablen: REGISTRY          (Default ghcr.io, z. B. git.opnexus.dev)
-#              IMAGE_NAMESPACE   (Default: Repo-Besitzer, kleingeschrieben)
-#   Secrets:   REGISTRY_USERNAME (Default: der auslösende Benutzer)
-#              REGISTRY_TOKEN    (Default: GITHUB_TOKEN — das reicht nur für
-#                                 ghcr.io; auf Forgejo ein Zugriffstoken mit
-#                                 Berechtigung "write:package" eintragen)
-# Wer auf mehrere Registries veröffentlichen will, pusht den Tag einfach zu
-# mehreren Remotes — jeder Remote baut mit seiner eigenen Konfiguration.
-# Ergebnis: <REGISTRY>/<IMAGE_NAMESPACE>/opnexus-{backend,frontend,proxy,updater}:<version>
-# (flache Namen, weil verschachtelte Pfade je Registry unterschiedlich gehen).
-#
-# Der Publish-Job braucht einen Runner mit Docker-Zugriff, der QEMU-
-# Emulation für arm64 erlaubt (privilegiert).
+# OPNexus: automatische Tag-Releases und manueller Rebuild vorhandener Tags.
+# Manuelle Ausführung auf main: version = v1.35.0.
 name: Release
 
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+    tags: ['v*.*.*']
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existierender Git-Tag, z. B. v1.35.0'
+        required: true
+        type: string
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
+      - name: Release-Tag bestimmen
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag="$INPUT_VERSION"
+          else
+            tag="$REF_NAME"
+          fi
+          if [[ ! "$tag" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Ungültiger stabiler Versions-Tag: $tag" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
-      - run: scripts/check_version.sh "${GITHUB_REF_NAME%%-*}"
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+          persist-credentials: false
+
+      - name: Versionskonsistenz prüfen
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: scripts/check_version.sh "$RELEASE_TAG"
 
   test:
+    needs: verify
     uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ needs.verify.outputs.tag }}
 
   publish:
     needs: [verify, test]
@@ -46,6 +70,9 @@ jobs:
         service: [backend, frontend, proxy, updater]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+          persist-credentials: false
 
       - name: Ziel bestimmen
         id: target
@@ -53,7 +80,6 @@ jobs:
           REGISTRY: ${{ vars.REGISTRY || 'ghcr.io' }}
           NAMESPACE: ${{ vars.IMAGE_NAMESPACE || github.repository_owner }}
         run: |
-          # Registry-Pfade müssen kleingeschrieben sein.
           echo "image=$(echo "$REGISTRY/$NAMESPACE/opnexus-${{ matrix.service }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
@@ -65,16 +91,14 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - id: meta
+      - name: Image-Tags bestimmen
+        id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ steps.target.outputs.image }}
-          # v1.9.0 -> 1.9.0, 1.9, 1 (+ latest); Vorabversionen bekommen nur
-          # den vollen Tag und nie "latest".
+          # Manuelle Backfills nur mit exaktem Versions-Tag, keine Floating-Tags überschreiben.
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=raw,value=${{ needs.verify.outputs.version }}
 
       - uses: docker/build-push-action@v6
         with:
