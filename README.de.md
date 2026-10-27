@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.35.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.35.1` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -64,12 +64,14 @@ Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassis
 
 Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls).
 
-**Fertige Images** (amd64 und arm64) liegen in der Registry dieses Gitea. In der `.env`:
+**Fertige Images** (amd64 und arm64, mit [cosign](https://github.com/sigstore/cosign) signiert) liegen in der GitHub Container Registry. In der `.env`:
 
 ```bash
-OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.35.0
+OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev
+OPNEXUS_VERSION=1.35.1
 ```
+
+Dieselben Images (gleiche Digests und Signaturen) gibt es auch in der Registry dieses Gitea als `git.opnexus.dev/opnexus`; bestehende Installationen, die sie nutzen, laufen unverändert weiter.
 
 ```bash
 docker compose pull && docker compose up -d --no-build

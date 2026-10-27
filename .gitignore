@@ -6,6 +6,7 @@ frontend/next-env.d.ts
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/
+__pycache__/
 .opnexus-update-state
 dist/
 .public-repo/

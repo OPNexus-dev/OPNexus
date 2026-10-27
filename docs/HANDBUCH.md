@@ -51,8 +51,8 @@ Eine Kurzfassung steht in der [README](../README.md), die Änderungen je Version
 ### Installation aus dem Release-Bundle
 
 Das Bundle (`opnexus-<version>.tar.gz` auf der Release-Seite) enthält eine
-fertige Compose-Datei mit den Release-Images, eine Vorlage für die `.env`, das
-Werkzeug `opnexus` und eine Kurzanleitung.
+fertige Compose-Datei mit den Release-Images (Standard-Registry: `ghcr.io/opnexus-dev`),
+eine Vorlage für die `.env`, das Werkzeug `opnexus` und eine Kurzanleitung.
 
 ```bash
 tar xzf opnexus-<version>.tar.gz && cd opnexus-<version>
@@ -71,7 +71,7 @@ scripts/opnexus password
 ```
 
 Alternativ lassen sich auch aus einem Checkout die fertigen Images verwenden: in
-der `.env` `OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus` und `OPNEXUS_VERSION=<version>`
+der `.env` `OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev` und `OPNEXUS_VERSION=<version>`
 setzen, dann `docker compose pull && docker compose up -d --no-build`.
 
 ### Installation unter Windows
@@ -94,8 +94,14 @@ Release-Bundle:
 
 ```bash
 cosign verify --key cosign.pub --insecure-ignore-tlog=true \
-  git.opnexus.dev/opnexus/opnexus-backend:<version>
+  ghcr.io/opnexus-dev/opnexus-backend:<version>
 ```
+
+Die Images liegen in **zwei Registries**: `ghcr.io/opnexus-dev` (Standard für neue Installationen)
+und `git.opnexus.dev/opnexus` (Gitea, vollständig weiter unterstützt). Sie werden nur einmal
+gebaut und digestgleich samt Signatur in beide Registries kopiert; dieselbe Prüfung mit
+`git.opnexus.dev/opnexus/opnexus-backend:<version>` führt zum selben Digest. Die Prüfung gilt dem
+Digest, nicht dem Tag, und ist in beiden Registries gleich.
 
 Das Gleiche gilt für `opnexus-frontend`, `opnexus-proxy` und `opnexus-updater`. Eine
 erfolgreiche Prüfung gibt die Signatur als JSON aus; bei einem fremden oder fehlenden
@@ -1950,6 +1956,24 @@ bei einem Fehler die Kopie wieder her. Hat das Update die Datenbank nicht
 verändert, wird nichts zurückgespielt. `OPNEXUS_UPDATE_TIMEOUT` (Sekunden, Standard
 240) verlängert die Wartezeit für lange Migrationen, `OPNEXUS_NO_AUTO_ROLLBACK=1`
 schaltet das automatische Zurückrollen ab.
+
+**Registry wechseln (nur von Hand).** Bestehende Installationen bleiben bei der Registry, die in ihrer `.env`
+(`OPNEXUS_IMAGE_REPO`) steht; weder `opnexus update` noch ein Rollback, ein Restore oder ein Bundle ändert sie je.
+Wer von `git.opnexus.dev/opnexus` nach `ghcr.io/opnexus-dev` (oder zurück) wechseln will, tut das getrennt von einem
+Versions-Update und prüft vorher die Signatur der laufenden Version in der neuen Registry:
+
+```bash
+opnexus status                                                  # laufende Version notieren
+cosign verify --key cosign.pub --insecure-ignore-tlog=true \
+  ghcr.io/opnexus-dev/opnexus-backend:<laufende Version>        # gleicher Digest wie in der alten Registry
+sed -i 's|^OPNEXUS_IMAGE_REPO=.*|OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev|' .env
+docker compose pull && docker compose up -d --no-build         # gleiche Images; Compose kann Backend, Frontend und Proxy neu erstellen (kurze Unterbrechung)
+```
+
+Ein Rollback startet die Vorversion mit `docker compose up --no-build`; fehlt ihr Image lokal, lädt Compose es aus
+der Registry der `.env` nach. Nach einem Wechsel muss dort also auch die Vorversion liegen; prüfe das mit demselben
+`cosign verify` für die Vorversion, bevor du wechselst. Fehlt ein Tag, bricht ein Update mit „Pull fehlgeschlagen —
+nichts wurde verändert“ ab, ein Rollback würde scheitern.
 
 **Aus dem Quellcode gebaute Installationen** aktualisieren mit
 `git pull && docker compose up -d --build`.

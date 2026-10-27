@@ -4,7 +4,11 @@
 # Version als Standard eingebacken), .env.example, das opnexus-Update-Skript
 # und eine Kurzanleitung.
 #
-#   scripts/make_release_bundle.sh 1.10.0 git.opnexus.dev/opnexus
+#   scripts/make_release_bundle.sh 1.10.0 ghcr.io/opnexus-dev
+#
+# IMAGE_REPO ist die Registry, die für neue Installationen als Standard eingebacken wird (release_all.sh: GHCR; die
+# Images liegen digestgleich und signiert auch in der Gitea-Registry). Eine vorhandene .env wird nie angefasst — das Bundle
+# enthält nur .env.example.
 #
 # Das Ergebnis wird manuell an die Release-Seite angehängt (die CI lädt es
 # bewusst nicht hoch: GitHub und Forgejo haben dafür unterschiedliche APIs).

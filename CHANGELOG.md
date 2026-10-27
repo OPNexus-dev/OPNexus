@@ -31,6 +31,37 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.35.1] "Bateleur" — 2026-10-27
+
+- **Update-CLI: richtiger Digest für die Signaturprüfung.** `opnexus update` (CLI-Aktualisierung und Compose-Übernahme aus dem Updater-Image des Ziels) nahm bisher den
+  ERSTEN Eintrag der `RepoDigests` des Images. Liegt dasselbe Image lokal unter mehreren Registry-Adressen (z. B. Gitea und GHCR, nach einem Registrywechsel oder bei
+  Tests), konnte das ein Eintrag einer anderen Registry sein; cosign prüfte dann dort und meldete „Signatur des Updater-Images ungültig oder fehlt“, obwohl das Image
+  in der konfigurierten Registry signiert war. Jetzt zählt nur der Digest unter der Registry aus `OPNEXUS_IMAGE_REPO` (Quelle: die „Digest:“-Zeile des Pulls, bestätigt durch
+  `RepoDigests`), nie die Position. Ist er nicht eindeutig bestimmbar, wird die Übernahme sicher übersprungen; die Signaturprüfung bleibt strikt. Gleiches im Bau-Skript
+  für die Signatur (`scripts/build_release_images.sh`, nur ohne `--multiarch`): exakte Repository-Übereinstimmung, bei mehreren Digests Abbruch statt Raten.
+  Wirkt erst ab der Version, deren CLI diesen Fix enthält; ältere CLIs behalten das Verhalten, bis sie ersetzt sind. Betroffen sind nur Installationen, deren Updater-Image
+  lokal unter mehreren Registry-Adressen vorliegt. Behelf mit einer älteren CLI: den überzähligen Namen entfernen (`docker rmi <andere-registry>/opnexus-updater:<version>`)
+  oder die Übernahme mit `OPNEXUS_NO_CLI_REFRESH=1` / `OPNEXUS_NO_COMPOSE_REFRESH=1` abschalten.
+- **Bau-Skript überschreibt keine Versions-Tags mehr:** `scripts/build_release_images.sh --push` prüft vor dem ersten Build, ob eines der vier Versions-Tags
+  (`opnexus-{backend,frontend,proxy,updater}:X.Y.Z`) im Ziel schon existiert oder ob sich das nicht feststellen lässt (Netz, Anmeldung); dann bricht es ab, ohne etwas
+  zu bauen, zu pushen oder zu signieren. Bisher schützte nur `copy_release_images.sh` vorhandene Tags, der Bau selbst nicht.
+- **Release-Images in zwei Registries:** Die Images (`opnexus-backend`, `-frontend`, `-proxy`, `-updater`) liegen künftig
+  digestgleich und mit derselben cosign-Signatur in `ghcr.io/opnexus-dev` (Standard für **neue** Installationen: Release-Bundle,
+  `.env.example`, Release-Compose im Updater-Image, README, Handbuch, Website) und weiter in `git.opnexus.dev/opnexus`.
+  - Sie werden nur einmal gebaut und signiert (`scripts/build_release_images.sh`) und dann mit `scripts/copy_release_images.sh` samt
+    Signatur kopiert; `scripts/verify_release_images.sh` prüft beide Registries (Tags, amd64/arm64, Signatur, gleiche Digests,
+    Release-Compose im Updater-Image), bevor Bundle, Release und Update-Feed entstehen.
+  - Schwebende Tags (`X.Y`, `X`, `latest`) gibt es nur für stabile Versionen und nur, wenn es keine höhere Version gibt; eine
+    Vorabversion oder ein nachgetragener älterer Stand verschiebt sie nie. Sie werden getrennt von den unveränderlichen
+    Versions-Tags erst gesetzt (`scripts/promote_floating_tags.sh`), wenn alle vier Images, ihre Signaturen und die Release-Compose
+    in beiden Registries geprüft sind; ein Fehler dabei setzt schon umgesetzte Tags zurück.
+  - Beim Kopieren geht die Signatur dem Image voraus; ein bereits gültig signiertes Versions-Tag wird nie durch einen anderen
+    Digest ersetzt (auch nicht mit `--force`), und ein nicht feststellbarer Zustand schützt das Tag ebenfalls.
+  - Fehler der Registry-Werkzeuge werden mit Dienst, Registry und Schritt ausgegeben, bereinigt um Zugangsdaten.
+  - Bestehende Installationen bleiben bei ihrer Registry (`OPNEXUS_IMAGE_REPO` in der `.env`); `opnexus update`, `rollback` und
+    Restore ändern sie nie. Ein Wechsel geht nur von Hand, siehe Handbuch („Registry wechseln“).
+  - Der GitHub-Workflow `release.yml` baut nichts mehr, sondern prüft nur noch veröffentlichte Versionen (von Hand gestartet).
+
 ## [1.35.0] "Bateleur" — 2026-10-25
 
 - **Hochverfügbarkeit, Stufe H2a (Backend für die Warmreserve):**

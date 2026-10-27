@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.35.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.35.1` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -66,12 +66,14 @@ After the first sign-in a short **setup assistant** opens on its own: set your o
 
 For access from other machines and for production use with TLS (bundled Caddy proxy), see the [handbook](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) (German).
 
-**Prebuilt images** (amd64 and arm64) are published to this Gitea's registry. In `.env`:
+**Prebuilt images** (amd64 and arm64, signed with [cosign](https://github.com/sigstore/cosign)) are published to the GitHub Container Registry. In `.env`:
 
 ```bash
-OPNEXUS_IMAGE_REPO=git.opnexus.dev/opnexus
-OPNEXUS_VERSION=1.35.0
+OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev
+OPNEXUS_VERSION=1.35.1
 ```
+
+The same images (identical digests and signatures) are also available from this Gitea's registry as `git.opnexus.dev/opnexus`; existing installations that use it keep working unchanged.
 
 ```bash
 docker compose pull && docker compose up -d --no-build
