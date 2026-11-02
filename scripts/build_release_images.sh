@@ -69,10 +69,11 @@ fi
 
 # Aus dem Tag bauen, nicht aus dem Working Tree (keine uncommitteten Änderungen im Image).
 src="$(mktemp -d)"; trap 'rm -rf "$src"' EXIT
-git archive "$tag" | tar -x -C "$src"
+release_export_context "$tag" "$src"   # umask 022 + Lesbarkeitsprüfung: die Dateirechte des Kontexts landen im Image
 (cd "$src" && scripts/check_version.sh "${tag%%-*}")
 # Die Release-Fassung der Compose-Datei ins Updater-Image: `opnexus update` übernimmt sie von dort (B18).
-(cd "$src" && scripts/release_compose.sh "$version" "$compose_repo" > updater/docker-compose.release.yml)
+(cd "$src" && umask 022 && scripts/release_compose.sh "$version" "$compose_repo" > updater/docker-compose.release.yml)
+release_assert_readable_tree "$src"
 
 mapfile -t tags < <(release_tags "$version")   # Vorabversion: nur der volle Tag; stabil: dazu X.Y, X, latest, wo es keine höhere Version gibt
 [ "$floating" = 1 ] || tags=("${tags[0]}")      # --no-floating: nur der volle Versions-Tag

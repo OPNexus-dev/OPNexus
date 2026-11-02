@@ -31,7 +31,17 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
-## [1.36.0] "Harpy" — 2026-11-02
+## [1.36.1] "Harpy" — 2026-11-02
+
+- **Korrektur: Die Backend-Images von 1.36.0 starten nicht.** Beim Bau der Release-Images waren alle Dateien im Image nur für root lesbar (Modus 600/700); das
+  Backend läuft aber als unprivilegierter Benutzer und fand deshalb seinen eigenen Code nicht („Could not import module app.main“). Frontend und Updater hatten je eine
+  nicht lesbare Datei. **1.36.0 bitte nicht verwenden**: wer es schon gezogen hat, bleibt bei 1.35.1 (das Update-Verfahren hätte bei dem nicht startenden Backend
+  ohnehin automatisch zurückgerollt), alle anderen gehen direkt auf 1.36.1. Der Inhalt ist sonst unverändert (die Schnittstellen-Rollen aus 1.36.0).
+  Ursache: Der Build-Kontext entstand mit `git archive | tar -x` unter dem restriktiven `umask 077` der Release-Pipeline, und das Gate prüft einen anderen Kontext (Checkout).
+  Jetzt legt die Pipeline den Kontext mit `umask 022` an und verweigert den Bau bei nicht lesbaren Einträgen; zusätzlich zieht der Build-Host jedes fertige Image
+  und startet es als Betriebsbenutzer (Dateien lesbar, Backend importiert als uid 10001), bevor gespiegelt oder veröffentlicht wird. Beide Schutzschichten haben Tests.
+
+## [1.36.0] "Harpy" — 2026-11-02 — zurückgezogen, siehe 1.36.1
 
 - **Schnittstellen-Rollen: zentrale Regeln für Firewalls mit unterschiedlichen Interfaces.** Bisher speicherte eine zentrale Regel den
   OPNsense-Bezeichner des Interfaces (`opt3`), und der muss auf allen Zielen dasselbe Netz meinen. Wer Firewalls mit unterschiedlich vielen

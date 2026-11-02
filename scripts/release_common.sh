@@ -65,6 +65,20 @@ release_has_platforms() {
 # ── Fehlerdiagnose ────────────────────────────────────────────────────────────────────────────────────────
 # Zugangsdaten aus Meldungen entfernen: bekannte Geheimnisse der Umgebung (wörtlich), Zugangsdaten in URLs, Bearer-/Basic-
 # Kopfzeilen, Felder wie password=/token:/authorization: und GitHub-Token. Liest stdin, schreibt stdout.
+# Der Build-Kontext wird per COPY ins Image übernommen, die Dateirechte kommen mit. Unter dem umask 077 der Release-Pipeline (remote.sh) entstanden aus
+# `git archive | tar -x` Dateien mit Modus 600/700: im Image nur für root lesbar, das Backend (uid 10001) startete nicht (Fehler in 1.36.0).
+# Darum: Kontext immer mit umask 022 anlegen UND prüfen, bevor gebaut wird.
+release_assert_readable_tree() {  # DIR
+  local bad
+  bad="$(find "$1" -type f ! -perm -o=r -print -quit; find "$1" -mindepth 1 -type d ! -perm -o=rx -print -quit)"
+  [ -z "$bad" ] || release_die "Build-Kontext enthält für andere nicht lesbare Einträge (z. B. ${bad%%$'\n'*}): die Dateien wären im Image nur für root lesbar"
+}
+
+release_export_context() {  # TAG DIR: den getaggten Stand als Build-Kontext nach DIR (umask 022), danach prüfen
+  ( umask 022; git archive "$1" | tar -x --no-same-permissions --no-same-owner -C "$2" ) || release_die "Build-Kontext aus $1 konnte nicht angelegt werden"
+  release_assert_readable_tree "$2"
+}
+
 release_redact() {
   local text v val
   text="$(cat)"
