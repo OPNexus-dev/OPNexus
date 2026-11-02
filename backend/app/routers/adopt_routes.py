@@ -46,7 +46,7 @@ def add_adopt_routes(router: APIRouter, *, kind: str, model, load_options: Calla
         await policy_lock(db)
         host = await _host(db, payload.host_id)
         try:
-            created = await object_adopt_service.adopt(db, kind, host, payload.uuid, link_to=payload.link_to)
+            created = await object_adopt_service.adopt(db, kind, host, payload.uuid, link_to=payload.link_to, interface_role=payload.interface_role)
         except object_adopt_service.NotFoundOnHost as exc:
             raise api_error(404, ErrorCode.ADOPT_OBJECT_NOT_FOUND) from exc
         except object_adopt_service.NotAdoptable as exc:

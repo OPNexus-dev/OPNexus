@@ -54,10 +54,10 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hostId]);
 
-  async function adopt(rule: UnmanagedRule, linkTo?: string) {
+  async function adopt(rule: UnmanagedRule, linkTo?: string, role?: string) {
     setBusy(rule.uuid);
     try {
-      await api.adoptRule(hostId, rule.uuid, linkTo);
+      await api.adoptRule(hostId, rule.uuid, linkTo, role);
       toast.show(t(linkTo ? "adopt.linked" : "rules.adopt.adopted", { name: rule.description }), "success");
       onAdopted();
       load(hostId);
@@ -107,9 +107,16 @@ export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
                 {rule.linkable ? (
                   <Badge tone="info">{t("adopt.link.badge")}</Badge>
                 ) : rule.adoptable ? (
-                  <Button variant="outline" onClick={() => adopt(rule)} disabled={busy !== null} loading={busy === rule.uuid}>
-                    {t("rules.adopt.action")}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" onClick={() => adopt(rule)} disabled={busy !== null} loading={busy === rule.uuid}>
+                      {t("rules.adopt.action")}
+                    </Button>
+                    {rule.interface_roles.map((role) => (
+                      <Button key={role} variant="outline" onClick={() => adopt(rule, undefined, role)} disabled={busy !== null}>
+                        {t("roles.adoptAs", { name: role.replace(/^IF_/, "") })}
+                      </Button>
+                    ))}
+                  </div>
                 ) : (
                   <Badge tone="neutral">{t("rules.adopt.notPossible")}</Badge>
                 )}

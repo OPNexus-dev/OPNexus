@@ -36,7 +36,7 @@ from app.models.policy_hierarchy_group import PolicyHierarchyGroup
 from app.models.policy_hierarchy_rule import PolicyHierarchyRule
 from app.models.policy_hierarchy_rule_deployment import PolicyHierarchyRuleDeployment
 from app.services.audit_service import tracked_rollback
-from app.services import opnsense_client
+from app.services import opnsense_client, variables_service
 from app.services.deploy_flow import push_to_host
 from app.services.opnsense_client import OpnsenseAmbiguousError, OpnsenseAPIError
 from app.services.policy_hierarchy_service import ancestor_chain, descendants, ordered_hierarchy_rules
@@ -46,7 +46,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _build_payload(rule: PolicyHierarchyRule) -> dict:
+def _build_payload(rule: PolicyHierarchyRule, host: OpnsenseHost | None = None) -> dict:
+    """The payload; with a host, an interface role is replaced by that host's interface (MissingVariables if it has none)."""
+    payload = _base_payload(rule)
+    if host is not None:
+        payload["interface"] = variables_service.resolve({"interface": rule.interface}, host)["interface"]
+    return payload
+
+
+def _base_payload(rule: PolicyHierarchyRule) -> dict:
     return {
         "enabled": "1" if rule.enabled else "0",
         "action": rule.action,
@@ -166,9 +174,9 @@ async def reassert_after_managed_change(
         all_rules = await _load_all_rules(db)
         chain_ids = {group.id for group in ancestor_chain(host, all_groups)}
         interfaces = {
-            rule.interface for rule in all_rules
+            variables_service.interface_for(rule.interface, host) for rule in all_rules
             if rule.hierarchy_group_id in chain_ids and rule.enabled
-        }
+        } - {None}
     for interface in sorted(interfaces):
         await reassert_ordering(db, host, interface)
 
@@ -192,7 +200,7 @@ async def reassert_group_ordering(db: AsyncSession, group: PolicyHierarchyGroup)
         if not host.enabled:
             continue
         chain_ids = {g.id for g in ancestor_chain(host, all_groups)}
-        interfaces = sorted({r.interface for r in all_rules if r.hierarchy_group_id in chain_ids})
+        interfaces = sorted({variables_service.interface_for(r.interface, host) for r in all_rules if r.hierarchy_group_id in chain_ids} - {None})
         for interface in interfaces:
             try:
                 await reassert_ordering(db, host, interface)
@@ -203,7 +211,7 @@ async def reassert_group_ordering(db: AsyncSession, group: PolicyHierarchyGroup)
 
 
 async def _deploy_to_host(db: AsyncSession, rule: PolicyHierarchyRule, host: OpnsenseHost) -> PolicyHierarchyRuleDeployment:
-    payload = _build_payload(rule)
+    payload = _build_payload(rule, host)
     existing = await db.scalar(
         select(PolicyHierarchyRuleDeployment).where(
             PolicyHierarchyRuleDeployment.policy_hierarchy_id == rule.id,
@@ -245,7 +253,7 @@ async def _deploy_to_host(db: AsyncSession, rule: PolicyHierarchyRule, host: Opn
         return deployment
 
     try:
-        await reassert_ordering(db, host, rule.interface)
+        await reassert_ordering(db, host, payload["interface"])
     except OpnsenseAPIError as exc:
         # Live but not provably in the right position — this must not read
         # as a merely-unconfirmed pending change (see module docstring), yet
@@ -258,6 +266,7 @@ async def _deploy_to_host(db: AsyncSession, rule: PolicyHierarchyRule, host: Opn
 
 async def deploy_hierarchy_rule(db: AsyncSession, rule: PolicyHierarchyRule, hosts: list[OpnsenseHost]) -> list[PolicyHierarchyRuleDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
+    hosts = variables_service.applicable_hosts(_build_payload, rule, hosts)  # hosts without the interface role take no part
     await ensure_no_maintenance(db, hosts)
     deployments = [await _deploy_to_host(db, rule, host) for host in hosts]
     await db.commit()

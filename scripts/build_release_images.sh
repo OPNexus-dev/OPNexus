@@ -83,7 +83,13 @@ for svc in backend frontend proxy updater; do
   echo "==> $image  (${tags[*]})"
   if [ "$multi" = 1 ]; then
     docker buildx build --builder "$builder" --platform linux/amd64,linux/arm64 "${targs[@]}" --push "$src/$svc"
-    docker buildx prune --builder "$builder" -af >/dev/null 2>&1 || true   # Platz für den nächsten Dienst
+    # Platz für den nächsten Dienst. Standard: den ganzen Cache räumen (kleine Hosts). OPNEXUS_BUILD_KEEP_CACHE_GB=N (Build-Host der
+    # Release-Pipeline): nur über N GB hinaus räumen, der Cache bleibt für den nächsten Release erhalten.
+    if [ -n "${OPNEXUS_BUILD_KEEP_CACHE_GB:-}" ]; then
+      docker buildx prune --builder "$builder" --keep-storage "${OPNEXUS_BUILD_KEEP_CACHE_GB}GB" -f >/dev/null 2>&1 || true
+    else
+      docker buildx prune --builder "$builder" -af >/dev/null 2>&1 || true
+    fi
   else
     docker build "${targs[@]}" "$src/$svc"
     if [ "$push" = 1 ]; then for t in "${tags[@]}"; do docker push "$image:$t"; done; fi

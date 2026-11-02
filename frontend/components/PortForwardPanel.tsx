@@ -26,6 +26,7 @@ import {
   PortForwardCreate,
   PolicyHierarchyGroup,
 } from "@/lib/api";
+import { useInterfaceRoleOptions } from "@/lib/useInterfaceRoleOptions";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -142,6 +143,7 @@ function PortForwardContent() {
   const [now, setNow] = useState(() => Date.now());
   const [activeTab, setActiveTab] = useState<"managed" | "live">("managed");
   const [interfaceOptions, setInterfaceOptions] = useState<InterfaceOption[]>([]);
+  const roleOptions = useInterfaceRoleOptions();
   const [interfacesError, setInterfacesError] = useState<string | null>(null);
   const [manualInterface, setManualInterface] = useState(false);
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
@@ -363,11 +365,12 @@ function PortForwardContent() {
     return Math.max(0, Math.round((new Date(deadline).getTime() - now) / 1000));
   }
 
-  const interfaceSelectOptions = interfaceOptions.some((opt) => opt.name === form.interface)
-    ? interfaceOptions
+  const knownInterfaceOptions = [...interfaceOptions, ...roleOptions];
+  const interfaceSelectOptions = knownInterfaceOptions.some((opt) => opt.name === form.interface)
+    ? knownInterfaceOptions
     : form.interface
-      ? [{ name: form.interface, label: form.interface }, ...interfaceOptions]
-      : interfaceOptions;
+      ? [{ name: form.interface, label: form.interface }, ...knownInterfaceOptions]
+      : knownInterfaceOptions;
   // A "/" in the merged label means hosts disagreed on what this identifier
   // means — e.g. "opt6" is "Guest" on one firewall and "Dummy01" on
   // another. The backend rejects the push in that case; this just

@@ -19,10 +19,13 @@ from app.models.port_forward import PortForwardRule
 from app.models.rule import FirewallRule
 from app.services import alias_deploy_service, one_to_one_deploy_service, outbound_nat_deploy_service
 from app.services import port_forward_deploy_service, rule_deploy_service, variables_service
+from app.services.interface_service import get_interfaces
+from app.services.opnsense_client import OpnsenseAPIError
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets
 from app.services.policy_service import effective_hosts
 
 router = APIRouter(prefix="/hosts/{host_id}/variables", tags=["variables"])
+roles_router = APIRouter(prefix="/interface-roles", tags=["variables"])
 
 _KINDS = (
     ("rule", FirewallRule, rule_deploy_service),
@@ -58,6 +61,16 @@ async def _usage(db: AsyncSession, host: OpnsenseHost) -> dict[str, list[dict]]:
             label = getattr(entity, "description", None) or getattr(entity, "name", None) or str(entity.id)
             for name in variables_service.names_in_payload(service._base_payload(entity)):
                 used.setdefault(name, []).append({"kind": kind, "id": str(entity.id), "label": label})
+    # Hierarchy rules reach the hosts through the group tree; only their interface can hold a role.
+    from app.models.policy_hierarchy_group import PolicyHierarchyGroup
+    from app.models.policy_hierarchy_rule import PolicyHierarchyRule
+    from app.services import policy_hierarchy_deploy_service, policy_hierarchy_service
+    groups = list((await db.scalars(select(PolicyHierarchyGroup).options(selectinload(PolicyHierarchyGroup.hosts)))).all())
+    for rule in (await db.scalars(select(PolicyHierarchyRule))).all():
+        if host.id not in {h.id for h in policy_hierarchy_service.effective_hosts(rule, groups)}:
+            continue
+        for name in variables_service.names_in_payload(policy_hierarchy_deploy_service._base_payload(rule)):
+            used.setdefault(name, []).append({"kind": "policy_hierarchy_rule", "id": str(rule.id), "label": rule.description})
     return used
 
 
@@ -66,7 +79,10 @@ async def _read(db: AsyncSession, host: OpnsenseHost) -> dict:
     used = await _usage(db, host)
     names = sorted(set(values) | set(used))
     return {"variables": [
-        {"name": n, "value": values.get(n), "used_by": used.get(n, []), "missing": n in used and n not in values}
+        {"name": n, "value": values.get(n), "used_by": used.get(n, []),
+         "role": variables_service.is_role(n),
+         # a missing role is not an error: the objects using it are simply not deployed to this host
+         "missing": n in used and n not in values and not variables_service.is_role(n)}
         for n in names
     ]}
 
@@ -85,6 +101,21 @@ async def replace(host_id: uuid.UUID, payload: VariablesUpdate, db: AsyncSession
             raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Name „{name}“: Großbuchstaben, Ziffern und _, beginnend mit einem Buchstaben")
         if not variables_service.VALUE_RE.fullmatch(value):
             raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Wert von {name}: 1–255 Zeichen aus Buchstaben, Ziffern und . : / , @ + - _ Leerzeichen")
+    roles = {n: v for n, v in payload.variables.items() if variables_service.is_role(n)}
+    for name, value in roles.items():
+        if not variables_service.ROLE_NAME_RE.fullmatch(name):
+            raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Rolle „{name}“: IF_ gefolgt von Großbuchstaben, Ziffern und _ (höchstens 40 Zeichen)")
+        if not variables_service.INTERFACE_RE.fullmatch(value):
+            raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"Wert von {name}: ein OPNsense-Interface-Bezeichner (z. B. lan, opt3, vlan0.20)")
+    if roles:
+        try:
+            known = {o.name for o in await get_interfaces(host)}
+        except OpnsenseAPIError:
+            known = None  # the firewall does not answer: the deploy checks again live
+        if known is not None:
+            for name, value in roles.items():
+                if value not in known:
+                    raise api_error(422, ErrorCode.VARIABLE_INVALID, reason=f"{name}: Die Firewall „{host.name}“ hat kein Interface „{value}“")
     existing = {v.name: v for v in host.variables}
     for name in set(existing) - set(payload.variables):
         host.variables.remove(existing[name])
@@ -96,3 +127,16 @@ async def replace(host_id: uuid.UUID, payload: VariablesUpdate, db: AsyncSession
     await db.commit()
     await db.refresh(host)
     return await _read(db, host)
+
+
+@roles_router.get("")
+async def list_roles(db: AsyncSession = Depends(get_db)):
+    """Every interface role in use anywhere: name -> {host name: interface identifier}. Feeds the interface choice of the forms."""
+    rows = (await db.execute(
+        select(HostVariable, OpnsenseHost.name).join(OpnsenseHost, OpnsenseHost.id == HostVariable.host_id)
+        .where(HostVariable.name.startswith(variables_service.ROLE_PREFIX, autoescape=True)).order_by(HostVariable.name, OpnsenseHost.name)
+    )).all()
+    roles: dict[str, dict[str, str]] = {}
+    for variable, host_name in rows:
+        roles.setdefault(variable.name, {})[host_name] = variable.value
+    return {"roles": [{"name": name, "hosts": hosts} for name, hosts in roles.items()]}

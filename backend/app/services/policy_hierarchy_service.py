@@ -23,6 +23,7 @@ import hashlib
 import json
 import uuid
 
+from app.services import variables_service
 from app.errors import ErrorCode, api_error
 
 from app.models.policy import PolicyHierarchyRuleRevision
@@ -113,7 +114,7 @@ def ordered_hierarchy_rules(host, interface: str, rulebase: str, all_groups: lis
         group_rules = sorted(
             (r for r in all_rules
              if r.hierarchy_group_id == group.id and r.rulebase == rulebase
-             and r.interface == interface and r.enabled),
+             and variables_service.interface_for(r.interface, host) == interface and r.enabled),
             key=lambda r: (r.sequence, str(r.id)),
         )
         ordered.extend(group_rules)
@@ -141,13 +142,17 @@ def ensure_editable(rule: PolicyHierarchyRule) -> None:
 def preview(rule: PolicyHierarchyRule, all_groups: list[PolicyHierarchyGroup]) -> dict:
     from app.services.policy_hierarchy_deploy_service import _build_payload
 
-    payload = _build_payload(rule)
     deployments = {d.host_id: d for d in rule.deployments}
     hosts = effective_hosts(rule, all_groups)
     blocked = any(d.status in ("pending", "revert_failed") for d in rule.deployments)
     rows = []
     for host in hosts:
         dep = deployments.get(host.id)
+        try:
+            payload = _build_payload(rule, host)
+        except variables_service.MissingVariables as exc:
+            rows.append(variables_service.preview_row_missing(host, exc.missing[host.name], dep))
+            continue
         before = dep.last_payload if dep else None
         action = "create" if not dep or not dep.opnsense_policy_hierarchy_uuid else "update"
         if before == payload and dep and dep.status in ("success", "reverted"):
@@ -174,6 +179,8 @@ def preview(rule: PolicyHierarchyRule, all_groups: list[PolicyHierarchyGroup]) -
         warnings.append("Offene Bestätigung oder fehlgeschlagener Rollback: Push gesperrt.")
     if any(r["action"] == "retained" for r in rows):
         warnings.append("Frühere Ziele behalten ihre Regel, bis du sie hier gezielt entfernst. Diese Löschung hat keinen automatischen Rollback.")
+    if any(r["action"] == "not_applicable" for r in rows):
+        warnings.append("Auf mindestens einem Ziel ist die Schnittstellen-Rolle nicht zugeordnet: dort wird nichts ausgerollt.")
     if any(r["action"] == "disabled" for r in rows):
         warnings.append("Deaktivierte Hosts werden übersprungen.")
     if any(d.status == "error" for d in rule.deployments):
@@ -194,12 +201,12 @@ def workflow(rule: PolicyHierarchyRule, deployments, all_groups: list[PolicyHier
     hosts = effective_hosts(rule, all_groups)
     active = [h for h in hosts if h.enabled]
     by_host = {d.host_id: d for d in deployments}
-    payload = _build_payload(rule)
     target_ids = {h.id for h in hosts}
     counts = {
         "targets": len(hosts),
         "active_targets": len(active),
-        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != payload),
+        "changes": sum(1 for h in active if not variables_service.is_skipped(_build_payload, rule, h)
+                       and (h.id not in by_host or by_host[h.id].last_payload != _build_payload(rule, h))),
         "pending": sum(d.status == "pending" for d in deployments),
         "errors": sum(d.status in ("error", "revert_failed") for d in deployments),
         "retained": sum(d.host_id not in target_ids for d in deployments),

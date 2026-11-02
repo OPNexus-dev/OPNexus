@@ -310,7 +310,7 @@ async def build_plan(db: AsyncSession, parsed: Parsed, prune: bool) -> Plan:
                     _err(errors, "unknown_hierarchy_group", loc + where, lines, group=display(ref))
             if kind == "policy_hierarchy_rules":
                 for name, value in item.items():
-                    if names_in(value):
+                    if name != "interface" and names_in(value):  # the interface may be an interface role ({{IF_NAME}}), nothing else
                         _err(errors, "placeholder_not_supported", loc + (name,), lines)
             spec = KIND_SPECS[kind]
             if spec.api is not None:

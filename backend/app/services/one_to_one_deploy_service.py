@@ -82,6 +82,7 @@ async def _deploy_to_host(db: AsyncSession, rule: OneToOneRule, host: OpnsenseHo
 async def deploy_one_to_one(db: AsyncSession, rule: OneToOneRule, hosts: list[OpnsenseHost]) -> list[OneToOneDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
     from app.services.policy_hierarchy_deploy_service import reassert_after_managed_change
+    hosts = variables_service.applicable_hosts(_build_payload, rule, hosts)  # hosts without the interface role take no part
     await ensure_no_maintenance(db, hosts)
     variables_service.ensure_resolvable(_build_payload, rule, hosts)  # before anything is written
     deployments = [await _deploy_to_host(db, rule, host) for host in hosts]
@@ -90,7 +91,7 @@ async def deploy_one_to_one(db: AsyncSession, rule: OneToOneRule, hosts: list[Op
         if deployment.status != "pending":
             continue
         try:
-            await reassert_after_managed_change(db, host, {rule.interface})
+            await reassert_after_managed_change(db, host, {_build_payload(rule, host)["interface"]})
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = f"1:1 NAT wurde übernommen, Hierarchie-Reihenfolge aber nicht bestätigt: {exc}"

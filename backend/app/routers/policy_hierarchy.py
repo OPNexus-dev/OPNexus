@@ -21,7 +21,8 @@ from app.schemas.policy_hierarchy import (
     PolicyHierarchyRuleRead,
 )
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
-from app.services.interface_service import check_interface_consistency
+from app.services.interface_service import check_interface_consistency, role_targets
+from app.services.policy_hierarchy_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.policy_hierarchy_deploy_service import (
     confirm_hierarchy_rule,
@@ -254,6 +255,7 @@ async def deploy(rule_id: uuid.UUID, approval: PolicyHierarchyDeployApproval | N
     hosts = [h for h in effective_hosts(rule, all_groups) if h.enabled]
     if not hosts:
         raise api_error(400, ErrorCode.REGEL_HAT_KEINE_ZIEL_HOSTS)
+    hosts = await role_targets(_payload_for, rule, hosts)
     if len(hosts) > 1:
         labels = await check_interface_consistency(hosts, rule.interface)
         distinct = set(labels.values())

@@ -886,6 +886,8 @@
     "INSTANZ_NICHT_GEFUNDEN": "Instanz nicht gefunden",
     "INSTANZ_WURDE_INZWISCHEN_GEAENDERT_NEU_LADEN_UND_AENDERUNGEN_DB923B59": "Instanz wurde inzwischen geändert. Neu laden und Änderungen erneut prüfen.",
     "INTERFACE_MEANING_DIFFERS": "Interface „{interface}“ bedeutet nicht auf allen Zielen dasselbe Netz ({detail}). Regel korrigieren oder Ziele einschränken, bevor gepusht wird.",
+    "ROLE_NOT_APPLICABLE_ANYWHERE": "Die Schnittstellen-Rolle „{interface}“ ist auf keinem Ziel zugeordnet. Rolle auf den Host-Seiten unter „Variablen“ zuordnen oder die Ziele ändern.",
+    "ROLE_INTERFACE_UNKNOWN": "Die Rolle „{interface}“ zeigt auf ein Interface, das es auf der Firewall nicht gibt ({detail}). Zuordnung auf der Host-Seite korrigieren.",
     "KEINE_OFFENE_WARTUNGSAKTION": "Keine offene Wartungsaktion",
     "KEIN_OFFENER_RESTORE_VORSCHAU_VORGANG": "Kein offener Restore-Vorschau-Vorgang",
     "KEIN_OFFENER_UEBERGEBENER_RESTORE_VORGANG": "Kein offener, übergebener Restore-Vorgang",
@@ -1189,7 +1191,8 @@
       "disabled": "Deaktiviert · übersprungen",
       "retained": "Früheres Ziel · bleibt bestehen",
       "missing_variable": "Variable fehlt · übersprungen",
-      "missing_cert": "Kein Zertifikat/CA ausgewählt · wird übersprungen"
+      "missing_cert": "Kein Zertifikat/CA ausgewählt · wird übersprungen",
+      "not_applicable": "Rolle nicht zugeordnet · übersprungen"
     },
     "loadFailed": "Laden fehlgeschlagen",
     "pushFailed": "Push fehlgeschlagen",
@@ -4433,5 +4436,16 @@
       "host_in_two_hierarchy_groups": "Host steht in zwei Hierarchiegruppen",
       "placeholder_not_supported": "Platzhalter {{…}} sind in Hierarchie-Regeln nicht möglich"
     }
+  },
+  "roles": {
+    "option": "Rolle {name} ({hosts})",
+    "title": "Schnittstellen-Rollen",
+    "intro": "Eine Rolle wie GUEST steht für das passende Interface jeder Firewall (z. B. opt3 hier, vlan0.20 dort). Regeln und NAT-Einträge wählen die Rolle statt eines Bezeichners. Eine Firewall ohne diese Rolle wird bei dieser Regel übersprungen, ohne Fehler.",
+    "empty": "Noch keine Rolle angelegt. Gib unten einen Namen ein (z. B. GUEST) und wähle das Interface dieser Firewall.",
+    "none": "nicht zugeordnet",
+    "newName": "Name der neuen Rolle",
+    "add": "Rolle hinzufügen",
+    "usedBy": "Verwendet von: {list}",
+    "adoptAs": "Als Rolle {name} übernehmen"
   }
 }

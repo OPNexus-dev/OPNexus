@@ -886,6 +886,8 @@
     "INSTANZ_NICHT_GEFUNDEN": "Instance not found",
     "INSTANZ_WURDE_INZWISCHEN_GEAENDERT_NEU_LADEN_UND_AENDERUNGEN_DB923B59": "The instance changed in the meantime. Reload and review the changes again.",
     "INTERFACE_MEANING_DIFFERS": "Interface “{interface}” does not represent the same network on all targets ({detail}). Correct the rule or restrict its targets before pushing.",
+    "ROLE_NOT_APPLICABLE_ANYWHERE": "The interface role “{interface}” is not assigned on any target. Assign it on the host pages under “Variables”, or change the targets.",
+    "ROLE_INTERFACE_UNKNOWN": "The role “{interface}” points to an interface that does not exist on the firewall ({detail}). Correct the assignment on the host page.",
     "KEINE_OFFENE_WARTUNGSAKTION": "No open maintenance action",
     "KEIN_OFFENER_RESTORE_VORSCHAU_VORGANG": "No open restore preview operation",
     "KEIN_OFFENER_UEBERGEBENER_RESTORE_VORGANG": "No open handed-off restore operation",
@@ -1189,7 +1191,8 @@
       "disabled": "Disabled · skipped",
       "retained": "Former target · stays in place",
       "missing_variable": "Variable missing · skipped",
-      "missing_cert": "No certificate/CA selected · skipped"
+      "missing_cert": "No certificate/CA selected · skipped",
+      "not_applicable": "Role not assigned · skipped"
     },
     "loadFailed": "Loading failed",
     "pushFailed": "Push failed",
@@ -4433,5 +4436,16 @@
       "host_in_two_hierarchy_groups": "Host is in two hierarchy groups",
       "placeholder_not_supported": "Placeholders {{…}} are not possible in hierarchy rules"
     }
+  },
+  "roles": {
+    "option": "Role {name} ({hosts})",
+    "title": "Interface roles",
+    "intro": "A role such as GUEST stands for the matching interface on each firewall (e.g. opt3 here, vlan0.20 there). Rules and NAT entries pick the role instead of an identifier. A firewall without that role is skipped for that rule, without an error.",
+    "empty": "No role yet. Enter a name below (e.g. GUEST) and choose this firewall's interface.",
+    "none": "not assigned",
+    "newName": "Name of the new role",
+    "add": "Add role",
+    "usedBy": "Used by: {list}",
+    "adoptAs": "Adopt as role {name}"
   }
 }

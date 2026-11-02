@@ -31,6 +31,20 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.36.0] "Harpy" — 2026-11-02
+
+- **Schnittstellen-Rollen: zentrale Regeln für Firewalls mit unterschiedlichen Interfaces.** Bisher speicherte eine zentrale Regel den
+  OPNsense-Bezeichner des Interfaces (`opt3`), und der muss auf allen Zielen dasselbe Netz meinen. Wer Firewalls mit unterschiedlich vielen
+  Schnittstellen betrieb, musste Dummy-VLANs anlegen, damit die Nummern übereinstimmen. Jetzt gibt es **Rollen**: Auf der Host-Seite
+  ordnet jede Firewall einer Rolle wie `GUEST` ihr eigenes Interface zu (`opt3` hier, `vlan0.20` dort), und Regeln, Portweiterleitungen,
+  1:1- und Outbound-NAT wählen im Interface-Feld `{{IF_GUEST}}`. Eine Firewall ohne diese Rolle wird bei dem Objekt übersprungen, ohne Fehler
+  (Vorschau: „Rolle nicht zugeordnet · übersprungen“); sind alle Ziele übersprungen, wird nichts ausgerollt. Der zugeordnete Bezeichner wird
+  beim Setzen und vor dem Ausrollen live gegen die Firewall geprüft. Rollen sind freiwillig, Klartext-Bezeichner (`lan`, `opt3`) gelten
+  unverändert samt der bisherigen Prüfung „gleiche Bedeutung auf allen Zielen“. Verknüpfen und Config-as-Code verstehen Rollen (die
+  Auflösung je Host entscheidet, ob eine Regel exakt passt). **Übernehmen als Rolle:** Der Dialog bietet „Als Rolle GUEST übernehmen“, wenn die
+  Firewall die Rolle diesem Interface zugeordnet hat; die zweite Firewall verknüpft die gleichartige Regel danach mit der zentralen. Auch
+  **Hierarchie-Regeln** tragen Rollen (Reihenfolge je Firewall auf dem tatsächlichen Interface). Entwurf: `docs/DESIGN-1.36-INTERFACE-ROLES.md`.
+
 ## [1.35.1] "Bateleur" — 2026-10-27
 
 - **Update-CLI: richtiger Digest für die Signaturprüfung.** `opnexus update` (CLI-Aktualisierung und Compose-Übernahme aus dem Updater-Image des Ziels) nahm bisher den

@@ -77,7 +77,7 @@ from app.services import one_to_one_deploy_service, one_to_one_policy_service
 from app.services import opnsense_client, outbound_nat_deploy_service, outbound_nat_policy_service
 from app.services import port_forward_deploy_service, port_forward_policy_service
 from app.services import adopt_link_service
-from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, on
+from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, interface_role_for, on, roles_matching
 from app.services.nat_live_service import split_rows
 from app.services.outbound_nat_mode import host_mode
 
@@ -547,7 +547,11 @@ async def list_unmanaged(db: AsyncSession, kind_key: str, host: OpnsenseHost) ->
     kind = KINDS[kind_key]
     entries, order = await _plan(db, kind, host)
     actions = _bulk_actions(entries, order, True)
-    return [_describe(kind, e, actions.get(e.uuid, ("skip", None))[0]) for e in entries]
+    described = [_describe(kind, e, actions.get(e.uuid, ("skip", None))[0]) for e in entries]
+    for entry, item in zip(entries, described):
+        interface = clean(entry.row.get("interface")) if kind.key != "alias" else ""
+        item["interface_roles"] = roles_matching(host, interface) if interface else []
+    return described
 
 
 def _create(db: AsyncSession, kind: Kind, host: OpnsenseHost, entry: Entry):
@@ -556,17 +560,17 @@ def _create(db: AsyncSession, kind: Kind, host: OpnsenseHost, entry: Entry):
     return obj
 
 
-async def _record(db: AsyncSession, kind: Kind, host: OpnsenseHost, obj, remote_uuid: str) -> None:
+async def _record(db: AsyncSession, kind: Kind, host: OpnsenseHost, obj, remote_uuid: str) -> None:  # payload resolved for this host
     await db.flush()
     kind.revision(db, obj, ADOPT_NOTE)
     db.add(kind.deployment(**{
         kind.fk: obj.id, "host_id": host.id, "status": "success", "message": ADOPT_MESSAGE,
-        kind.uuid_attr: remote_uuid, "last_payload": kind.payload(obj), "previous_payload": None,
+        kind.uuid_attr: remote_uuid, "last_payload": kind.payload(obj, host), "previous_payload": None,
     }))
     await db.flush()
 
 
-async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid: str, link_to=None):
+async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid: str, link_to=None, interface_role: str | None = None):
     """Takes over one object as a NEW central object, or - with `link_to` - links it to that existing
     central object (adopt_link_service). Either way the live state is read fresh here."""
     kind = KINDS[kind_key]
@@ -592,6 +596,10 @@ async def adopt(db: AsyncSession, kind_key: str, host: OpnsenseHost, remote_uuid
     if entry.reasons:
         raise NotAdoptable(entry.reasons, entry.details)
     obj = _create(db, kind, host, entry)
+    if interface_role:
+        if kind.key == "alias":
+            raise NotAdoptable(["role_not_applicable"])
+        obj.interface = interface_role_for(host, interface_role, clean(entry.row.get("interface")))
     await _record(db, kind, host, obj, remote_uuid)
     return obj
 

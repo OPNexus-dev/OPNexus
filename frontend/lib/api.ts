@@ -590,6 +590,8 @@ export interface UnmanagedRule {
   description: string;
   interface: string;
   interface_label: string;
+  /** Interface roles this firewall has assigned to that interface (offered as "adopt as role"). */
+  interface_roles: string[];
   direction: string;
   action: string;
   protocol: string;
@@ -627,6 +629,8 @@ export type AdoptKind = "aliases" | "port-forward" | "one-to-one" | "outbound-na
 
 /** An alias / NAT rule found live on a host that OPNexus does not manage yet. */
 export interface UnmanagedObject {
+  /** Interface roles this firewall has assigned to the object's interface (NAT kinds). */
+  interface_roles: string[];
   uuid: string;
   title: string;
   enabled: boolean;
@@ -893,6 +897,13 @@ export interface HostVariable {
   value: string | null;
   used_by: { kind: string; id: string; label: string }[];
   missing: boolean;
+  /** An interface role (IF_NAME): its value is this firewall's interface identifier. */
+  role: boolean;
+}
+
+export interface InterfaceRole {
+  name: string;
+  hosts: Record<string, string>;
 }
 
 export interface User {
@@ -1547,9 +1558,9 @@ export const api = {
   createRule: (data: RuleCreate) => request<Rule>("/rules", { method: "POST", body: JSON.stringify(data) }),
   listUnmanagedRules: (hostId: string) => request<UnmanagedRule[]>(`/rules/unmanaged?host_id=${hostId}`),
   listUnmanagedObjects: (kind: AdoptKind, hostId: string) => request<UnmanagedObject[]>(`/${kind}/unmanaged?host_id=${hostId}`),
-  adoptObject: (kind: AdoptKind, hostId: string, uuid: string, linkTo?: string) => request<{ id: string }>(`/${kind}/adopt`, { method: "POST", body: JSON.stringify({ host_id: hostId, uuid, link_to: linkTo ?? null }) }),
+  adoptObject: (kind: AdoptKind, hostId: string, uuid: string, linkTo?: string, interfaceRole?: string) => request<{ id: string }>(`/${kind}/adopt`, { method: "POST", body: JSON.stringify({ host_id: hostId, uuid, link_to: linkTo ?? null, interface_role: interfaceRole ?? null }) }),
   adoptAllObjects: (kind: AdoptKind, hostId: string, linkExisting = true) => request<AdoptAllResult>(`/${kind}/adopt-all`, { method: "POST", body: JSON.stringify({ host_id: hostId, link_existing: linkExisting }) }),
-  adoptRule: (hostId: string, ruleUuid: string, linkTo?: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid, link_to: linkTo ?? null }) }),
+  adoptRule: (hostId: string, ruleUuid: string, linkTo?: string, interfaceRole?: string) => request<Rule>("/rules/adopt", { method: "POST", body: JSON.stringify({ host_id: hostId, rule_uuid: ruleUuid, link_to: linkTo ?? null, interface_role: interfaceRole ?? null }) }),
   updateRule: (id: string, data: RuleCreate, expectedUpdatedAt: string) => request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
   ruleRevisions: (id: string) => request<RuleRevision[]>(`/rules/${id}/revisions`),
@@ -1656,6 +1667,7 @@ export const api = {
     request<{ ok: boolean }>(`/overlay/peers/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteOverlayPeer: (id: string) => request<void>(`/overlay/peers/${id}`, { method: "DELETE" }),
 
+  getInterfaceRoles: () => request<{ roles: InterfaceRole[] }>(`/interface-roles`),
   getHostVariables: (id: string) => request<{ variables: HostVariable[] }>(`/hosts/${id}/variables`),
   setHostVariables: (id: string, variables: Record<string, string>) =>
     request<{ variables: HostVariable[] }>(`/hosts/${id}/variables`, { method: "PUT", body: JSON.stringify({ variables }) }),

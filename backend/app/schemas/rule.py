@@ -31,6 +31,12 @@ class RuleCreate(BaseModel):
             raise ValueError("Feld darf nicht nur Leerzeichen enthalten")
         return value.strip()
 
+    @field_validator("interface")
+    @classmethod
+    def interface_or_role(cls, value):
+        from app.services.variables_service import validate_interface_field
+        return validate_interface_field(value)
+
 
 class DeploymentResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -84,6 +90,8 @@ class AdoptRequest(BaseModel):
     # Link to this existing central rule instead of creating a new one (services/adopt_link_service.py).
     link_to: uuid.UUID | None = None
     rule_uuid: str = Field(min_length=1, max_length=64)
+    # Store the new central rule with this interface role instead of the identifier (the host must have assigned it to that interface).
+    interface_role: str | None = Field(default=None, max_length=40, pattern=r"^IF_[A-Z0-9][A-Z0-9_]{0,36}$")
 
 
 class UnmanagedRule(BaseModel):
@@ -91,6 +99,7 @@ class UnmanagedRule(BaseModel):
     description: str
     interface: str
     interface_label: str
+    interface_roles: list[str] = Field(default_factory=list)  # roles this host has assigned to that interface
     direction: str
     action: str
     protocol: str

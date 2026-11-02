@@ -15,7 +15,8 @@ from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
 from app.schemas.rule import DeploymentResult, RuleCreate, RuleRead, RuleEdit, DeployApproval
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
-from app.services.interface_service import check_interface_consistency
+from app.services.interface_service import check_interface_consistency, role_targets
+from app.services.rule_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.rule_deploy_service import confirm_rule, deploy_rule, undeploy_rule, revert_deployment
 from app.services import rule_adopt_service
@@ -114,7 +115,7 @@ async def adopt_rule(payload: AdoptRequest, db: AsyncSession = Depends(get_db)):
     from app.services.host_maintenance_service import ensure_no_open_cleanup
     await ensure_no_open_cleanup(db, [host])
     try:
-        rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid, link_to=payload.link_to)
+        rule = await rule_adopt_service.adopt(db, host, payload.rule_uuid, link_to=payload.link_to, interface_role=payload.interface_role)
     except rule_adopt_service.RuleNotFoundOnHost as exc:
         raise api_error(404, ErrorCode.REGEL_NICHT_GEFUNDEN) from exc
     except rule_adopt_service.NotAdoptable as exc:
@@ -175,6 +176,7 @@ async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(defa
     hosts = [h for h in effective_hosts(rule) if h.enabled]
     if not hosts:
         raise api_error(400, ErrorCode.REGEL_HAT_KEINE_ZIEL_HOSTS)
+    hosts = await role_targets(_payload_for, rule, hosts)
     if len(hosts) > 1:
         labels = await check_interface_consistency(hosts, rule.interface)
         distinct = set(labels.values())

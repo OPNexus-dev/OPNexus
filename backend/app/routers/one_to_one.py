@@ -16,7 +16,8 @@ from app.models.one_to_one import OneToOneRule
 from app.models.one_to_one_deployment import OneToOneDeployment
 from app.schemas.one_to_one import DeploymentResult, OneToOneCreate, OneToOneRead, OneToOneEdit, DeployApproval
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
-from app.services.interface_service import check_interface_consistency
+from app.services.interface_service import check_interface_consistency, role_targets
+from app.services.one_to_one_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.one_to_one_deploy_service import confirm_one_to_one, deploy_one_to_one, undeploy_one_to_one, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
@@ -133,6 +134,7 @@ async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(defa
     hosts = [h for h in effective_hosts(rule) if h.enabled]
     if not hosts:
         raise api_error(400, ErrorCode.REGEL_HAT_KEINE_ZIEL_HOSTS)
+    hosts = await role_targets(_payload_for, rule, hosts)
     if len(hosts) > 1:
         labels = await check_interface_consistency(hosts, rule.interface)
         distinct = set(labels.values())

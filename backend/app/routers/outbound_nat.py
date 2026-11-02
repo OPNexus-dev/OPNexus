@@ -17,7 +17,8 @@ from app.models.outbound_nat_deployment import OutboundNatDeployment
 from app.schemas.outbound_nat import DeploymentResult, OutboundNatCreate, OutboundNatRead, OutboundNatEdit, DeployApproval
 from app.services.outbound_nat_mode import require_manual_mode, host_mode
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
-from app.services.interface_service import check_interface_consistency
+from app.services.interface_service import check_interface_consistency, role_targets
+from app.services.outbound_nat_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.outbound_nat_deploy_service import confirm_outbound_nat, deploy_outbound_nat, undeploy_outbound_nat, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
@@ -138,6 +139,7 @@ async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(defa
     hosts = [h for h in effective_hosts(rule) if h.enabled]
     if not hosts:
         raise api_error(400, ErrorCode.REGEL_HAT_KEINE_ZIEL_HOSTS)
+    hosts = await role_targets(_payload_for, rule, hosts)
     for host in hosts:
         await require_manual_mode(host)
     if len(hosts) > 1:

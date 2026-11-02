@@ -105,10 +105,10 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
     }
   }
 
-  async function adopt(item: UnmanagedObject, linkTo?: string) {
+  async function adopt(item: UnmanagedObject, linkTo?: string, role?: string) {
     setBusy(item.uuid);
     try {
-      await api.adoptObject(kind, hostId, item.uuid, linkTo);
+      await api.adoptObject(kind, hostId, item.uuid, linkTo, role);
       toast.show(t(linkTo ? "adopt.linked" : "adopt.adopted", { name: item.title }), "success");
       onAdopted();
       load(hostId);
@@ -214,9 +214,16 @@ export function AdoptObjectsModal({ kind, hosts, onClose, onAdopted }: Props) {
                 {item.linkable ? (
                   <Badge tone="info">{t("adopt.link.badge")}</Badge>
                 ) : item.adoptable ? (
-                  <Button variant="outline" onClick={() => adopt(item)} disabled={busy !== null} loading={busy === item.uuid}>
-                    {t("adopt.action")}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" onClick={() => adopt(item)} disabled={busy !== null} loading={busy === item.uuid}>
+                      {t("adopt.action")}
+                    </Button>
+                    {item.interface_roles.map((role) => (
+                      <Button key={role} variant="outline" onClick={() => adopt(item, undefined, role)} disabled={busy !== null}>
+                        {t("roles.adoptAs", { name: role.replace(/^IF_/, "") })}
+                      </Button>
+                    ))}
+                  </div>
                 ) : (
                   <Badge tone={item.bulk_adoptable ? "info" : "neutral"}>
                     {item.bulk_adoptable ? t("adopt.bulkOnly") : t("adopt.notPossible")}

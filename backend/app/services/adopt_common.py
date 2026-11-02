@@ -18,6 +18,22 @@ class NotFoundOnHost(Exception):
     """The UUID is not (or no longer) present in the host's live configuration."""
 
 
+def interface_role_for(host, role: str, live_interface: str) -> str:
+    """"Adopt as an interface role": the placeholder {{IF_NAME}} to store as the central object's interface. The host must
+    have assigned that role to exactly the interface the live object sits on, otherwise nothing is guessed."""
+    assigned = next((v.value for v in host.variables if v.name == role), None)
+    if assigned is None:
+        raise NotAdoptable(["role_not_assigned"], {"role_not_assigned": role})
+    if assigned != live_interface:
+        raise NotAdoptable(["role_interface_differs"], {"role_interface_differs": f"{role} = {assigned}, live: {live_interface}"})
+    return "{{" + role + "}}"
+
+
+def roles_matching(host, live_interface: str) -> list[str]:
+    """The interface roles this host has assigned to `live_interface` (offered when adopting)."""
+    return sorted(v.name for v in host.variables if v.name.startswith("IF_") and v.value == live_interface)
+
+
 def on(value) -> bool:
     """OPNsense booleans arrive as "1"/"0" strings, sometimes as real booleans."""
     return value in ("1", 1, True)

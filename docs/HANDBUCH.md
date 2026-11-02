@@ -784,6 +784,39 @@ Platzhalter, die die für diesen Host bestimmten Objekte verwenden, und zeigt, w
   Objekt); Variablen für Gerätegruppen (Vorgabewerte) gibt es nicht, jeder Host hat seine eigenen. Operatoren dürfen
   Variablen pflegen; ob sie auch ausrollen dürfen, regelt die [Aufgabentrennung](#benutzer-rollen-und-anmeldung).
 
+### Schnittstellen-Rollen
+
+Zwei Firewalls haben nicht immer dieselben Interfaces: die eine hat ein Gast-VLAN als `opt3`, die andere gar keins, oder dasselbe VLAN
+heißt dort `opt5`. Weil der OPNsense-Bezeichner (`opt3`) nur eine Nummer der Zuweisungsreihenfolge ist, könnte eine zentrale Regel mit
+`opt3` auf der zweiten Firewall das falsche Netz treffen. OPNexus lehnt das ab („Interface … bedeutet nicht auf allen Zielen dasselbe
+Netz“). Mit **Rollen** brauchst du dafür keine Dummy-VLANs.
+
+1. Auf der Host-Seite unter **Schnittstellen-Rollen** eine Rolle anlegen (Name z. B. `GUEST`) und das Interface **dieser** Firewall wählen.
+   Das macht jede Firewall für sich: `fw-1` ordnet `opt3` zu, `fw-2` ordnet `vlan0.20` zu, `fw-3` ordnet nichts zu.
+2. In der Regel (oder Portweiterleitung, 1:1-, Outbound-NAT) im Feld **Interface** die Rolle wählen. Gespeichert wird `{{IF_GUEST}}`.
+3. Die Vorschau zeigt je Firewall das echte Interface. `fw-3` steht als **„Rolle nicht zugeordnet · übersprungen“** da und wird nicht
+   beschickt; das ist kein Fehler.
+
+- **Nichts wird geraten:** Eine Rolle wirkt nur dort, wo du sie zugeordnet hast. Ohne Zuordnung bekommt die Firewall die Regel nicht.
+  Sind alle Ziele ohne die Rolle, wird nichts ausgerollt (Meldung „Rolle … ist auf keinem Ziel zugeordnet“).
+- **Live geprüft:** Beim Speichern der Zuordnung und noch einmal vor dem Ausrollen muss das Interface auf der Firewall existieren.
+  Wurde es dort inzwischen entfernt, wird abgelehnt, bevor etwas geschrieben wird.
+- **Übernehmen und Verknüpfen:** So holst du bestehende, von Hand angelegte Regeln zentral zusammen: Ordne zuerst auf jeder Firewall die
+  Rolle zu. Beim **Übernehmen** der Regel auf der ersten Firewall bietet der Dialog neben „Übernehmen“ den Knopf **„Als Rolle GUEST
+  übernehmen“** an (nur wenn diese Firewall die Rolle genau diesem Interface zugeordnet hat; Regeln, Portweiterleitungen, 1:1- und
+  Outbound-NAT). Die zentrale Regel trägt dann `{{IF_GUEST}}`. Auf den weiteren Firewalls erscheint die gleichartige Regel als
+  **„Verknüpfen“**: Sie passt, wenn dort `GUEST` auf das Interface zeigt, auf dem die Regel liegt (exakter Vergleich nach der Auflösung,
+  wie bei den [Standort-Variablen](#standort-variablen)). Ohne Zuordnung oder bei einem anderen Interface wird nur der Unterschied
+  angezeigt, nie verknüpft. Übernehmen und Verknüpfen schreiben nichts auf die Firewall.
+- **Freiwillig:** Klartext-Bezeichner (`lan`, `wan`, `opt3`) funktionieren wie bisher, samt der Prüfung auf gleiche Bedeutung.
+  Im Interface-Feld steht entweder ein Bezeichner oder genau eine Rolle, nie ein Gemisch.
+- **Config-as-Code:** Rollen stehen wie andere Variablen im Abschnitt `variables` (`IF_GUEST: opt3`) und als `{{IF_GUEST}}` im
+  Interface der Objekte.
+- **Policy-Hierarchie:** Auch Hierarchie-Regeln können eine Rolle als Interface tragen. Die Reihenfolge der geerbten Regeln (Pre/Post) wird je
+  Firewall auf dem tatsächlichen Interface hergestellt; ein Host ohne die Rolle bekommt diese Regel nicht und trägt sie auch nicht in
+  seiner Reihenfolge. Andere Felder einer Hierarchie-Regel bleiben ohne Platzhalter.
+- **Nicht** unterstützt: Rollen für Gerätegruppen (jede Firewall ordnet selbst zu).
+
 ---
 
 ## Netzwerk und Host-System

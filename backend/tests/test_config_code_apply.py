@@ -312,6 +312,35 @@ async def test_variables_are_merged_per_name_and_only_removed_with_prune():
     assert yaml.safe_load(await export())["variables"] == {"fw-filiale-1": {"SITE": "Neu"}, "fw-filiale-2": {"LAN_NET": "10.9.0.0/24"}}
 
 
+async def test_interface_roles_round_trip_and_a_mixed_interface_is_refused_with_the_api_rule():
+    await seed_everything()
+
+    def use_role(d):
+        d["rules"][0]["interface"] = "{{IF_GUEST}}"
+        d.setdefault("variables", {}).setdefault("fw-filiale-1", {})["IF_GUEST"] = "opt3"
+
+    text = edit(await export(), use_role)
+    p = await plan(text)
+    assert p.applicable, p.errors
+    await apply(text)
+    again = yaml.safe_load(await export())
+    assert again["rules"][0]["interface"] == "{{IF_GUEST}}" and again["variables"]["fw-filiale-1"]["IF_GUEST"] == "opt3"
+    assert (await plan(await export())).summary()["update"] == 0  # stable: exporting what was applied changes nothing
+
+    bad = edit(await export(), lambda d: d["rules"][0].update(interface="lan{{IF_GUEST}}"))
+    with pytest.raises(ConfigError) as err:
+        await plan(bad)
+    assert err.value.errors[0]["path"] == "rules[0].interface"
+    # hierarchy rules may carry a role in the interface too, but nothing else may be a placeholder
+    hier = edit(await export(), lambda d: d["policy_hierarchy_rules"][0].update(interface="{{IF_GUEST}}"))
+    assert (await plan(hier)).applicable
+    for field, value in (("interface", "lan{{IF_GUEST}}"), ("description", "{{SITE}}")):
+        refused = edit(await export(), lambda d: d["policy_hierarchy_rules"][0].update({field: value}))
+        with pytest.raises(ConfigError) as err:
+            await plan(refused)
+        assert err.value.errors[0]["path"] == f"policy_hierarchy_rules[0].{field}", field
+
+
 # -- conflicts, atomicity, self-check -----------------------------------------------------------------------------------
 
 async def test_a_change_between_plan_and_apply_makes_the_plan_stale():

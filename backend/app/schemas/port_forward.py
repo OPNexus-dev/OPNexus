@@ -31,6 +31,12 @@ class PortForwardCreate(BaseModel):
             raise ValueError("Feld darf nicht nur Leerzeichen enthalten")
         return value.strip()
 
+    @field_validator("interface")
+    @classmethod
+    def interface_or_role(cls, value):
+        from app.services.variables_service import validate_interface_field
+        return validate_interface_field(value)
+
 
 class PortForwardRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)

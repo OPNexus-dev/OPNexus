@@ -3,16 +3,19 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Field";
+import { Input, Select } from "@/components/ui/Field";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
-import { api, Host, HostVariable } from "@/lib/api";
+import { api, Host, HostVariable, InterfaceOption } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useReadOnly } from "@/lib/useReadOnly";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-/** Site variables: values for {{NAME}} placeholders that rules, aliases and NAT entries use for this firewall. */
+const ROLE_PREFIX = "IF_";
+
+/** Site variables: values for {{NAME}} placeholders that rules, aliases and NAT entries use for this firewall.
+ *  Names starting with IF_ are interface roles: their value is one of this firewall's interfaces. */
 export function HostVariables({ host }: { host: Host }) {
   const { t, errorMessage } = useLanguage();
   const readOnly = useReadOnly();
@@ -21,6 +24,8 @@ export function HostVariables({ host }: { host: Host }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [added, setAdded] = useState<string[]>([]);
   const [newName, setNewName] = useState("");
+  const [newRole, setNewRole] = useState("");
+  const [interfaces, setInterfaces] = useState<InterfaceOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -34,14 +39,20 @@ export function HostVariables({ host }: { host: Host }) {
     api.getHostVariables(host.id).then((r) => apply(r.variables)).catch((e) => setError(errorMessage(e, "variables.loadFailed")));
   }, [host.id]);
 
-  const names = [...(rows ?? []).map((r) => r.name), ...added];
+  useEffect(() => {
+    api.getHostInterfaces(host.id).then(setInterfaces).catch(() => setInterfaces([]));
+  }, [host.id]);
+
+  const allNames = [...(rows ?? []).map((r) => r.name), ...added];
+  const names = allNames.filter((n) => !n.startsWith(ROLE_PREFIX));
+  const roleNames = allNames.filter((n) => n.startsWith(ROLE_PREFIX));
   const usage = (name: string) => rows?.find((r) => r.name === name);
 
   async function save() {
     setSaving(true);
     setError(null);
     try {
-      const payload = Object.fromEntries(names.filter((n) => (values[n] ?? "").trim() !== "").map((n) => [n, values[n].trim()]));
+      const payload = Object.fromEntries(allNames.filter((n) => (values[n] ?? "").trim() !== "").map((n) => [n, values[n].trim()]));
       apply((await api.setHostVariables(host.id, payload)).variables);
       toast.show(t("variables.saved"), "success");
     } catch (e) {
@@ -53,9 +64,16 @@ export function HostVariables({ host }: { host: Host }) {
 
   function addName() {
     const name = newName.trim().toUpperCase();
-    if (!name || names.includes(name)) return;
+    if (!name || allNames.includes(name)) return;
     setAdded([...added, name]);
     setNewName("");
+  }
+
+  function addRole() {
+    const name = ROLE_PREFIX + newRole.trim().toUpperCase().replace(/^IF_/, "");
+    if (name === ROLE_PREFIX || allNames.includes(name)) return;
+    setAdded([...added, name]);
+    setNewRole("");
   }
 
   const missing = (rows ?? []).filter((r) => r.missing && !(values[r.name] ?? "").trim()).length;
@@ -89,6 +107,42 @@ export function HostVariables({ host }: { host: Host }) {
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Input className="max-w-[14rem]" value={newName} onChange={(e) => setNewName(e.target.value.toUpperCase())} placeholder="LAN_NET" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addName(); } }} aria-label={t("variables.newName")} />
             <Button type="button" variant="outline" onClick={addName}><Plus size={14} />{t("variables.add")}</Button>
+            <Button type="button" onClick={save} disabled={saving} loading={saving}>{t("common.save")}</Button>
+          </div>
+        </fieldset>
+      </Card>
+
+      <h2 className="mb-3 mt-8 flex items-center gap-2 text-lg font-semibold text-slate-900">
+        {t("roles.title")}
+        <InfoTip text={t("roles.intro")} />
+      </h2>
+      <Card className="p-5">
+        {rows && roleNames.length === 0 && <p className="text-sm text-slate-500">{t("roles.empty")}</p>}
+        <fieldset disabled={readOnly} className="space-y-3">
+          {roleNames.map((name) => {
+            const info = usage(name);
+            return (
+              <div key={name} className="grid items-center gap-2 sm:grid-cols-[14rem_1fr_auto]">
+                <code className="font-mono text-sm text-slate-800">{`{{${name}}}`}</code>
+                <div>
+                  <Select value={values[name] ?? ""} onChange={(e) => setValues({ ...values, [name]: e.target.value })} aria-label={name}>
+                    <option value="">{t("roles.none")}</option>
+                    {values[name] && !interfaces.some((o) => o.name === values[name]) && <option value={values[name]}>{values[name]}</option>}
+                    {interfaces.map((o) => (
+                      <option key={o.name} value={o.name}>{o.label} ({o.name})</option>
+                    ))}
+                  </Select>
+                  {info && info.used_by.length > 0 && <p className="mt-1 text-xs text-slate-500">{t("roles.usedBy", { list: info.used_by.map((u) => u.label).slice(0, 4).join(", ") })}</p>}
+                </div>
+                <Button type="button" variant="ghost" onClick={() => { setValues({ ...values, [name]: "" }); setAdded(added.filter((n) => n !== name)); }} aria-label={t("rules.delete")} title={t("rules.delete")}>
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            );
+          })}
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <Input className="max-w-[14rem]" value={newRole} onChange={(e) => setNewRole(e.target.value.toUpperCase())} placeholder="GUEST" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRole(); } }} aria-label={t("roles.newName")} />
+            <Button type="button" variant="outline" onClick={addRole}><Plus size={14} />{t("roles.add")}</Button>
             <Button type="button" onClick={save} disabled={saving} loading={saving}>{t("common.save")}</Button>
           </div>
         </fieldset>

@@ -53,5 +53,9 @@ Optional: Updates per Klick im Webinterface (Einstellungen › "OPNexus aktualis
 Vollständige Anleitung: README.md im Repository, Abschnitt "Release-Images & CI".
 TXT
 
-tar -C dist -czf "dist/$name.tar.gz" "$name"
+# Reproduzierbar: gleiche Eingaben ergeben dasselbe Archiv (feste Reihenfolge, Besitzer und Zeit = Commit des Tags, gzip ohne Zeitstempel), damit die
+# Release-Pipeline ein schon veröffentlichtes Bundle per Prüfsumme als identisch erkennen kann statt es zu ersetzen.
+epoch="$(git log -1 --format=%ct "v$version" 2>/dev/null || date +%s)"
+find "$out" -exec touch -h -d "@$epoch" {} +
+tar -C dist --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$epoch" -cf - "$name" | gzip -n -9 > "dist/$name.tar.gz"
 echo "dist/$name.tar.gz"

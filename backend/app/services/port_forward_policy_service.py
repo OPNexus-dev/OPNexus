@@ -70,6 +70,8 @@ def preview(rule):
         warnings.append("Frühere Ziele behalten diese Regel, bis du sie hier gezielt entfernst. Diese Löschung hat keinen automatischen Rollback.")
     if any(r["action"] == "missing_variable" for r in rows):
         warnings.append("Für mindestens einen Ziel-Host fehlt der Wert einer Variable ({{NAME}}). Erst auf der Host-Seite unter „Variablen“ eintragen.")
+    if any(r["action"] == "not_applicable" for r in rows):
+        warnings.append("Auf mindestens einem Ziel ist die Schnittstellen-Rolle nicht zugeordnet: dort wird nichts ausgerollt.")
     if any(r["action"] == "disabled" for r in rows):
         warnings.append("Deaktivierte Hosts werden übersprungen.")
     if any(d.status == "error" for d in rule.deployments):
@@ -92,7 +94,7 @@ def workflow(rule, deployments):
     counts = {
         "targets": len(hosts),
         "active_targets": len(active),
-        "changes": sum(1 for h in active if h.id not in by_host or by_host[h.id].last_payload != variables_service.payload_or_none(_build_payload, rule, h)),
+        "changes": sum(1 for h in active if not variables_service.is_skipped(_build_payload, rule, h) and (h.id not in by_host or by_host[h.id].last_payload != variables_service.payload_or_none(_build_payload, rule, h))),
         "pending": sum(d.status == "pending" for d in deployments),
         "errors": sum(d.status in ("error", "revert_failed") for d in deployments),
         "retained": sum(d.host_id not in target_ids for d in deployments),

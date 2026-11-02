@@ -3,9 +3,12 @@ sourced live from each host via `getRule`'s template response, so it always
 matches that host's actual interface assignments (lan/wan/optN, VLANs,
 custom names) instead of a guessed static list.
 """
+from typing import Callable
+
+from app.errors import ErrorCode, api_error
 from app.models.host import OpnsenseHost
 from app.schemas.host import InterfaceOption
-from app.services import opnsense_client
+from app.services import opnsense_client, variables_service
 from app.services.opnsense_client import OpnsenseAPIError
 
 
@@ -41,6 +44,8 @@ async def check_interface_consistency(hosts: list[OpnsenseHost], interface_name:
     host can never conflict with itself.
     """
     labels: dict[str, str] = {}
+    if variables_service.names_in(interface_name):
+        return labels  # an interface role: it deliberately means a different interface per host (checked by role_targets)
     for host in hosts:
         try:
             options = await get_interfaces(host)
@@ -50,3 +55,30 @@ async def check_interface_consistency(hosts: list[OpnsenseHost], interface_name:
         if match is not None:
             labels[host.name] = match
     return labels
+
+
+async def role_targets(builder: Callable, entity, hosts: list[OpnsenseHost]) -> list[OpnsenseHost]:
+    """The hosts a central object is really deployed to when its interface is a role ({{IF_NAME}}).
+
+    Hosts without that role are left out (the preview names them). If no host is left, nothing is deployed. For every
+    remaining host the role's interface must exist on the firewall right now (live); a host that does not answer is
+    left to the deploy itself, which reports the error more specifically.
+    """
+    if not variables_service.names_in(getattr(entity, "interface", "") or ""):
+        return hosts
+    targets = variables_service.applicable_hosts(builder, entity, hosts)
+    if not targets:
+        raise api_error(400, ErrorCode.ROLE_NOT_APPLICABLE_ANYWHERE, interface=entity.interface)
+    unknown: dict[str, str] = {}
+    for host in targets:
+        identifier = builder(entity, host)["interface"]
+        try:
+            options = await get_interfaces(host)
+        except OpnsenseAPIError:
+            continue
+        if not any(o.name == identifier for o in options):
+            unknown[host.name] = identifier
+    if unknown:
+        raise api_error(409, ErrorCode.ROLE_INTERFACE_UNKNOWN, interface=entity.interface,
+                        detail=", ".join(f"{name}={ident}" for name, ident in sorted(unknown.items())))
+    return targets

@@ -36,6 +36,7 @@ import {
   PolicyHierarchyRuleCreate,
   PolicyHierarchyRulebase,
 } from "@/lib/api";
+import { useInterfaceRoleOptions } from "@/lib/useInterfaceRoleOptions";
 
 const emptyGroupForm: PolicyHierarchyGroupWrite = { name: "", description: "", parent_id: null };
 
@@ -107,6 +108,7 @@ function PolicyHierarchyContent() {
 
   const [ruleModal, setRuleModal] = useState<{ editing: PolicyHierarchyRule | null } | null>(null);
   const [ruleForm, setRuleForm] = useState<PolicyHierarchyRuleCreate | null>(null);
+  const roleOptions = useInterfaceRoleOptions();
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
 
@@ -459,7 +461,10 @@ function PolicyHierarchyContent() {
             </FieldGroup>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label="Interface">
-                <Input required value={ruleForm.interface} onChange={(e) => setRuleForm({ ...ruleForm, interface: e.target.value })} placeholder="lan" />
+                <Input required list="hierarchy-interface-roles" value={ruleForm.interface} onChange={(e) => setRuleForm({ ...ruleForm, interface: e.target.value })} placeholder="lan" />
+                <datalist id="hierarchy-interface-roles">
+                  {roleOptions.map((opt) => <option key={opt.name} value={opt.name}>{opt.label}</option>)}
+                </datalist>
               </FieldGroup>
               <FieldGroup label={t("fields.direction")}>
                 <Select value={ruleForm.direction} onChange={(e) => setRuleForm({ ...ruleForm, direction: e.target.value as PolicyHierarchyRuleCreate["direction"] })}>

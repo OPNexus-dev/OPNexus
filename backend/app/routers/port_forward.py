@@ -16,7 +16,8 @@ from app.models.port_forward import PortForwardRule
 from app.models.port_forward_deployment import PortForwardDeployment
 from app.schemas.port_forward import DeploymentResult, PortForwardCreate, PortForwardRead, PortForwardEdit, DeployApproval
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
-from app.services.interface_service import check_interface_consistency
+from app.services.interface_service import check_interface_consistency, role_targets
+from app.services.port_forward_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.port_forward_deploy_service import confirm_port_forward, deploy_port_forward, undeploy_port_forward, revert_deployment
 from app.services.policy_hierarchy_target_service import hydrate_hierarchy_targets, validate_hierarchy_group
@@ -135,6 +136,7 @@ async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(defa
     hosts = [h for h in effective_hosts(rule) if h.enabled]
     if not hosts:
         raise api_error(400, ErrorCode.REGEL_HAT_KEINE_ZIEL_HOSTS)
+    hosts = await role_targets(_payload_for, rule, hosts)
     if len(hosts) > 1:
         labels = await check_interface_consistency(hosts, rule.interface)
         distinct = set(labels.values())

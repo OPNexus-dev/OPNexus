@@ -102,6 +102,7 @@ async def _deploy_to_host(db: AsyncSession, rule: FirewallRule, host: OpnsenseHo
 async def deploy_rule(db: AsyncSession, rule: FirewallRule, hosts: list[OpnsenseHost]) -> list[RuleDeployment]:
     from app.services.host_maintenance_service import ensure_no_maintenance
     from app.services.policy_hierarchy_deploy_service import reassert_after_managed_change
+    hosts = variables_service.applicable_hosts(_build_payload, rule, hosts)  # hosts without the interface role take no part
     await ensure_no_maintenance(db, hosts)
     variables_service.ensure_resolvable(_build_payload, rule, hosts)  # before anything is written
     deployments = [await _deploy_to_host(db, rule, host) for host in hosts]
@@ -110,7 +111,7 @@ async def deploy_rule(db: AsyncSession, rule: FirewallRule, hosts: list[Opnsense
         if deployment.status != "pending":
             continue
         try:
-            await reassert_after_managed_change(db, host, {rule.interface})
+            await reassert_after_managed_change(db, host, {_build_payload(rule, host)["interface"]})
         except OpnsenseAPIError as exc:
             deployment.status = "error"
             deployment.message = f"Regel wurde übernommen, Hierarchie-Reihenfolge aber nicht bestätigt: {exc}"

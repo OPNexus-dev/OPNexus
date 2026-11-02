@@ -332,6 +332,111 @@ async def test_rule_link_diff_and_errors(client, respx_mock, two):
     assert refused.status_code == 409 and refused.json()["detail"]["code"] == "ADOPT_LINK_TARGET_CHANGED"
 
 
+@pytest.mark.asyncio
+async def test_rule_with_an_interface_role_links_to_each_firewalls_own_interface(client, respx_mock, two):
+    from tests.test_rules import _rule_payload
+    a, b = two
+    c = await _host(client, respx_mock, "https://fw-link-c.test", "fw-link-c")
+    d = await _host(client, respx_mock, "https://fw-link-d.test", "fw-link-d")
+    for base in (A, B, "https://fw-link-c.test", "https://fw-link-d.test"):
+        respx_mock.get(f"{base}/api/firewall/filter/getRule").mock(return_value=httpx.Response(
+            200, json={"rule": {"interface": {n: {"value": n.upper(), "selected": 0} for n in ("lan", "opt3", "opt9", "vlan0.20")}}}))
+    await _put_vars(client, a, {"IF_GUEST": "opt3"})
+    await _put_vars(client, b, {"IF_GUEST": "vlan0.20"})
+    await _put_vars(client, c, {"IF_GUEST": "opt3"})  # d has no such role
+    central = (await client.post("/api/rules", json=_rule_payload(
+        [a], description="Manual SSH", interface="{{IF_GUEST}}", direction="in", protocol="TCP", source_net="10.0.0.0/8",
+        destination_net="any", destination_port="22", log=True))).json()
+
+    # B's hand-made rule sits on vlan0.20 = B's guest interface: an exact match, linked without a write
+    _search(respx_mock, B, "filter/searchRule", [rule_row("r-b", interface="vlan0.20")])
+    row = (await client.get(f"/api/rules/unmanaged?host_id={b}")).json()[0]
+    assert row["linkable"] is True and [m["id"] for m in row["matches"]] == [central["id"]]
+    resp = await client.post("/api/rules/adopt", json={"host_id": b, "rule_uuid": "r-b", "link_to": central["id"]})
+    assert resp.status_code == 201, resp.text
+    preview = (await client.get(f"/api/rules/{central['id']}/preview")).json()
+    assert {h["host_name"]: h["action"] for h in preview["hosts"]}["fw-link-b"] == "unchanged"
+    assert not _live_writes(respx_mock)
+
+    # C's rule is on another interface than C's guest interface: only a hint with the difference, never linked
+    _search(respx_mock, "https://fw-link-c.test", "filter/searchRule", [rule_row("r-c", interface="opt9")])
+    row = (await client.get(f"/api/rules/unmanaged?host_id={c}")).json()[0]
+    assert row["linkable"] is False and row["matches"] == []
+    assert {"field": "interface", "central": "opt3", "live": "opt9"} in row["similar"][0]["diff"]
+
+    # D has not assigned the role: the central rule does not apply there, so nothing is offered
+    _search(respx_mock, "https://fw-link-d.test", "filter/searchRule", [rule_row("r-d", interface="opt3")])
+    row = (await client.get(f"/api/rules/unmanaged?host_id={d}")).json()[0]
+    assert row["linkable"] is False and row["matches"] == []
+
+
+def _iface_options(respx_mock, *bases):
+    for base in bases:
+        respx_mock.get(f"{base}/api/firewall/filter/getRule").mock(return_value=httpx.Response(
+            200, json={"rule": {"interface": {n: {"value": n.upper(), "selected": 0} for n in ("lan", "wan", "opt3", "vlan0.20")}}}))
+
+
+@pytest.mark.asyncio
+async def test_adopting_as_a_role_then_linking_the_other_firewall_manages_one_central_rule(client, respx_mock, two):
+    a, b = two
+    _iface_options(respx_mock, A, B)
+    await _put_vars(client, a, {"IF_GUEST": "opt3"})
+    await _put_vars(client, b, {"IF_GUEST": "vlan0.20"})
+    _search(respx_mock, A, "filter/searchRule", [rule_row("r-a", interface="opt3")])
+    _search(respx_mock, B, "filter/searchRule", [rule_row("r-b", interface="vlan0.20")])
+
+    listed = (await client.get(f"/api/rules/unmanaged?host_id={a}")).json()[0]
+    assert listed["interface_roles"] == ["IF_GUEST"]  # the dialog can offer "adopt as role GUEST"
+    created = await client.post("/api/rules/adopt", json={"host_id": a, "rule_uuid": "r-a", "interface_role": "IF_GUEST"})
+    assert created.status_code == 201, created.text
+    central = created.json()
+    assert central["interface"] == "{{IF_GUEST}}"
+    preview = (await client.get(f"/api/rules/{central['id']}/preview")).json()
+    assert [h["action"] for h in preview["hosts"]] == ["unchanged"]  # what was stored is exactly what is live, resolved for fw a
+
+    # the second firewall's rule sits on ITS guest interface: it matches the same central rule and is linked, not duplicated
+    row = (await client.get(f"/api/rules/unmanaged?host_id={b}")).json()[0]
+    assert row["linkable"] is True and [m["id"] for m in row["matches"]] == [central["id"]]
+    linked = await client.post("/api/rules/adopt", json={"host_id": b, "rule_uuid": "r-b", "link_to": central["id"]})
+    assert linked.status_code == 201, linked.text
+    assert len((await client.get("/api/rules")).json()) == 1
+    preview = (await client.get(f"/api/rules/{central['id']}/preview")).json()
+    assert sorted(h["action"] for h in preview["hosts"]) == ["unchanged", "unchanged"]
+    assert not _live_writes(respx_mock)
+
+
+@pytest.mark.asyncio
+async def test_adopting_as_a_role_never_guesses(client, respx_mock, two):
+    a, _ = two
+    _iface_options(respx_mock, A)
+    await _put_vars(client, a, {"IF_GUEST": "opt3"})
+    _search(respx_mock, A, "filter/searchRule", [rule_row("r-a", interface="wan")])
+    for role, code in (("IF_GUEST", "role_interface_differs"), ("IF_OTHER", "role_not_assigned")):
+        resp = await client.post("/api/rules/adopt", json={"host_id": a, "rule_uuid": "r-a", "interface_role": role})
+        assert resp.status_code == 409 and code in resp.json()["detail"]["params"]["reasons"], (role, resp.text)
+    assert (await client.get("/api/rules")).json() == []  # nothing was created
+    bad = await client.post("/api/rules/adopt", json={"host_id": a, "rule_uuid": "r-a", "interface_role": "GUEST"})
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_nat_objects_can_be_adopted_as_a_role_but_aliases_cannot(client, respx_mock, two):
+    a, _ = two
+    _iface_options(respx_mock, A)
+    await _put_vars(client, a, {"IF_WAN": "wan"})
+    _search(respx_mock, A, "alias/searchItem", SYSTEM_ALIASES + [alias_row("web", "host", "10.0.0.1", uuid="al-1")])
+    _search(respx_mock, A, "source_nat/searchRule", [snat_row(uuid="n-1", interface="wan", description="LAN out")])
+    listed = (await client.get(f"/api/outbound-nat/unmanaged?host_id={a}")).json()
+    assert listed[0]["interface_roles"] == ["IF_WAN"]
+    resp = await client.post("/api/outbound-nat/adopt", json={"host_id": a, "uuid": "n-1", "interface_role": "IF_WAN"})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["interface"] == "{{IF_WAN}}"
+    preview = (await client.get(f"/api/outbound-nat/{resp.json()['id']}/preview")).json()
+    assert [h["action"] for h in preview["hosts"]] == ["unchanged"]  # the stored payload is the resolved, live one
+    alias = await client.post("/api/aliases/adopt", json={"host_id": a, "uuid": "al-1", "interface_role": "IF_WAN"})
+    assert alias.status_code == 409 and "role_not_applicable" in alias.json()["detail"]["params"]["reasons"]
+
+
 # ── error cases ─────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

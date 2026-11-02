@@ -20,7 +20,7 @@ from app.models.host import OpnsenseHost
 from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
 from app.services import adopt_link_service, opnsense_client
-from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, on  # noqa: F401  (NotAdoptable is re-exported for routers/rules.py)
+from app.services.adopt_common import NotAdoptable, NotFoundOnHost, clean, interface_role_for, on, roles_matching  # noqa: F401  (NotAdoptable is re-exported for routers/rules.py)
 from app.services.policy_service import revision
 from app.services.rule_deploy_service import _build_payload
 
@@ -122,6 +122,7 @@ async def list_unmanaged(db: AsyncSession, host: OpnsenseHost) -> list[dict]:
             "description": _clean(row.get("description")),
             "interface": _clean(row.get("interface")),
             "interface_label": _clean(row.get("%interface")) or _clean(row.get("interface")),
+            "interface_roles": roles_matching(host, _clean(row.get("interface"))),
             "direction": _clean(row.get("direction")),
             "action": _clean(row.get("action")),
             "protocol": _clean(row.get("protocol")) or "any",
@@ -137,7 +138,7 @@ async def list_unmanaged(db: AsyncSession, host: OpnsenseHost) -> list[dict]:
     return result
 
 
-async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str, link_to=None) -> FirewallRule:
+async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str, link_to=None, interface_role: str | None = None) -> FirewallRule:
     """Takes the rule over as a new central rule, or - with `link_to` - links it to that existing rule."""
     if link_to is not None:
         existing = await db.scalar(select(RuleDeployment).where(
@@ -156,7 +157,10 @@ async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str, link_to=No
     if link_to is not None:
         return await adopt_link_service.link(db, LINK_SPEC, host, link_to, rule_uuid, _values(row))
 
-    rule = FirewallRule(**_values(row), targets=[host], groups=[])
+    values = _values(row)
+    if interface_role:  # stored as the role, so the next firewall can be linked to it with ITS interface
+        values["interface"] = interface_role_for(host, interface_role, values["interface"])
+    rule = FirewallRule(**values, targets=[host], groups=[])
     db.add(rule)
     await db.flush()
     revision(db, rule, "Von Firewall übernommen")
@@ -166,7 +170,7 @@ async def adopt(db: AsyncSession, host: OpnsenseHost, rule_uuid: str, link_to=No
         status="success",
         message="Von der Firewall übernommen",
         opnsense_rule_uuid=rule_uuid,
-        last_payload=_build_payload(rule),
+        last_payload=_build_payload(rule, host),
         previous_payload=None,
     ))
     await db.flush()

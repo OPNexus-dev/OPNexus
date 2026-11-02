@@ -9,6 +9,8 @@ class AdoptObjectRequest(BaseModel):
     # Declared before `uuid`: that field's name shadows the module inside the class body.
     link_to: uuid.UUID | None = None
     uuid: str = Field(min_length=1, max_length=64)  # the object's UUID on the firewall
+    # NAT kinds: store the new central object with this interface role instead of the identifier.
+    interface_role: str | None = Field(default=None, max_length=40, pattern=r"^IF_[A-Z0-9][A-Z0-9_]{0,36}$")
 
 
 class AdoptAllRequest(BaseModel):
@@ -53,6 +55,7 @@ class UnmanagedObject(BaseModel):
     # Objects with the same name/description but different content: a hint with the differing fields, never linked.
     similar: list[LinkTarget] = Field(default_factory=list)
     linkable: bool = False  # can be linked to `matches[0]` (or another match) on its own
+    interface_roles: list[str] = Field(default_factory=list)  # roles this host has assigned to the object's interface (NAT kinds)
     # What "adopt all" would do: "link" | "new" | "skip" (None only on the adopt-all result).
     bulk_action: str | None = None
 
