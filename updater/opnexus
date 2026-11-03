@@ -131,6 +131,12 @@ overlay_enabled() {
   [[ ",$profiles," == *",overlay,"* ]]
 }
 
+ha_gate_enabled() {  # Profil "ha": der HA-Gate (Netzseite des Agenten)
+  local profiles
+  profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
+  [[ ",$profiles," == *",ha,"* ]]
+}
+
 gui_enabled() {
   local profiles
   profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
@@ -146,6 +152,8 @@ up_targets() {
     overlay_enabled && echo wg-hub
     # Ebenso das GUI-Gateway (Profil "gui"): Backend-Image, muss zur Backend-Version passen.
     gui_enabled && echo gui-gateway
+    # Der HA-Gate läuft mit dem Proxy-Image und muss mit.
+    ha_gate_enabled && echo ha-gate
   fi
   return 0
 }
@@ -202,6 +210,7 @@ cmd_status_porcelain() {
   echo "version_setting=$(env_get OPNEXUS_VERSION)"
   echo "running_version=$(running_version)"
   echo "db_revision=$(db_revision)"
+  echo "host_count=$(psql_db -c 'SELECT count(*) FROM opnsense_hosts' 2>/dev/null || true)"   # für die Vorprüfung von `ha init`: Richtung des Einrichtens
   for svc in "${SERVICES[@]}"; do echo "service.$svc=$(service_state "$svc")"; done
   if [ -f "$STATE_FILE" ]; then
     # Nur bekannte Schlüssel durchlassen — die Datei wird vom Skript selbst geschrieben.
@@ -317,6 +326,7 @@ merge_env_from_backup() {
     [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
     key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
     [[ " $ENV_KEEP_KEYS " == *" $key "* ]] && continue
+    case "$key" in HA_*|COMPOSE_FILE) continue ;; esac   # HA-Zustand gehört dem Knoten (ein wiederhergestellter Server ist kein Paarknoten)
     [ "$(env_get "$key")" = "$value" ] && grep -q "^$key=" "$ENV_FILE" && continue
     changed+=("$key")
   done < "$backup"
@@ -330,6 +340,7 @@ merge_env_from_backup() {
   install -m 600 "$ENV_FILE" "$ENV_FILE.before-restore"
   for key in "${changed[@]}"; do
     value=$(sed -n "s/^$key=//p" "$backup" | tail -n1)
+    if [ "$key" = COMPOSE_PROFILES ]; then value=$(tr ',' '\n' <<<"$value" | grep -vx ha | paste -sd, -); fi   # ohne den HA-Gate: ohne Zertifikat startete er in einer Schleife
     env_set_literal "$key" "$value"
   done
   say ".env aktualisiert (vorher: $ENV_FILE.before-restore)."
@@ -340,7 +351,7 @@ env_set_literal() {
   local key="$1" value="$2" tmp
   tmp=$(mktemp "$ENV_FILE.XXXXXX") && chmod 600 "$tmp"
   if grep -q "^$key=" "$ENV_FILE"; then
-    awk -v k="$key" -v v="$value" 'BEGIN{FS=OFS="="} index($0, k"=")==1 {print k"="v; next} {print}' "$ENV_FILE" > "$tmp"
+    ENV_NEW_VALUE="$value" awk -v k="$key" 'BEGIN{FS=OFS="="} index($0, k"=")==1 {print k"="ENVIRON["ENV_NEW_VALUE"]; next} {print}' "$ENV_FILE" > "$tmp"
   else
     cat "$ENV_FILE" > "$tmp"; printf '%s=%s\n' "$key" "$value" >> "$tmp"
   fi
@@ -410,6 +421,7 @@ verify_signatures() {
   local target="$1"; shift
   local repo; repo=$(env_get OPNEXUS_IMAGE_REPO)
   if ! command -v cosign >/dev/null 2>&1 || [ ! -f cosign.pub ]; then
+    [ "${VERIFY_STRICT:-}" != 1 ] || die "Ohne cosign und cosign.pub wird kein Image für einen Partner-Auftrag übernommen (nichts wurde verändert)."
     say "Signaturprüfung übersprungen (cosign oder cosign.pub fehlt — siehe Handbuch, „Images prüfen“)."
     return 0
   fi
@@ -628,7 +640,7 @@ restore_compose() {
 cmd_update() {
   require_release_mode
   protect_env
-  if [ -n "$(env_get HA_ROLE)" ] && [ "${OPNEXUS_HA_UPDATE:-}" != 1 ]; then
+  if [ -n "$(ha_role_get)" ] && [ "${OPNEXUS_HA_UPDATE:-}" != 1 ]; then
     die "Dieser Server gehört zu einem HA-Paar. Aktualisieren geht mit 'opnexus ha update' (erst der Standby, dann der Primär); sonst bliebe der Standby hinter der Datenbank zurück."
   fi
   normalize_site_lists
@@ -952,9 +964,13 @@ cmd_migrate_host() {
 # Zwei Knoten mit je einer vollständigen Installation. Primär: Datenbank schreibbar, voller Stack, hält die VIP.
 # Standby: Datenbank als Streaming-Replica (TLS), nur postgres + backend laufen. Gewechselt wird nur per Befehl am
 # Standby (`ha promote`); der alte Primär wird dabei zuerst angehalten (Fencing). Kein automatisches Failover.
-# HA_ROLE in der .env (primary | standby | fenced) pflegt nur dieses Werkzeug; der Klick-Updater und `update`
-# sind gesperrt, solange sie gesetzt ist.
+# Der HA-Zustand (Rolle primary | standby | fenced, Knoten, Adressen, VIP, Replikationspasswort) steht in `.opnexus-ha/state`,
+# nur dieses Werkzeug schreibt ihn; die .env bleibt unberührt. Einzige Ausnahme ist eine abgeleitete Spiegelzeile HA_ROLE in der
+# .env: ältere Werkzeuge (nach einem Rollback ein älteres Updater-Image oder eine alte CLI) kennen die Datei nicht und sperren
+# Klick-Updates und `update` sonst nicht. Maßgeblich ist immer die Datei; der Klick-Updater und `update` sind gesperrt, solange eine Rolle gesetzt ist.
 HA_DIR=".opnexus-ha"
+HA_STATE_FILE="$HA_DIR/state"
+HA_STATE_KEYS="HA_ROLE HA_NODE HA_NODE_IP HA_PEER HA_PEER_IP HA_PEER_PORT HA_PEER_DIR HA_PEER_CLI HA_VIP HA_VIP_DEV HA_REPLICATION_PASSWORD"
 HA_SYNC_FILE=".opnexus-ha-sync"
 HA_SLOT="opnexus_standby"
 HA_REPL_USER="opnexus_replicator"
@@ -963,32 +979,75 @@ HA_KEY="${OPNEXUS_HA_KEY:-$HOME/.ssh/opnexus-ha}"
 HA_CRON="${OPNEXUS_HA_CRON:-/etc/cron.d/opnexus-ha}"
 # Knotenspezifisch: wird nie zum Partner übertragen (`ha sync`) und nie von ihm überschrieben.
 HA_NODE_KEYS="HA_ROLE HA_NODE HA_NODE_IP HA_PEER HA_PEER_IP HA_PEER_PORT HA_PEER_DIR HA_PEER_CLI HA_VIP_DEV COMPOSE_FILE"
+# Die einzigen .env-Schlüssel, die `ha sync` überträgt und `ha receive env` annimmt (Erlaubnisliste, keine Sperrliste: alles andere,
+# also auch COMPOSE_PROFILES, OPNEXUS_IMAGE_REPO, Ports und Adressen, bleibt Sache des jeweiligen Knotens).
+HA_SYNC_KEYS="ADMIN_USERNAME ADMIN_PASSWORD ALLOW_INSECURE_FIREWALL_URLS ALLOW_INSECURE_SMTP_AUTH COOKIE_SECURE TRUST_PROXY_HEADERS HEARTBEAT_URL SMTP_CA_FILE UPDATE_CHECK_INTERVAL_HOURS UPDATE_CHECK_URL GUI_GATEWAY_TOKEN GUI_PORTS OVERLAY_PORT HA_SYNC_PROFILES"
+# HA_SYNC_PROFILES ist kein Schlüssel der .env, sondern die Profile overlay/gui aus COMPOSE_PROFILES: sie müssen auf dem Partner ebenfalls laufen (wg-hub, gui-gateway
+# nach einem Wechsel); updater und ha entscheidet jeder Knoten selbst.
 # Verzeichnisse unter /data im Backend-Container, die `ha sync` überträgt (Geheimnisse und Überlagerung; die
 # Konfigurationssicherungen der Firewalls gehen getrennt, nur neue Dateien).
 HA_DATA_DIRS=(opnsense-secrets ipsec-psk-secrets openvpn-key-secrets wireguard-key-secrets cert-key-secrets acme-secrets totp-secrets notification-secrets overlay)
 HA_ROLE="" HA_NODE="" HA_PEER="" HA_PEER_IP="" HA_PEER_PORT=443 HA_NODE_IP="" HA_VIP="" HA_VIP_DEV="" HA_PEER_DIR="" HA_PEER_CLI="" HA_REPLICATION_PASSWORD=""
 
-ha_valid() {  # ha_valid WERT REGEX NAME — die Werte landen in ssh-Befehlen und Dateien: nur harmlose Zeichen
-  [[ "$1" =~ $2 ]] || die "Ungültiger Wert für $3 in $ENV_FILE: '$1'"
+ha_state_get() {  # ha_state_get SCHLÜSSEL — Wert aus der Statusdatei (leer, wenn es sie oder den Schlüssel nicht gibt); gelesen, nie ausgeführt
+  { sed -n "s/^$1=//p" "$HA_STATE_FILE" 2>/dev/null || true; } | tail -n1
 }
-RE_IP='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
-RE_CIDR='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
+# Schlüssel setzen: Datei in einem Zug neu schreiben (0600, Verzeichnis 0700), damit auch ein Abbruch keinen halben Zustand hinterlässt.
+ha_state_set() {  # ha_state_set SCHLÜSSEL WERT
+  local key="$1" value="$2"
+  [[ " $HA_STATE_KEYS " == *" $key "* ]] || die "Interner Fehler: '$key' gehört nicht in die HA-Statusdatei."
+  [[ "$value" != *$'\n'* ]] || die "Interner Fehler: Wert für $key enthält einen Zeilenumbruch."
+  ( umask 077; mkdir -p "$HA_DIR"; chmod 700 "$HA_DIR"
+    tmp=$(mktemp "$HA_DIR/state.XXXXXX") || exit 1
+    { grep -v "^$key=" "$HA_STATE_FILE" 2>/dev/null || true; printf '%s=%s\n' "$key" "$value"; } > "$tmp" && chmod 600 "$tmp" && mv -f "$tmp" "$HA_STATE_FILE" || { rm -f "$tmp"; exit 1; } ) \
+    || die "Die HA-Statusdatei $HA_STATE_FILE ließ sich nicht schreiben."
+  if [ "$key" = HA_ROLE ]; then env_set_literal HA_ROLE "$value"; fi   # Spiegelzeile für ältere Werkzeuge, nie maßgeblich
+}
+# Rolle dieses Knotens (leer = nicht Teil eines Paars): Statusdatei, sonst die Zeile einer älteren Version.
+ha_role_get() {
+  local r; r=$(ha_state_get HA_ROLE)
+  printf '%s' "${r:-$(env_get HA_ROLE)}"
+}
+# Zustand einer älteren Version (HA_* in der .env) einmalig in die Statusdatei übernehmen; die .env behält nur die Spiegelzeile.
+ha_state_migrate() {
+  [ ! -f "$HA_STATE_FILE" ] && [ -n "$(env_get HA_ROLE)" ] || return 0
+  local k v tmp
+  # Die ganze Datei in einem Zug (ein Abbruch mittendrin hinterließe sonst eine Teildatei, die nie wieder umgezogen wird).
+  ( umask 077; mkdir -p "$HA_DIR"; chmod 700 "$HA_DIR"
+    tmp=$(mktemp "$HA_DIR/state.XXXXXX") || exit 1
+    { for k in $HA_STATE_KEYS; do v=$(env_get "$k"); if [ -n "$v" ]; then printf '%s=%s\n' "$k" "$v"; fi; done; } > "$tmp" \
+      && chmod 600 "$tmp" && mv -f "$tmp" "$HA_STATE_FILE" || { rm -f "$tmp"; exit 1; } ) || die "Die HA-Statusdatei $HA_STATE_FILE ließ sich nicht schreiben."
+  for k in $HA_STATE_KEYS; do
+    [ "$k" = HA_ROLE ] || sed -i "/^$k=/d" "$ENV_FILE"
+  done
+  say "HA-Zustand aus $ENV_FILE nach $HA_STATE_FILE übernommen."
+}
+
+ha_valid() {  # ha_valid WERT REGEX NAME — die Werte landen in ssh-Befehlen und Dateien: nur harmlose Zeichen
+  [[ "$1" =~ $2 ]] || die "Ungültiger Wert für $3 in $HA_STATE_FILE: '$1'"
+}
+RE_IP='^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$'
+RE_CIDR='^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/(3[0-2]|[12]?[0-9])$'
 RE_NODE='^[a-z0-9][a-z0-9_-]{0,31}$'
 RE_SSH='^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$'
 RE_PATH='^/[A-Za-z0-9._/-]+$'
 RE_DEV='^[A-Za-z0-9._-]+$'
 
-# Liest die HA-Einstellungen aus der .env und prüft sie. $1 = "any" erlaubt jede Rolle, sonst muss HA aktiv sein.
+# Liest die HA-Einstellungen aus der Statusdatei (übernimmt dabei einmalig den Zustand einer älteren Version aus der .env) und prüft sie. $1 = "any" erlaubt jede Rolle, sonst muss HA aktiv sein.
 ha_load() {
-  HA_ROLE=$(env_get HA_ROLE); HA_NODE=$(env_get HA_NODE); HA_PEER=$(env_get HA_PEER); HA_PEER_IP=$(env_get HA_PEER_IP)
-  HA_PEER_PORT=$(env_get HA_PEER_PORT); HA_PEER_PORT="${HA_PEER_PORT:-443}"
-  HA_NODE_IP=$(env_get HA_NODE_IP); HA_VIP=$(env_get HA_VIP); HA_VIP_DEV=$(env_get HA_VIP_DEV)
-  HA_PEER_DIR=$(env_get HA_PEER_DIR); HA_PEER_CLI=$(env_get HA_PEER_CLI); HA_REPLICATION_PASSWORD=$(env_get HA_REPLICATION_PASSWORD)
+  ha_state_migrate
+  HA_ROLE=$(ha_state_get HA_ROLE); HA_NODE=$(ha_state_get HA_NODE); HA_PEER=$(ha_state_get HA_PEER); HA_PEER_IP=$(ha_state_get HA_PEER_IP)
+  HA_PEER_PORT=$(ha_state_get HA_PEER_PORT); HA_PEER_PORT="${HA_PEER_PORT:-443}"
+  HA_NODE_IP=$(ha_state_get HA_NODE_IP); HA_VIP=$(ha_state_get HA_VIP); HA_VIP_DEV=$(ha_state_get HA_VIP_DEV)
+  HA_PEER_DIR=$(ha_state_get HA_PEER_DIR); HA_PEER_CLI=$(ha_state_get HA_PEER_CLI); HA_REPLICATION_PASSWORD=$(ha_state_get HA_REPLICATION_PASSWORD)
   [ -n "$HA_ROLE" ] || die "Dieser Server ist nicht Teil eines HA-Paars ('opnexus ha init' richtet es ein)."
-  case "$HA_ROLE" in primary|standby|fenced) ;; *) die "HA_ROLE in $ENV_FILE ist '$HA_ROLE' (erlaubt: primary, standby, fenced)." ;; esac
-  ha_valid "$HA_NODE" "$RE_NODE" HA_NODE; ha_valid "$HA_PEER" "$RE_SSH" HA_PEER; ha_valid "$HA_PEER_IP" "$RE_IP" HA_PEER_IP
-  ha_valid "$HA_PEER_PORT" '^[0-9]{1,5}$' HA_PEER_PORT; ha_valid "$HA_NODE_IP" "$RE_IP" HA_NODE_IP; ha_valid "$HA_VIP" "$RE_CIDR" HA_VIP; ha_valid "$HA_PEER_DIR" "$RE_PATH" HA_PEER_DIR
-  ha_valid "$HA_PEER_CLI" '^[A-Za-z0-9._/-]+$' HA_PEER_CLI; ha_valid "$HA_VIP_DEV" "$RE_DEV" HA_VIP_DEV
+  case "$HA_ROLE" in primary|standby|fenced) ;; *) die "HA_ROLE in $HA_STATE_FILE ist '$HA_ROLE' (erlaubt: primary, standby, fenced)." ;; esac
+  ha_valid "$HA_NODE" "$RE_NODE" HA_NODE; ha_valid "$HA_PEER_IP" "$RE_IP" HA_PEER_IP
+  ha_valid "$HA_PEER_PORT" '^[0-9]{1,5}$' HA_PEER_PORT; ha_valid "$HA_NODE_IP" "$RE_IP" HA_NODE_IP; ha_valid "$HA_VIP" "$RE_CIDR" HA_VIP
+  ha_valid "$HA_VIP_DEV" "$RE_DEV" HA_VIP_DEV
+  if ! ha_agent_paired; then   # SSH-Angaben nur für Paare ohne Agent
+    ha_valid "$HA_PEER" "$RE_SSH" HA_PEER; ha_valid "$HA_PEER_DIR" "$RE_PATH" HA_PEER_DIR; ha_valid "$HA_PEER_CLI" '^[A-Za-z0-9._/-]+$' HA_PEER_CLI
+  fi
   ha_valid "$HA_REPLICATION_PASSWORD" '^[A-Za-z0-9]{16,}$' HA_REPLICATION_PASSWORD
 }
 
@@ -1005,9 +1064,63 @@ ha_ssh_opts() {
 # Befehl am Partner (SSH, Schlüssel ohne Passwort; nach `ha init` der gemeinsame Cluster-Schlüssel).
 ha_ssh() { ha_ssh_opts; ssh "${HA_SSH_OPTS[@]}" "$HA_PEER" "$@"; }
 # Das opnexus-Werkzeug des Partners; Argumente werden für die Remote-Shell maskiert.
-ha_peer() {
+ha_peer_ssh() {
   local args; args=$(printf '%q ' "$@")
   ha_ssh "cd $(printf '%q' "$HA_PEER_DIR") && OPNEXUS_DIR=$(printf '%q' "$HA_PEER_DIR") $(printf '%q' "$HA_PEER_CLI") $args"
+}
+# ── Partner über den Agenten statt über SSH (docs/DESIGN-HA-UI.md): ha_cli.py im Updater-Container, gepinntes TLS zum Gate ──
+ha_agent_py() {
+  if [ -n "${OPNEXUS_UPDATER:-}" ]; then python /app/ha_cli.py "$@"; else c exec -T updater python /app/ha_cli.py "$@"; fi
+}
+ha_agent_paired() { [ -f "$HA_DIR/agent/cluster.json" ]; }
+# Erreichbar? Über den Agenten ein Ping an sein Gate, sonst eine SSH-Anmeldung.
+ha_link_name() { if ha_agent_paired; then echo "über den Agenten, Port 8445"; else echo "per SSH"; fi; }   # für Meldungen: welcher Weg zum Partner gemeint ist
+ha_reach() {
+  if ha_agent_paired; then ha_agent_py call ping >/dev/null 2>&1; else ha_ssh true >/dev/null 2>&1; fi
+}
+# Die wenigen Aufrufe, die der Agent dem Partner erlaubt (feste Verben, siehe updater/ha_agent.py), in der Form der alten `ha_peer`-Aufrufe.
+ha_peer_agent() {
+  case "$*" in
+    "ha status --porcelain") ha_agent_py call status ;;
+    "ha fence") ha_agent_py call fence ;;
+    "ha resync --yes") ha_agent_py call resync ;;
+    "ha dissolve --partner-side") ha_agent_py call dissolve ;;
+    "ha promote --yes") ha_agent_py call promote ;;
+    "ha update-standby "*) ha_agent_py call update-standby --param "$3" ;;
+    "ha receive data"|"ha receive env"|"ha receive env-init"|"ha receive ha-ca") ha_agent_py call "receive/$3" ;;
+    "ha receive ca "*) ha_agent_py call receive/ca --param "$4" ;;
+    "ha receive ca-sum") ha_agent_py call receive/ca-sum ;;
+    "ha receive stamp "*) ha_agent_py call receive/stamp --param "$4" ;;
+    *) die "Interner Fehler: '$*' ist über den Agenten nicht erlaubt." ;;
+  esac
+}
+ha_peer() {
+  if ha_agent_paired; then ha_peer_agent "$@"; else ha_peer_ssh "$@"; fi
+}
+
+# Befehle, die den Netzstack des HOSTS brauchen (VIP, Nachbarn): auf dem Host direkt; im Updater-Container in einem kurzlebigen
+# Hilfscontainer mit dem Netz des Hosts und nur den beiden nötigen Fähigkeiten (Image: das des Updaters selbst).
+ha_host_exec() {
+  if [ -z "${OPNEXUS_UPDATER:-}" ]; then "$@"; return; fi
+  local image; image=$(docker inspect "${HOSTNAME:-$(hostname)}" --format '{{.Config.Image}}' 2>/dev/null) || return 1
+  [ -n "$image" ] || return 1
+  docker run --rm --network host --cap-drop ALL --cap-add NET_ADMIN --cap-add NET_RAW --entrypoint "$1" "$image" "${@:2}"
+}
+
+# Dienste anhalten/starten, ohne den Updater (der diesen Befehl vielleicht selbst ausführt) und beim Anhalten ohne den Gate (der Knoten
+# soll erreichbar bleiben). Gibt es keine Liste, gilt wie früher alles.
+ha_stop_apps() {
+  local s; mapfile -t s < <(c config --services 2>/dev/null | grep -vx -e updater -e ha-gate || true)
+  if [ "${#s[@]}" -gt 0 ]; then c stop "${s[@]}" >/dev/null 2>&1 || true; else c stop >/dev/null 2>&1 || true; fi
+}
+ha_up_apps() {
+  local s
+  if [ -n "${OPNEXUS_UPDATER:-}" ]; then   # im Updater-Container: ihn nicht aus sich selbst heraus neu erstellen
+    mapfile -t s < <(c config --services 2>/dev/null | grep -vx updater || true)
+  else
+    mapfile -t s < <(c config --services 2>/dev/null || true)
+  fi
+  if [ "${#s[@]}" -gt 0 ]; then c up -d --no-build "${s[@]}" >/dev/null; else c up -d --no-build >/dev/null; fi
 }
 kv() { sed -n "s/^$1=//p" <<<"$2" | head -n1; }
 
@@ -1016,21 +1129,67 @@ ha_receiver_state() { psql_db -c 'SELECT status FROM pg_stat_wal_receiver' 2>/de
 
 # ── VIP: nur am Primär, per ip/arping (braucht root auf dem Host) ──
 ha_vip_addr() { echo "${HA_VIP%/*}"; }
-ha_vip_present() { [ -n "$HA_VIP_DEV" ] && ip -o -4 addr show dev "$HA_VIP_DEV" 2>/dev/null | grep -q " $(ha_vip_addr)/"; }
+# Trägt diese Schnittstelle (ohne Angabe: irgendeine) des Hosts die Adresse? Die Ausgabe wird erst gelesen, dann durchsucht: `ip … | grep -q` in einer
+# Pipe beendet grep nach dem ersten Treffer, der schreibende `ip` bekommt SIGPIPE, und mit pipefail wurde aus einem Treffer ein „nein“
+# (Lab 2026-11-03; bei mehreren Adressen an einer Karte hätte `ha_vip_up` die VIP ein zweites Mal gesetzt und wäre gescheitert).
+ha_addr_on() {  # ADRESSE [SCHNITTSTELLE]
+  local listing; listing=$(ha_host_exec ip -o -4 addr show ${2:+dev "$2"} 2>/dev/null || true)
+  grep -q " $1/" <<<"$listing"
+}
+ha_vip_present() { [ -n "$HA_VIP_DEV" ] && ha_addr_on "$(ha_vip_addr)" "$HA_VIP_DEV"; }
 ha_vip_up() {
   [ -n "$HA_VIP_DEV" ] || die "HA_VIP_DEV fehlt in $ENV_FILE."
   if ha_vip_present; then return 0; fi
-  ip addr add "$HA_VIP" dev "$HA_VIP_DEV" || die "Die VIP $HA_VIP ließ sich nicht setzen (root nötig; läuft die CLI im Updater-Container, geht das nicht)."
-  arping -U -c 3 -I "$HA_VIP_DEV" "$(ha_vip_addr)" >/dev/null 2>&1 || say "(arping fehlt oder schlug fehl: Nachbarn lernen die VIP erst mit der Zeit)"
+  ha_host_exec ip addr add "$HA_VIP" dev "$HA_VIP_DEV" || die "Die VIP $HA_VIP ließ sich nicht setzen (root bzw. NET_ADMIN nötig)."
+  ha_host_exec arping -U -c 3 -I "$HA_VIP_DEV" "$(ha_vip_addr)" >/dev/null 2>&1 || say "(arping fehlt oder schlug fehl: Nachbarn lernen die VIP erst mit der Zeit)"
   say "VIP $(ha_vip_addr) liegt jetzt an $HA_VIP_DEV."
+}
+# Antwortet unter der VIP schon jemand im Netz (Ping, sonst ein ARP-Eintrag mit MAC)? Nur vor dem Einrichten gefragt.
+ha_vip_in_use() {  # VIP-Adresse (ohne Länge), Schnittstelle; die VIP an diesem Knoten selbst zählt nicht (erneutes `ha init`)
+  if ha_addr_on "$1" "$2"; then return 1; fi
+  if ha_host_exec ping -c 2 -W 1 "$1" >/dev/null 2>&1; then return 0; fi
+  # Nur ein frisch bestätigter Nachbareintrag (REACHABLE) beweist, dass jemand antwortet: STALE/DELAY/PROBE sind Reste von früher (Lab 2026-11-03:
+  # die VIP hatte kurz zuvor an einem anderen Knoten gelegen, der veraltete Eintrag blockierte die Vorprüfung).
+  ha_host_exec ip -4 neigh show "$1" dev "$2" 2>/dev/null | grep -q 'lladdr .* REACHABLE'
 }
 ha_vip_down() {
   [ -n "$HA_VIP_DEV" ] || return 0
-  if ha_vip_present; then ip addr del "$HA_VIP" dev "$HA_VIP_DEV" 2>/dev/null || true; fi
+  if ha_vip_present; then ha_host_exec ip addr del "$HA_VIP" dev "$HA_VIP_DEV" 2>/dev/null || true; fi
 }
 
 # Rolle und Epoche des Partners nach seinem /api/health (leer = nicht erreichbar).
-ha_peer_health() { curl -sk --max-time 4 "https://$HA_PEER_IP:$HA_PEER_PORT/api/health" 2>/dev/null | tr -d '\n' || true; }
+ha_have_curl() { command -v curl >/dev/null 2>&1; }
+ha_peer_health() {
+  if ha_have_curl; then
+    curl -sk --max-time 4 "https://$HA_PEER_IP:$HA_PEER_PORT/api/health" 2>/dev/null | tr -d '\n' || true
+  else   # im Updater-Container gibt es kein curl: dieselbe Abfrage über ha_cli.py
+    ha_agent_py probe "$HA_PEER_IP" "$HA_PEER_PORT" 2>/dev/null | tr -d '\n' || true
+  fi
+}
+
+ha_backend_role() {
+  c exec -T backend python -c 'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health",timeout=3)).get("role",""))' 2>/dev/null || true
+}
+ha_json_field() {  # JSON-Text, Feldname: einfacher Wert (Zahl oder Zeichenkette)
+  sed -n "s/.*\"$2\" *: *\"\{0,1\}\([^\",}]*\).*/\1/p" <<<"$1" | head -n1
+}
+# Soll dieser Knoten die VIP halten? 0 = ja, 1 = nein (nicht nehmen, vorhandene abgeben), 2 = nicht entscheidbar (nichts tun).
+# Maßgeblich ist nicht die Rolle in der Statusdatei (ein alter Primär nach `promote --force` trägt sie noch), sondern: sperrt der
+# Partner-Wächter dieses Backend (`fenced`), oder ist der Partner Leader mit höherer Epoche, gehört die VIP dem Partner. Eine einzelne
+# fehlgeschlagene Abfrage gilt nicht als „kein Leader“ (der Partner kann gerade neu starten): zweimal fragen.
+ha_vip_should_hold() {
+  local brole h pe me
+  brole=$(ha_backend_role)
+  [ "$brole" != fenced ] || return 1
+  h=$(ha_peer_health)
+  if [ -z "$h" ]; then sleep "${OPNEXUS_HA_PROBE_RETRY_WAIT:-2}"; h=$(ha_peer_health); fi
+  if [[ "$h" == *'"role":"leader"'* ]]; then
+    pe=$(ha_json_field "$h" epoch); me=$(psql_db -c 'SELECT epoch FROM ha_state WHERE id = 1' 2>/dev/null || true)
+    [[ "$pe" =~ ^[0-9]+$ ]] && [[ "$me" =~ ^[0-9]+$ ]] || return 2
+    if [ "$pe" -gt "$me" ]; then return 1; fi   # der Partner hat später übernommen
+  fi
+  return 0
+}
 
 # `opnexus ha vip up|down|status`; beim Start des Servers (Cron @reboot): die VIP nur nehmen, wenn der Partner nicht
 # schon Leader ist (er kann nach einem Ausfall von uns Primär geworden sein, ohne dass wir es erfahren haben).
@@ -1040,16 +1199,30 @@ cmd_ha_vip() {
     up)
       if [ "${2:-}" = --boot ]; then
         [ "$HA_ROLE" = primary ] || exit 0
-        if [[ "$(ha_peer_health)" == *'"role":"leader"'* ]]; then
-          say "Der Partner ist Leader: die VIP wird nicht gesetzt. Dieser Knoten ist wahrscheinlich nicht mehr Primär ('opnexus ha status', dann 'ha resync')."; exit 0
+        local hold=0; ha_vip_should_hold || hold=$?
+        if [ "$hold" = 1 ]; then
+          say "Der Partner ist Leader mit höherer Epoche (oder dieses Backend ist gesperrt): die VIP wird nicht gesetzt. Dieser Knoten ist wahrscheinlich nicht mehr Primär ('opnexus ha status', dann 'ha resync --from-peer')."; exit 0
+        elif [ "$hold" = 2 ]; then
+          say "Der Zustand des Partners ist nicht eindeutig: die VIP wird nicht gesetzt."; exit 0
         fi
       else
         [ "$HA_ROLE" = primary ] || die "Die VIP gehört dem Primär (HA_ROLE ist '$HA_ROLE')."
       fi
       ha_vip_up ;;
     down) ha_vip_down ;;
+    reconcile)   # vom Zeitgeber des Agenten jede Minute: die VIP gehört dem Primär und nur ihm (fängt auch eine vom Netzwerkdienst entfernte auf)
+      if [ "$HA_ROLE" = primary ]; then
+        local hold=0; ha_vip_should_hold || hold=$?
+        case "$hold" in
+          0) ha_vip_present || ha_vip_up ;;
+          1) if ha_vip_present; then say "Der Partner ist Leader mit höherer Epoche (oder dieses Backend ist gesperrt): die VIP wird abgegeben."; fi; ha_vip_down ;;
+          *) : ;;   # nicht entscheidbar: weder nehmen noch abgeben
+        esac
+      else
+        ha_vip_down
+      fi ;;
     status) if ha_vip_present; then echo "VIP $HA_VIP an $HA_VIP_DEV: ja"; else echo "VIP $HA_VIP an $HA_VIP_DEV: nein"; fi ;;
-    *) die "Aufruf: opnexus ha vip up|down|status" ;;
+    *) die "Aufruf: opnexus ha vip up|down|status|reconcile" ;;
   esac
 }
 
@@ -1082,7 +1255,7 @@ ha_status_local() {
   row=$(psql_db -c "SELECT epoch || '|' || coalesce(primary_node,'') || '|' || coalesce(promoted_at::text,'') FROM ha_state WHERE id = 1" 2>/dev/null || true)
   IFS='|' read -r epoch pnode promoted <<<"$row"
   echo "epoch=${epoch:-}"; echo "primary_node=${pnode:-}"; echo "promoted_at=${promoted:-}"
-  brole=$(c exec -T backend python -c 'import json,urllib.request; print(json.load(urllib.request.urlopen("http://127.0.0.1:8000/api/health",timeout=3)).get("role",""))' 2>/dev/null || true)
+  brole=$(ha_backend_role)
   echo "backend_role=$brole"
   if ha_vip_present; then echo "vip=yes"; else echo "vip=no"; fi
   sync_at=$(cat "$HA_SYNC_FILE" 2>/dev/null || true)
@@ -1159,7 +1332,7 @@ ha_standby_conninfo() {
 ha_build_standby() {
   [ -f "$HA_DIR/ha-ca.crt" ] || die "$HA_DIR/ha-ca.crt fehlt (kommt von 'ha init')."
   say "Halte die Dienste an …"
-  c stop >/dev/null 2>&1 || true
+  ha_stop_apps
   say "Leere das Datenverzeichnis der Datenbank …"
   c run --rm --no-deps -T --user root --entrypoint sh postgres -c \
     'mkdir -p "$PGDATA" && find "$PGDATA" -mindepth 1 -delete && chown postgres:postgres "$PGDATA" && chmod 700 "$PGDATA"' \
@@ -1195,16 +1368,48 @@ ha_build_standby() {
     die "Der Standby streamt nach ${OPNEXUS_HA_STREAM_TIMEOUT:-60} s nicht (Zustand: '${st:-kein Receiver}'). Log oben."
   fi
   say "Standby streamt vom Partner."
+  # Der Standby betreibt den vollen Stack: Proxy und Frontend liefern die Seite /standby, über die sich ein Administrator anmeldet und
+  # übernimmt, wenn der Primär ausgefallen ist (das Backend lässt dort nur diese Tür offen).
+  # Nur diese vier: Overlay-Hub (wg-hub), GUI-Gateway und Sicherungsdienst gehören dem Primär.
+  c up -d --no-build frontend proxy >/dev/null || say "(Proxy und Frontend ließen sich nicht starten: 'docker compose logs proxy frontend'. Der Standby streamt trotzdem.)"
+}
+
+# Epoche aus der eigenen Datenbank. Ein ausgefallener Primär steht oft ganz still (Dienste angehalten): dann nur die Datenbank
+# starten (sie spielt ihr eigenes WAL ab und nimmt keine Anwendung an; `ha resync` hält danach ohnehin alles an).
+ha_own_epoch() {
+  local e deadline=$((SECONDS + ${OPNEXUS_HA_DB_WAIT:-60}))
+  e=$(psql_db -c 'SELECT epoch FROM ha_state WHERE id = 1' 2>/dev/null || true)
+  if [[ ! "$e" =~ ^[0-9]+$ ]]; then
+    c up -d --no-build postgres >/dev/null 2>&1 || true
+    while [ "$SECONDS" -lt "$deadline" ]; do
+      e=$(psql_db -c 'SELECT epoch FROM ha_state WHERE id = 1' 2>/dev/null || true)
+      [[ "$e" =~ ^[0-9]+$ ]] && break
+      sleep 2
+    done
+  fi
+  [[ "$e" =~ ^[0-9]+$ ]] && printf '%s' "$e"
+  return 0
 }
 
 cmd_ha_resync() {
-  local yes=0 arg
-  for arg in "$@"; do case "$arg" in --yes|-y) yes=1 ;; -*) die "Unbekannte Option: $arg" ;; esac; done
+  local yes=0 from_peer=0 arg
+  for arg in "$@"; do case "$arg" in --yes|-y) yes=1 ;; --from-peer) from_peer=1 ;; -*) die "Unbekannte Option: $arg" ;; esac; done
   require_release_mode
   ha_load
-  [ "$HA_ROLE" != primary ] || die "Dieser Knoten ist Primär: Ein Resync würde seine Daten löschen. Der Standby ist der, der neu aufgebaut wird (dort ausführen)."
-  local theirs; theirs=$(ha_peer ha status --porcelain 2>/dev/null) || die "Der Partner antwortet nicht per SSH: ohne ihn gibt es nichts, wovon man neu aufbauen könnte."
+  if [ "$HA_ROLE" = primary ] && [ "$from_peer" != 1 ]; then
+    die "Dieser Knoten ist Primär: Ein Resync würde seine Daten löschen. Der Standby ist der, der neu aufgebaut wird (dort ausführen). Hat der Partner nach einem Ausfall übernommen (promote --force), obwohl hier noch HA_ROLE=primary steht: 'ha resync --from-peer'."
+  fi
+  local theirs; theirs=$(ha_peer ha status --porcelain 2>/dev/null) || die "Der Partner antwortet nicht ($(ha_link_name)): ohne ihn gibt es nichts, wovon man neu aufbauen könnte."
   [ "$(kv db_role "$theirs")" = primary ] || die "Die Datenbank des Partners ist keine Primär-Datenbank (db_role=$(kv db_role "$theirs")). Resync läuft nur gegen den Primär."
+  if [ "$HA_ROLE" = primary ]; then
+    # Ein Primär darf nur überschrieben werden, wenn der Partner nachweislich später übernommen hat: höhere Epoche, und er
+    # sieht sich als Primär unter seinem eigenen Namen. Sonst wäre das ein Löschen des einzigen aktuellen Stands.
+    local mine_epoch their_epoch; mine_epoch=$(ha_own_epoch); their_epoch=$(kv epoch "$theirs")
+    [[ "$mine_epoch" =~ ^[0-9]+$ ]] || die "Die Epoche dieses Knotens ist nicht lesbar (die Datenbank startet nicht?): Resync gegen den Partner ist so nicht sicher."
+    [[ "$their_epoch" =~ ^[0-9]+$ ]] && [ "$their_epoch" -gt "$mine_epoch" ] \
+      || die "Der Partner hat keine höhere Epoche (hier $mine_epoch, dort ${their_epoch:-unbekannt}): er hat nicht nach uns übernommen. Nichts wurde verändert."
+    [ "$(kv primary_node "$theirs")" != "$HA_NODE" ] || die "Der Partner führt $HA_NODE (diesen Knoten) als Primär: widersprüchlicher Zustand, nichts wurde verändert ('ha status' an beiden Knoten)."
+  fi
   if [ "$yes" != 1 ]; then
     echo "Die Datenbank DIESES Knotens ($HA_NODE) wird gelöscht und neu vom Partner ($HA_PEER_IP) aufgebaut."
     read -rp "Fortfahren? [j/N] " ans </dev/tty
@@ -1214,8 +1419,14 @@ cmd_ha_resync() {
     say "Sicherung des jetzigen Stands …"
     cmd_backup || say "(Sicherung nicht möglich, weiter)"
   fi
+  if [ "$HA_ROLE" = primary ]; then
+    # Das Datenverzeichnis wird gleich gelöscht: ab jetzt ist dieser Knoten kein Primär mehr. Scheitert der Aufbau, bleibt er `fenced`
+    # (statt „Primär ohne Daten“, der die VIP nehmen könnte und sich nicht wiederholen ließe).
+    ha_state_set HA_ROLE fenced
+    ha_vip_down
+  fi
   ha_build_standby
-  env_set HA_ROLE standby
+  ha_state_set HA_ROLE standby
   ha_vip_down
   say "Dieser Knoten ist jetzt Standby."
 }
@@ -1228,7 +1439,7 @@ cmd_ha_sync() {
   ha_load
   [ "$HA_ROLE" = primary ] || exit 0   # an einem Standby oder gesperrten Knoten gibt es nichts abzugleichen
   if ha_in_recovery; then [ "$quiet" = 1 ] || say "Die Datenbank ist eine Replica: kein Abgleich."; exit 0; fi
-  ha_ssh true >/dev/null 2>&1 || { [ "$quiet" = 1 ] && echo "$(date -u +%FT%TZ) Partner nicht erreichbar" >&2 || die "Der Partner antwortet nicht per SSH."; exit 1; }
+  ha_reach || { [ "$quiet" = 1 ] && echo "$(date -u +%FT%TZ) Partner nicht erreichbar" >&2 || die "Der Partner antwortet nicht ($(ha_link_name))."; exit 1; }
   now=$(date +%s); last=$(cat "$HA_SYNC_FILE" 2>/dev/null || echo 0); [[ "$last" =~ ^[0-9]+$ ]] || last=0
   ha_sync_data "$last" || { echo "$(date -u +%FT%TZ) Abgleich der Geheimnisse fehlgeschlagen" >&2; exit 1; }
   ha_sync_ca || { echo "$(date -u +%FT%TZ) Abgleich der Proxy-CA fehlgeschlagen" >&2; exit 1; }
@@ -1270,46 +1481,109 @@ ha_sync_ca() {
   ha_ca_tar | ha_peer ha receive ca "$sum"
 }
 
-# Die .env-Schlüssel, die nicht knotenspezifisch sind (nicht in ENV_KEEP_KEYS und nicht in HA_NODE_KEYS).
+# Die .env-Zeilen, die zum Partner gehen: nur Schlüssel aus HA_SYNC_KEYS.
 ha_sync_lines() {
   local line key
   while IFS= read -r line; do
     [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
     key="${BASH_REMATCH[1]}"
-    [[ " $ENV_KEEP_KEYS $HA_NODE_KEYS " == *" $key "* ]] && continue
+    [[ " $HA_SYNC_KEYS " == *" $key "* ]] || continue
     printf '%s\n' "$line"
   done < "$ENV_FILE"
+  local p keep=()
+  for p in overlay gui; do [[ ",$(env_get COMPOSE_PROFILES)," == *",$p,"* ]] && keep+=("$p"); done
+  local IFS=,; printf 'HA_SYNC_PROFILES=%s\n' "${keep[*]:-}"
 }
 ha_sync_env() { ha_sync_lines | ha_peer ha receive env; }
+
+ha_env_init_check() {  # KEY VALUE — nur für den Agentenweg: strenge Formen, bevor etwas in .env oder die Compose-Datei geht
+  local key="$1" value="$2" re=""
+  case "$key" in
+    HA_ROLE) re='^(standby)$' ;;
+    HA_NODE) re="$RE_NODE" ;;
+    HA_NODE_IP|HA_PEER_IP) re="$RE_IP" ;;
+    HA_PEER_PORT) re='^[0-9]{1,5}$' ;;
+    HA_VIP) re="$RE_CIDR" ;;
+    HA_VIP_DEV) re="$RE_DEV" ;;
+    HA_PEER|HA_PEER_DIR|HA_PEER_CLI) return 0 ;;   # SSH-Angaben: im Agentenweg ohne Bedeutung
+    HA_REPLICATION_PASSWORD) re='^[A-Za-z0-9]{16,}$' ;;
+    POSTGRES_USER|POSTGRES_DB) re='^[a-z_][a-z0-9_]{0,62}$' ;;
+    POSTGRES_PASSWORD)   # frei wählbar: nur Zeilenumbruch und Steuerzeichen sind ausgeschlossen
+      [ -n "$value" ] && [ "${#value}" -le 512 ] && [[ "$value" != *[[:cntrl:]]* ]] || die "Ungültiger Wert für $key im Einrichtungspaket."
+      return 0 ;;
+    OPNEXUS_SITES|OPNEXUS_DEFAULT_SNI|FRONTEND_ORIGIN)   # Länge getrennt: musl (Updater-Image) kennt Wiederholungen nur bis {255}
+      [ "${#value}" -le 2000 ] || die "Ungültiger Wert für $key im Einrichtungspaket (zu lang)."
+      re='^[A-Za-z0-9.:/_, -]+$' ;;
+    COMPOSE_FILE) return 0 ;;   # wird ignoriert
+    *) die "Unerlaubter Schlüssel im Einrichtungspaket: $key" ;;
+  esac
+  [[ "$value" =~ $re ]] || die "Ungültiger Wert für $key im Einrichtungspaket."
+}
 
 # Gegenstelle der Übertragung (läuft am Standby, per SSH vom Primär; nie am Primär).
 cmd_ha_receive() {
   local what="${1:-}"; shift || true
-  local role; role=$(env_get HA_ROLE)
+  local role; role=$(ha_role_get)
   if [ "$role" = primary ]; then die "Dieser Knoten ist Primär: er nimmt nichts vom Partner an."; fi
   case "$what" in
     data)  c run --rm --no-deps -T --entrypoint sh backend -c 'tar -C /data -xpf - ; rc=$?; [ $rc -le 1 ] || exit $rc' ;;
     ca)    local sum="${1:-}"; [[ "$sum" =~ ^[0-9a-f]{64}$ ]] || die "Prüfsumme fehlt."
            local tmp; tmp=$(mktemp -d); chmod 700 "$tmp"; mkdir -m 700 "$tmp/ca"
-           tar -x -C "$tmp/ca" || { rm -rf "$tmp"; die "CA nicht lesbar."; }
-           restore_ca "$tmp/ca" >/dev/null && echo "$sum" > "$HA_DIR/ca-sum"; rm -rf "$tmp" ;;
+           cat > "$tmp/in.tar"
+           if ! tar -tf "$tmp/in.tar" >"$tmp/names" 2>/dev/null || grep -qE '(^/|(^|/)\.\.(/|$))' "$tmp/names" || tar -tvf "$tmp/in.tar" 2>/dev/null | grep -qE '^[lh]'; then
+             rm -rf "$tmp"; die "Das CA-Archiv ist unzulässig (absolute Pfade, .., Links oder nicht lesbar)."
+           fi
+           tar -x -C "$tmp/ca" -f "$tmp/in.tar" || { rm -rf "$tmp"; die "CA nicht lesbar."; }
+           restore_ca "$tmp/ca" >/dev/null && echo "$sum" > "$HA_DIR/ca-sum"; rm -rf "$tmp"
+           # Läuft der Proxy (der Standby betreibt ihn), liest er die neue CA erst nach einem Neustart.
+           if [ -n "$(c ps -q proxy 2>/dev/null)" ]; then c restart proxy >/dev/null 2>&1 || true; fi ;;
     ca-sum) cat "$HA_DIR/ca-sum" 2>/dev/null || true ;;
     stamp) [[ "${1:-}" =~ ^[0-9]+$ ]] || die "Zeitstempel ungültig."; echo "$1" > "$HA_SYNC_FILE" ;;
     env)   local line key value
            while IFS= read -r line; do
              [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]] || continue
              key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
-             [[ " $ENV_KEEP_KEYS $HA_NODE_KEYS " == *" $key "* ]] && continue   # Knotenspezifisches schreibt nur `ha init`
+             [[ " $HA_SYNC_KEYS " == *" $key "* ]] || continue   # Knotenspezifisches schreibt nur `ha init`
+             if [ "$key" = HA_SYNC_PROFILES ]; then
+               [[ "$value" =~ ^(|overlay|gui|overlay,gui|gui,overlay)$ ]] || continue
+               local cur kept=() t; cur=$(env_get COMPOSE_PROFILES)
+               for t in ${cur//,/ }; do case "$t" in overlay|gui) ;; *) kept+=("$t") ;; esac; done
+               [ -z "$value" ] || kept+=(${value//,/ })
+               local IFS=,; env_set_literal COMPOSE_PROFILES "${kept[*]:-}"
+               continue
+             fi
              env_set_literal "$key" "$value"
            done ;;
+    ha-ca)  # Zertifikatsdatei der Replikation (PEM, nur Zertifikatszeilen)
+           local pem; pem=$(cat)
+           [ -n "$pem" ] && ! grep -qvE '^(-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|[A-Za-z0-9+/=]+)$' <<<"$pem" \
+             && grep -q -- '-----BEGIN CERTIFICATE-----' <<<"$pem" || die "Das ist kein Zertifikat."
+           ( umask 022; mkdir -p "$HA_DIR"; chmod 700 "$HA_DIR"; printf '%s\n' "$pem" > "$HA_DIR/ha-ca.crt" ) ;;
     env-init)  # nur von `ha init`: darf auch die knotenspezifischen Schlüssel setzen (HA_*, COMPOSE_FILE, POSTGRES_*, Adressen)
-           local line key value
+           local line key value agent=0 lines=()
+           ha_agent_paired && agent=1
            while IFS= read -r line; do
              [[ "$line" =~ ^(HA_[A-Z_]+|COMPOSE_FILE|POSTGRES_USER|POSTGRES_PASSWORD|POSTGRES_DB|OPNEXUS_SITES|OPNEXUS_DEFAULT_SNI|FRONTEND_ORIGIN)=(.*)$ ]] || continue
-             key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
-             env_set_literal "$key" "$value"
-           done ;;
-    *) die "Interner Befehl: ha receive data|ca|ca-sum|stamp|env|env-init" ;;
+             if [ "$agent" = 1 ]; then ha_env_init_check "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; fi   # alles prüfen, bevor etwas geschrieben wird
+             lines+=("$line")
+           done
+           for line in "${lines[@]}"; do
+             [[ "$line" =~ ^([A-Z_]+)=(.*)$ ]]; key="${BASH_REMATCH[1]}"; value="${BASH_REMATCH[2]}"
+             if [ "$agent" = 1 ]; then   # Compose-Dateien bestimmt jeder Knoten selbst; SSH-Angaben gibt es im Agentenweg nicht
+               case "$key" in COMPOSE_FILE|HA_PEER|HA_PEER_DIR|HA_PEER_CLI) continue ;; esac
+             fi
+             if [[ " $HA_STATE_KEYS " == *" $key "* ]]; then ha_state_set "$key" "$value"
+             elif [[ "$key" != HA_* ]]; then env_set_literal "$key" "$value"; fi
+           done
+           if [ "$agent" = 1 ]; then
+             if [ -z "$(ha_state_get HA_VIP_DEV)" ]; then   # die Schnittstelle zum Partner kennt nur dieser Knoten selbst
+               local dev; dev=$(ha_host_exec ip -o -4 route get "$(ha_state_get HA_PEER_IP)" 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n1)
+               [[ "$dev" =~ $RE_DEV ]] && ha_state_set HA_VIP_DEV "$dev"
+             fi
+             env_set_literal COMPOSE_FILE "$(ha_compose_file_var)"
+             ha_compose_text "$(ha_state_get HA_NODE_IP)" "$(ha_state_get HA_NODE)" "$(ha_state_get HA_PEER_IP)" "$(ha_state_get HA_PEER_PORT)" "$(ha_state_get HA_VIP)" > docker-compose.ha.yml
+           fi ;;
+    *) die "Interner Befehl: ha receive data|ca|ca-sum|stamp|env|env-init|ha-ca" ;;
   esac
 }
 
@@ -1317,9 +1591,9 @@ cmd_ha_receive() {
 cmd_ha_fence() {
   ha_load
   say "Fencing: halte alle Dienste dieses Knotens an und gebe die VIP ab …"
-  c stop >/dev/null 2>&1 || true
+  ha_stop_apps
   ha_vip_down
-  env_set HA_ROLE fenced
+  ha_state_set HA_ROLE fenced
   say "Dieser Knoten ist angehalten (HA_ROLE=fenced). Zurück ins Paar: 'opnexus ha resync'."
 }
 
@@ -1349,7 +1623,7 @@ cmd_ha_promote() {
   fi
 
   local peer_up=0
-  if ha_ssh true >/dev/null 2>&1; then peer_up=1; fi
+  if ha_reach; then peer_up=1; fi
   if [ "$yes" != 1 ]; then
     if [ "$peer_up" = 1 ]; then
       echo "Der Partner ($HA_PEER_IP) wird angehalten, dieser Knoten ($HA_NODE) wird Primär und übernimmt die VIP $(ha_vip_addr)."
@@ -1361,7 +1635,14 @@ cmd_ha_promote() {
     say "Fencing am Partner …"
     ha_peer ha fence || { [ "$force" = 1 ] || die "Der Partner ließ sich nicht anhalten. Nichts wurde verändert. (Bei einem Defekt: --force, nachdem er sicher aus ist.)"; }
   else
-    [ "$force" = 1 ] || die "Der Partner ($HA_PEER) ist nicht erreichbar. Schalte ihn sicher ab (Strom/Hypervisor), prüfe, dass er aus ist, und rufe dann 'opnexus ha promote --force' auf. Nichts wurde verändert."
+    [ "$force" = 1 ] || die "Der Partner (${HA_PEER:-$HA_PEER_IP}) ist nicht erreichbar ($(ha_link_name)). Schalte ihn sicher ab (Strom/Hypervisor), prüfe, dass er aus ist, und rufe dann 'opnexus ha promote --force' auf. Nichts wurde verändert."
+    # Die Verbindung (SSH bzw. Agent) ist weg, aber antwortet sein Dienst noch? Dann lebt er, und ein Promote ergäbe zwei Primäre.
+    if [[ "$(ha_peer_health)" == *'"role":"leader"'* ]]; then
+      printf '\033[31mDer Partner meldet sich unter https://%s:%s als Leader: er läuft noch.\033[0m\n' "$HA_PEER_IP" "$HA_PEER_PORT" >&2
+      [ "$yes" != 1 ] || die "Nur die Verbindung ($(ha_link_name)) ist gestört, der Partner läuft: kein Promote mit --yes. Erst ihn sicher abschalten und prüfen, dann ohne --yes bestätigen."
+      read -rp 'Er läuft, und du willst trotzdem übernehmen? Tippe "Partner laeuft noch": ' ans </dev/tty
+      [ "$ans" = "Partner laeuft noch" ] || die "Abgebrochen."
+    fi
     if [ "$yes" != 1 ]; then
       echo "ACHTUNG: Läuft der alte Primär noch, gibt es zwei Primäre mit Zugang zu denselben Firewalls."
       read -rp 'Tippe "alter Primaer ist aus" zur Bestätigung: ' ans </dev/tty
@@ -1375,15 +1656,19 @@ cmd_ha_promote() {
   psql_db -c "INSERT INTO ha_state (id, epoch, primary_node, promoted_at, updated_at) VALUES (1, 1, '$HA_NODE', now(), now())
               ON CONFLICT (id) DO UPDATE SET epoch = ha_state.epoch + 1, primary_node = EXCLUDED.primary_node, promoted_at = now(), updated_at = now()" >/dev/null \
     || die "ha_state ließ sich nicht schreiben (Epoche). Die Datenbank ist schon Primär: 'opnexus ha status'."
-  env_set HA_ROLE primary
+  ha_state_set HA_ROLE primary
   say "Starte Backend neu und die übrigen Dienste …"
   c restart backend >/dev/null 2>&1 || true
-  c up -d --no-build >/dev/null
+  ha_up_apps
   ha_vip_up
   psql_db -c "SELECT pg_create_physical_replication_slot('$HA_SLOT') WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$HA_SLOT')" >/dev/null 2>&1 || true
   wait_healthy || say "(Nicht alle Dienste sind gesund: 'opnexus status')"
   if [ "$peer_up" = 1 ]; then  # der alte Primär ist per SSH erreichbar (angehalten): den neuesten Stand schon einmal hinlegen
     ( cmd_ha_sync --quiet ) || say "(Abgleich zum Partner nicht möglich; nach 'ha resync' holt ihn der Cron nach.)"
+  fi
+  if [ -n "${OPNEXUS_HA_ACTOR:-}" ]; then   # vom /standby-Fenster: wer hat übernommen (das Backend des Standbys konnte es nicht schreiben; übergeben wird die Konto-ID, nie der frei wählbare Name)
+    c exec -T backend python -m app.ha_audit promote "$OPNEXUS_HA_ACTOR" "$([ "$force" = 1 ] && echo force || echo normal)" >/dev/null 2>&1 \
+      || say "(Der Audit-Eintrag zur Übernahme durch $OPNEXUS_HA_ACTOR ließ sich nicht schreiben.)"
   fi
   say "Fertig nach $(( SECONDS - t0 )) s: $HA_NODE ist Primär, Epoche $(psql_db -c 'SELECT epoch FROM ha_state WHERE id = 1')."
   echo "Der Leader-Wächter startet die Hintergrunddienste nach rund einer halben Minute."
@@ -1398,13 +1683,16 @@ cmd_ha_update_standby() {  # intern: am Standby, vom Primär aufgerufen
   local target="${1:-$(env_get OPNEXUS_VERSION)}"
   [[ "$target" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || die "Ungültige Version '$target'."
   say "Standby: ziehe Images für $target …"
-  OPNEXUS_VERSION="$target" c pull backend frontend proxy || die "Pull fehlgeschlagen — nichts wurde verändert."
-  verify_signatures "$target" backend frontend proxy
+  local images=(backend frontend proxy)
+  updater_enabled && images+=(updater)
+  OPNEXUS_VERSION="$target" c pull "${images[@]}" || die "Pull fehlgeschlagen — nichts wurde verändert."
+  VERIFY_STRICT=1 verify_signatures "$target" "${images[@]}"
   REFRESH_ARGS=(ha update-standby "$target")
   refresh_cli "$target"
   refresh_compose "$target"
   env_set OPNEXUS_VERSION "$target"
-  c up -d --no-build backend >/dev/null
+  local restart=(backend frontend proxy); ha_gate_enabled && restart+=(ha-gate)   # der Standby betreibt Proxy und Frontend (Seite /standby), der Gate läuft mit dem Proxy-Image; der Updater erneuert sich danach selbst (server.py)
+  c up -d --no-build "${restart[@]}" >/dev/null
   local deadline=$((SECONDS + TIMEOUT))
   until [ "$(service_state backend)" = healthy ]; do
     [ "$SECONDS" -lt "$deadline" ] || die "Das Backend am Standby wird nicht gesund: 'docker compose logs backend' dort prüfen."
@@ -1421,7 +1709,10 @@ cmd_ha_update() {
   ha_in_recovery && die "Die Datenbank dieses Knotens ist eine Replica."
   target="${target:-$(env_get OPNEXUS_VERSION)}"; target="${target:-latest}"
   [[ "$target" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || die "Ungültige Version '$target'."
-  local theirs; theirs=$(ha_peer ha status --porcelain 2>/dev/null) || die "Der Partner antwortet nicht per SSH: erst reparieren, dann aktualisieren."
+  if ha_agent_paired && ! [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    die "Über den Agenten wird eine feste Version X.Y.Z gebraucht (angegeben bzw. in OPNEXUS_VERSION: '$target'): 'ha update X.Y.Z'."
+  fi
+  local theirs; theirs=$(ha_peer ha status --porcelain 2>/dev/null) || die "Der Partner antwortet nicht ($(ha_link_name)): erst reparieren, dann aktualisieren."
   [ "$(kv replication "$(ha_status_local)")" = streaming ] || die "Der Standby streamt nicht ('opnexus ha status'): erst reparieren (ggf. 'ha resync' dort)."
   say "1/3 Standby auf $target bringen …"
   ha_peer ha update-standby "$target" || die "Das Update am Standby schlug fehl; der Primär wurde nicht angefasst."
@@ -1527,7 +1818,7 @@ cmd_ha_init() {
   [ -n "$peer" ] && [ -n "$vip" ] || die "Aufruf: opnexus ha init BENUTZER@PARTNER --vip IP/LÄNGE [--node-ip IP] [--peer-ip IP] [--node NAME] [--peer-node NAME] [--peer-dir PFAD] [--vip-dev SCHNITTSTELLE] [--yes]"
   require_release_mode
   protect_env
-  [ -z "$(env_get HA_ROLE)" ] || die "Dieser Server ist schon Teil eines HA-Paars (HA_ROLE=$(env_get HA_ROLE))."
+  [ -z "$(ha_role_get)" ] || die "Dieser Server ist schon Teil eines HA-Paars (HA_ROLE=$(ha_role_get))."
   local peer_host="${peer#*@}"
   [[ "$peer" =~ $RE_SSH ]] || die "PARTNER muss BENUTZER@ADRESSE sein (z. B. root@192.168.1.21)."
   peer_ip="${peer_ip:-$peer_host}"
@@ -1544,6 +1835,7 @@ cmd_ha_init() {
   HA_PEER="$peer"; HA_PEER_DIR="$peer_dir"; HA_PEER_CLI="$cli"
   say "Vorprüfung …"
   c exec -T backend true >/dev/null 2>&1 || die "Das Backend läuft nicht."
+  if ha_vip_in_use "$vip_ip" "$vip_dev"; then die "Unter der VIP $vip_ip antwortet im Netz schon jemand: eine freie Adresse wählen."; fi
   ha_ssh true || die "Keine SSH-Verbindung zu $peer (Schlüssel-Anmeldung nötig)."
   local peer_st rv lv; lv=$(running_version)
   ha_ssh "cd $(printf '%q' "$peer_dir") && [ -f docker-compose.yml ] && [ -f .env ]" || die "Auf $peer gibt es in $peer_dir keine OPNexus-Installation (--peer-dir angeben)."
@@ -1614,17 +1906,17 @@ SQL
       || die "pg_hba.conf ließ sich nicht ergänzen."
   done
 
-  say "Schreibe die Konfiguration (.env, docker-compose.ha.yml) …"
+  say "Schreibe die Konfiguration (HA-Statusdatei, .env, docker-compose.ha.yml) …"
   ha_compose_text "$node_ip" "$node" "$peer_ip" "$peer_port" "$vip" > docker-compose.ha.yml
-  env_set_literal HA_NODE "$node"; env_set_literal HA_NODE_IP "$node_ip"
-  env_set_literal HA_PEER "$peer"; env_set_literal HA_PEER_IP "$peer_ip"; env_set_literal HA_PEER_PORT "$peer_port"; env_set_literal HA_PEER_DIR "$peer_dir"; env_set_literal HA_PEER_CLI "$HA_PEER_CLI"
-  env_set_literal HA_VIP "$vip"; env_set_literal HA_VIP_DEV "$vip_dev"; env_set_literal HA_REPLICATION_PASSWORD "$pw"
+  ha_state_set HA_NODE "$node"; ha_state_set HA_NODE_IP "$node_ip"
+  ha_state_set HA_PEER "$peer"; ha_state_set HA_PEER_IP "$peer_ip"; ha_state_set HA_PEER_PORT "$peer_port"; ha_state_set HA_PEER_DIR "$peer_dir"; ha_state_set HA_PEER_CLI "$HA_PEER_CLI"
+  ha_state_set HA_VIP "$vip"; ha_state_set HA_VIP_DEV "$vip_dev"; ha_state_set HA_REPLICATION_PASSWORD "$pw"
   env_set_literal COMPOSE_FILE "$(ha_compose_file_var)"
   ha_env_list_add OPNEXUS_SITES "$vip_ip" ", "; ha_env_list_add OPNEXUS_SITES "$node_ip" ", "
   ha_env_list_add FRONTEND_ORIGIN "https://$vip_ip" ","; ha_env_list_add FRONTEND_ORIGIN "https://$node_ip" ","
   export COMPOSE_FILE="$(env_get COMPOSE_FILE)"
   say "Starte Datenbank (Port $node_ip:5432) und Dienste neu …"
-  c up -d --no-build >/dev/null || die "Der Neustart schlug fehl ('docker compose logs')."
+  ha_up_apps || die "Der Neustart schlug fehl ('docker compose logs')."
   wait_healthy || die "Nicht alle Dienste sind gesund geworden."
   psql_db -c 'SELECT pg_reload_conf()' >/dev/null
 
@@ -1655,7 +1947,7 @@ SQL
   } | ha_peer ha receive env-init || die "Die .env des Partners ließ sich nicht schreiben."
   ha_peer ha cron install || say "(Cron am Partner nicht eingerichtet: $HA_CRON schreibbar? Von Hand: siehe Handbuch)"
 
-  env_set_literal HA_ROLE primary   # vorher: der Partner fragt beim Aufbau nach unserem Zustand
+  ha_state_set HA_ROLE primary   # vorher: der Partner fragt beim Aufbau nach unserem Zustand
   ha_load
   say "Baue den Standby auf ($peer_node) …"
   ha_peer ha resync --yes || die "Der Aufbau des Standbys schlug fehl (Ausgabe oben). Dieser Knoten ist Primär und läuft; 'opnexus ha resync' am Partner wiederholt den Aufbau."
@@ -1669,10 +1961,381 @@ SQL
   echo "Wechsel: am Standby 'opnexus ha promote'. Klick-Updates sind jetzt gesperrt: 'opnexus ha update'."
 }
 
+# ── Agentenweg: Updater und Gate einschalten, Kopplungscode, Einrichten mit Code (docs/DESIGN-HA-UI.md) ──
+profile_add() {  # NAME — Profil in COMPOSE_PROFILES der .env ergänzen (vom Werkzeug gepflegte Zeile)
+  local cur; cur=$(env_get COMPOSE_PROFILES)
+  [[ ",$cur," == *",$1,"* ]] || env_set_literal COMPOSE_PROFILES "${cur:+$cur,}$1"
+}
+ha_agent_up() {  # Updater (Agent) starten und warten, bis er antwortet
+  profile_add updater
+  if [ -z "${OPNEXUS_UPDATER:-}" ]; then
+    c up -d --no-build updater >/dev/null || die "Der Updater ließ sich nicht starten ('docker compose logs updater')."
+  fi
+  local deadline=$((SECONDS + 60))
+  until ha_agent_py status >/dev/null 2>&1; do
+    [ "$SECONDS" -lt "$deadline" ] || die "Der Updater antwortet nicht (Image ohne HA-Agent? Version prüfen: beide Knoten brauchen dieselbe, neuere Version)."
+    sleep 2
+  done
+}
+ha_gate_up() {  # IP — Zertifikat des Gate und den Gate-Dienst bereitstellen; gibt den Pin aus
+  local ip="$1" pin
+  pin=$(ha_agent_py gate --ip "$ip" | sed -n 's/^pin=//p')
+  [[ "$pin" =~ ^[0-9a-f]{64}$ ]] || die "Das Zertifikat des HA-Gate ließ sich nicht erzeugen."
+  profile_add ha
+  # Der Gate lauscht nur an der Adresse dieses Knotens, nicht an allen (gehört die Adresse nicht diesem Host, bleibt es beim Standard:
+  # sonst ließe sich der Container nicht starten).
+  if ha_addr_on "$ip"; then env_set HA_GATE_BIND "$ip"; fi
+  c up -d --no-build ha-gate >/dev/null || die "Der HA-Gate ließ sich nicht starten ('docker compose logs ha-gate')."
+  printf '%s' "$pin"
+}
+ha_local_ip() {  # Adresse dieses Knotens in Richtung $1
+  ha_host_exec ip -o -4 route get "$1" 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p' | head -n1
+}
+
+# Eine Kopplung ohne Rolle ist ein halber Einrichtungslauf (abgebrochen oder fehlgeschlagen): verwerfen, damit ein neuer Code funktioniert.
+ha_drop_half_pairing() {
+  if ha_agent_paired && [ -z "$(ha_role_get)" ]; then
+    ha_agent_py unpair >/dev/null 2>&1 || true
+    say "Eine frühere, nicht abgeschlossene Kopplung wurde verworfen."
+  fi
+}
+
+cmd_ha_prepare() {
+  local ip="" port=8445 gate_only=0
+  while [ $# -gt 0 ]; do
+    case "$1" in --ip) ip="${2:-}"; shift ;; --gate-only) gate_only=1 ;; -*) die "Unbekannte Option: $1" ;; esac
+    shift
+  done
+  require_release_mode
+  protect_env
+  [ "$gate_only" = 1 ] || [ -z "$(ha_role_get)" ] || die "Dieser Server ist schon Teil eines HA-Paars (Rolle $(ha_role_get))."
+  [ -n "$ip" ] || ip=$(ha_local_ip 1.1.1.1)
+  ha_valid "$ip" "$RE_IP" "--ip"
+  say "Schalte den HA-Agenten ein (Updater und Gate) …"
+  ha_agent_up
+  ha_drop_half_pairing
+  ha_gate_up "$ip" >/dev/null
+  [ "$gate_only" = 1 ] && return 0
+  local out code; out=$(ha_agent_py prepare --ip "$ip" --port "$port") || die "Der Kopplungscode ließ sich nicht erzeugen."
+  code=$(sed -n 's/^code=//p' <<<"$out")
+  echo
+  echo "Kopplungscode für diesen Knoten ($ip), 30 Minuten gültig, einmal verwendbar:"
+  echo
+  echo "  $code"
+  echo
+  echo "Auf dem künftigen Primär: ./opnexus ha init --code '<Code>' --vip IP/LÄNGE   (oder in der Oberfläche unter Einstellungen › System)."
+  echo "Der Port $port dieses Knotens muss vom Primär erreichbar sein (Zugriffslisten)."
+}
+
+# Einrichten mit Kopplungscode (am künftigen Primär). Der Partner läuft mit gleicher Version und hat `ha prepare` ausgeführt.
+cmd_ha_init_agent() {
+  local code="" vip="" node_ip="" node="a" peer_node="b" vip_dev="" yes=0 check=0 t0=$SECONDS
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --code) code="${2:-}"; shift ;; --check) check=1 ;; --vip) vip="${2:-}"; shift ;; --node-ip) node_ip="${2:-}"; shift ;;
+      --node) node="${2:-}"; shift ;; --peer-node) peer_node="${2:-}"; shift ;; --vip-dev) vip_dev="${2:-}"; shift ;;
+      --yes|-y) yes=1 ;; -*) die "Unbekannte Option: $1" ;;
+    esac
+    shift
+  done
+  if [ "$code" = - ]; then IFS= read -r code || true; fi   # --code -: den Code von stdin lesen (nicht in der Prozessliste)
+  [ -n "$code" ] && [ -n "$vip" ] || die "Aufruf: opnexus ha init --code CODE --vip IP/LÄNGE [--node-ip IP] [--node NAME] [--peer-node NAME] [--vip-dev SCHNITTSTELLE] [--yes]"
+  require_release_mode
+  protect_env
+  command -v openssl >/dev/null 2>&1 || die "openssl fehlt auf diesem Server (apt install openssl): es erzeugt das Zertifikat der Replikation."
+  ha_env_init_check POSTGRES_PASSWORD "$(env_get POSTGRES_PASSWORD)"   # sonst scheitert das Einrichten erst am Partner, wenn der Primär schon umgebaut ist
+  [ -z "$(ha_role_get)" ] || die "Dieser Server ist schon Teil eines HA-Paars (HA_ROLE=$(ha_role_get))."
+  ha_valid "$vip" "$RE_CIDR" "--vip"; ha_valid "$node" "$RE_NODE" "--node"; ha_valid "$peer_node" "$RE_NODE" "--peer-node"
+  [ "$node" != "$peer_node" ] || die "--node und --peer-node müssen verschieden sein."
+  say "Vorprüfung …"
+  c exec -T backend true >/dev/null 2>&1 || die "Das Backend läuft nicht."
+  ha_agent_up
+  ha_drop_half_pairing
+  local parsed peer_ip peer_gate_port
+  parsed=$(printf '%s\n' "$code" | ha_agent_py parse -) || die "Der Kopplungscode ist ungültig."
+  peer_ip=$(kv ip "$parsed"); peer_gate_port=$(kv port "$parsed")
+  [ -n "$node_ip" ] || node_ip=$(ha_local_ip "$peer_ip")
+  ha_valid "$node_ip" "$RE_IP" "--node-ip"
+  if [ -z "$vip_dev" ]; then vip_dev=$(ha_host_exec ip -o -4 route get "$peer_ip" 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n1); fi
+  ha_valid "$vip_dev" "$RE_DEV" "--vip-dev"
+  local vip_ip="${vip%/*}"
+  if ha_vip_in_use "$vip_ip" "$vip_dev"; then die "Unter der VIP $vip_ip antwortet im Netz schon jemand: eine freie Adresse wählen."; fi
+  local facts rc=0; facts=$(printf '%s\n' "$code" | ha_agent_py hello -) || rc=$?
+  case "$rc" in
+    0) ;; 3) die "Das Zertifikat des Partners passt nicht zum Code: falscher Server oder abgefangene Verbindung. Nichts wurde gesendet." ;;
+    4) die "Der Partner ($peer_ip:$peer_gate_port) antwortet nicht. Läuft dort 'ha prepare'? Zugriffslisten für Port $peer_gate_port prüfen." ;;
+    *) die "Der Partner lehnt den Code ab (abgelaufen oder schon benutzt): dort 'ha prepare' erneut ausführen." ;;
+  esac
+  local lv rv; lv=$(running_version); rv=$(kv version "$facts")
+  [ "$(kv api "$facts")" = 1 ] || die "Die Agent-Schnittstelle des Partners hat Version $(kv api "$facts") (hier 1): beide Knoten auf dieselbe Version bringen."
+  [ "$(kv mode "$facts")" = release ] || die "Der Partner läuft nicht aus Release-Images."
+  [ -n "$rv" ] && [ "$rv" = "$lv" ] || die "Am Partner läuft '${rv:-nichts}', hier $lv: beide Knoten brauchen dieselbe Version."
+  [ -z "$(kv ha_role "$facts")" ] || die "Der Partner ist schon Teil eines HA-Paars (Rolle $(kv ha_role "$facts"))."
+  # Richtung: der Partner wird überschrieben. Hat er Firewalls und dieser Server keine, ist es fast sicher der falsche Server (Lab-Review 2026-11-03).
+  local mine_hosts theirs_hosts; mine_hosts=$(psql_db -c 'SELECT count(*) FROM opnsense_hosts' 2>/dev/null || true); theirs_hosts=$(kv hosts "$facts")
+  if [[ "$mine_hosts" =~ ^[0-9]+$ ]] && [[ "$theirs_hosts" =~ ^[0-9]+$ ]] && [ "$mine_hosts" -eq 0 ] && [ "$theirs_hosts" -gt 0 ]; then
+    die "Falsche Richtung: der Partner hat $theirs_hosts Firewall(s), dieser Server keine, und der Partner würde überschrieben. Das Einrichten gehört an den Server mit den Daten (der Partner zeigt nur den Kopplungscode)."
+  fi
+  local dbsize free; dbsize=$(psql_db -c 'SELECT pg_database_size(current_database())'); free=$(kv disk_free "$facts")
+  if [[ "$free" =~ ^[0-9]+$ ]] && [ "$free" -lt "$(( dbsize * 12 / 10 ))" ]; then
+    die "Auf dem Partner ist zu wenig Platz ($(( free / 1048576 )) MB frei, Datenbank hier $(( dbsize / 1048576 )) MB)."
+  fi
+  local own_port peer_proxy_port; own_port=$(env_get PROXY_HTTPS_PORT); own_port="${own_port:-443}"; peer_proxy_port="$(kv proxy_port "$facts")"; peer_proxy_port="${peer_proxy_port:-443}"
+  ha_valid "$own_port" '^[0-9]{1,5}$' PROXY_HTTPS_PORT; ha_valid "$peer_proxy_port" '^[0-9]{1,5}$' "PROXY_HTTPS_PORT des Partners"
+  [[ "$(ha_agent_py probe "$peer_ip" "$peer_proxy_port" 2>/dev/null || true)" == *'"role"'* ]] \
+    || die "Der Proxy des Partners antwortet nicht unter https://$peer_ip:$peer_proxy_port/api/health. Der Partner-Wächter braucht diese Adresse."
+  say "Datenbank hier: $(( dbsize / 1048576 )) MB. Primär: $node ($node_ip), Standby: $peer_node ($peer_ip), VIP $vip an $vip_dev."
+  if [ "$check" = 1 ]; then   # nur die Vorprüfung (Assistent in der Oberfläche): nichts gesendet, nichts verändert, der Code bleibt gültig
+    say "Vorprüfung bestanden: alle Bedingungen sind erfüllt."
+    return 0
+  fi
+  if [ "$yes" != 1 ]; then
+    echo "Der Partner ($peer_ip) wird überschrieben: seine Datenbank und Geheimnisse werden durch eine Kopie dieses Servers ersetzt."
+    echo "Hier startet die Datenbank einmal neu (veröffentlichter Port, TLS). Voraussetzung: NTP auf beiden Knoten, beide im selben Netz."
+    read -rp "HA einrichten? [j/N] " ans </dev/tty
+    [[ "$ans" =~ ^[jJyY]$ ]] || die "Abgebrochen."
+  fi
+
+  say "Koppele mit dem Partner …"
+  local own_pin; own_pin=$(ha_gate_up "$node_ip")
+  printf '%s\n' "$code" | ha_agent_py pair - --own-pin "$own_pin" --own-port 8445 >/dev/null || die "Die Kopplung ist fehlgeschlagen (Meldung oben). Nichts wurde verändert."
+
+  say "Zertifikate für die Replikation …"
+  local tmp; tmp=$(mktemp -d); chmod 700 "$tmp"
+  ha_make_certs "$tmp" "$node_ip" "$peer_ip" "$vip_ip"
+  local pw="${HA_REPLICATION_PASSWORD:-$(ha_rand 40)}"
+  [ ${#pw} -ge 16 ] || die "Zufallspasswort ließ sich nicht erzeugen."
+  mkdir -p "$HA_DIR"; chmod 700 "$HA_DIR"; install -m 644 "$tmp/ha-ca.crt" "$HA_DIR/ha-ca.crt"
+
+  say "Bereite die Datenbank vor (TLS, Replikationsrolle, Slot, pg_hba) …"
+  local f mode
+  for f in server.crt:644 server.key:600 ha-ca.crt:644; do
+    mode="${f#*:}"; f="${f%%:*}"
+    c exec -T postgres sh -c "cat > \"\$PGDATA/$f\" && chown postgres:postgres \"\$PGDATA/$f\" && chmod $mode \"\$PGDATA/$f\"" < "$tmp/$f" \
+      || { rm -rf "$tmp"; die "$f ließ sich nicht in das Datenverzeichnis legen."; }
+  done
+  rm -rf "$tmp"
+  psql_db -v ON_ERROR_STOP=1 >/dev/null <<SQL || die "Die Datenbank ließ sich nicht vorbereiten."
+ALTER SYSTEM SET ssl = 'on';
+ALTER SYSTEM SET max_slot_wal_keep_size = '4GB';
+DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$HA_REPL_USER') THEN CREATE ROLE $HA_REPL_USER WITH LOGIN REPLICATION; END IF; END \$\$;
+ALTER ROLE $HA_REPL_USER WITH LOGIN REPLICATION PASSWORD '$pw';
+SELECT pg_create_physical_replication_slot('$HA_SLOT') WHERE NOT EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$HA_SLOT');
+SQL
+  local ip
+  for ip in "$peer_ip" "$node_ip"; do
+    c exec -T postgres sh -c "grep -qxF 'hostssl replication $HA_REPL_USER $ip/32 scram-sha-256' \"\$PGDATA/pg_hba.conf\" || echo 'hostssl replication $HA_REPL_USER $ip/32 scram-sha-256' >> \"\$PGDATA/pg_hba.conf\"" \
+      || die "pg_hba.conf ließ sich nicht ergänzen."
+  done
+
+  say "Schreibe die Konfiguration (HA-Statusdatei, .env, docker-compose.ha.yml) …"
+  ha_state_set HA_NODE "$node"; ha_state_set HA_NODE_IP "$node_ip"; ha_state_set HA_PEER_IP "$peer_ip"; ha_state_set HA_PEER_PORT "$peer_proxy_port"
+  ha_state_set HA_VIP "$vip"; ha_state_set HA_VIP_DEV "$vip_dev"; ha_state_set HA_REPLICATION_PASSWORD "$pw"
+  ha_compose_text "$node_ip" "$node" "$peer_ip" "$peer_proxy_port" "$vip" > docker-compose.ha.yml
+  env_set_literal COMPOSE_FILE "$(ha_compose_file_var)"
+  ha_env_list_add OPNEXUS_SITES "$vip_ip" ", "; ha_env_list_add OPNEXUS_SITES "$node_ip" ", "
+  ha_env_list_add FRONTEND_ORIGIN "https://$vip_ip" ","; ha_env_list_add FRONTEND_ORIGIN "https://$node_ip" ","
+  export COMPOSE_FILE="$(env_get COMPOSE_FILE)"
+  say "Starte Datenbank (Port $node_ip:5432) und Dienste neu …"
+  ha_up_apps || die "Der Neustart schlug fehl ('docker compose logs')."
+  wait_healthy || die "Nicht alle Dienste sind gesund geworden."
+  psql_db -c 'SELECT pg_reload_conf()' >/dev/null
+
+  say "Richte den Partner ein …"
+  ha_peer ha receive ha-ca < "$HA_DIR/ha-ca.crt" >/dev/null || die "Das Zertifikat ließ sich am Partner nicht ablegen."
+  {
+    printf 'HA_ROLE=standby\nHA_NODE=%s\nHA_NODE_IP=%s\nHA_PEER_IP=%s\nHA_PEER_PORT=%s\nHA_VIP=%s\nHA_REPLICATION_PASSWORD=%s\n' \
+      "$peer_node" "$peer_ip" "$node_ip" "$own_port" "$vip" "$pw"
+    printf 'POSTGRES_USER=%s\nPOSTGRES_PASSWORD=%s\nPOSTGRES_DB=%s\n' "$DB_USER" "$(env_get POSTGRES_PASSWORD)" "$DB_NAME"
+    printf 'OPNEXUS_SITES=%s\n' "$(ha_swap_addr "$(env_get OPNEXUS_SITES)" "$node_ip" "$peer_ip" ", ")"
+    printf 'FRONTEND_ORIGIN=%s\n' "$(ha_swap_addr "$(env_get FRONTEND_ORIGIN)" "$node_ip" "$peer_ip" ",")"
+  } | ha_peer ha receive env-init >/dev/null || die "Die Einstellungen ließen sich am Partner nicht schreiben."
+
+  ha_state_set HA_ROLE primary   # vorher: der Partner fragt beim Aufbau nach unserem Zustand
+  ha_load
+  say "Baue den Standby auf ($peer_node) …"
+  ha_peer ha resync --yes || die "Der Aufbau des Standbys schlug fehl (Ausgabe oben). Dieser Knoten ist Primär und läuft; 'ha resync' am Partner wiederholt den Aufbau."
+
+  ha_vip_up
+  say "Erster Abgleich der Geheimnisse (danach alle 5 Minuten durch den Agenten) …"
+  cmd_ha_sync || say "(Der erste Abgleich schlug fehl; der Agent wiederholt ihn.)"
+  say "HA eingerichtet nach $(( SECONDS - t0 )) s. Prüfen: opnexus ha status"
+  echo "Erreichbar unter https://$vip_ip; die Proxy-CA ist auf beiden Knoten dieselbe (Browser vertrauen beiden)."
+}
+
+# Vorschlag für die Oberfläche: eigene Adresse und Schnittstelle in Richtung eines Ziels (Standard: Standardroute).
+cmd_ha_suggest() {
+  local target="${1:-1.1.1.1}" ip dev
+  ha_valid "$target" "$RE_IP" "Ziel"
+  ip=$(ha_local_ip "$target"); dev=$(ha_host_exec ip -o -4 route get "$target" 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n1)
+  printf 'node_ip=%s\ndev=%s\n' "$ip" "$dev"
+}
+
+# Der Primär bittet den Partner um die Übernahme (geplanter Wechsel über den Agenten): der Partner hält diesen Knoten an (Fencing) und wird Primär.
+cmd_ha_switch() {
+  require_release_mode
+  ha_load
+  [ "$HA_ROLE" = primary ] || die "Nur der Primär kann den Partner um die Übernahme bitten (HA_ROLE ist '$HA_ROLE')."
+  ha_agent_paired || die "Der Wechsel vom Primär aus geht nur mit Agenten-Kopplung; bei einem SSH-Paar am Standby 'opnexus ha promote'."
+  ha_reach || die "Der Agent des Partners antwortet nicht: nichts wurde verändert. (Am Standby: 'opnexus ha promote' bzw. die Seite /standby.)"
+  [ "$(kv replication "$(ha_status_local)")" = streaming ] || die "Der Standby streamt nicht: erst reparieren ('opnexus ha status')."
+  say "Bitte den Partner ($HA_PEER_IP) um die Übernahme: er hält zuerst diesen Knoten an …"
+  ha_peer ha promote --yes
+}
+
+# Standby neu aufbauen lassen (am Primär): der Partner löscht seine Datenbank und baut sie vom Primär neu auf.
+cmd_ha_rebuild_standby() {
+  require_release_mode
+  ha_load
+  [ "$HA_ROLE" = primary ] || die "Nur am Primär (HA_ROLE ist '$HA_ROLE')."
+  ha_reach || die "Der Partner antwortet nicht: nichts wurde verändert."
+  say "Der Partner ($HA_PEER_IP) baut seine Datenbank neu auf …"
+  ha_peer ha resync --yes
+}
+
+# Paar auflösen. Am Primär: der Partner wird zuerst geleert (er hält sonst eine vollständige Kopie aller Zugangsdaten), dann wird dieser Knoten
+# wieder zu einer Einzelinstallation. --partner-side: das Gegenstück (läuft am Partner, vom Primär über den Agenten aufgerufen).
+ha_remove_pair_files() {   # Statusdatei, HA-Compose-Datei und die HA-Zeilen der .env entfernen (Kopplung und Profile bleiben)
+  rm -f "$HA_STATE_FILE" docker-compose.ha.yml "$HA_DIR/ha-ca.crt" "$HA_DIR/ca-sum" "$HA_SYNC_FILE" .opnexus-ha-sync.log
+  sed -i '/^HA_ROLE=/d;/^COMPOSE_FILE=/d' "$ENV_FILE"
+}
+ha_drop_gate_profile() {
+  sed -i '/^HA_GATE_BIND=/d' "$ENV_FILE" 2>/dev/null || true
+  local cur kept=() t; cur=$(env_get COMPOSE_PROFILES)
+  for t in ${cur//,/ }; do [ "$t" = ha ] || kept+=("$t"); done
+  local IFS=,; env_set_literal COMPOSE_PROFILES "${kept[*]:-}"
+}
+
+# Ein bestehendes SSH-Paar auf den Agenten umstellen (docs/DESIGN-HA-UI.md Abschnitt 7). Läuft an einem der beiden Knoten und erreicht den Partner
+# über die schon vertraute SSH-Verbindung: Gate und Agent beider Seiten einschalten, das Clustergeheimnis (nur über SSH-stdin) auf beiden eintragen,
+# die Kopplung prüfen, dann den Cron abstellen (die Zeitgeber des Agenten übernehmen). Nichts am Datenstand oder an der Rolle ändert sich.
+cmd_ha_migrate_agent() {
+  local partner_side=0 abort=0 own_ip="" peer_ip="" peer_pin="" yes=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --partner-side) partner_side=1 ;; --abort) abort=1 ;; --yes|-y) yes=1 ;;
+      --ip) own_ip="${2:-}"; shift ;; --peer-ip) peer_ip="${2:-}"; shift ;; --peer-pin) peer_pin="${2:-}"; shift ;;
+      *) die "Unbekannte Option: $1" ;;
+    esac
+    shift
+  done
+  require_release_mode
+  ha_load
+  if [ "$partner_side" = 1 ]; then   # intern, am Partner, vom anderen Knoten über SSH aufgerufen
+    if [ "$abort" = 1 ]; then ha_agent_py unpair >/dev/null 2>&1 || true; return 0; fi
+    ha_valid "$own_ip" "$RE_IP" "--ip"; ha_valid "$peer_ip" "$RE_IP" "--peer-ip"; ha_valid "$peer_pin" '^[0-9a-f]{64}$' "--peer-pin"
+    local secret; IFS= read -r secret   # zuerst: die folgenden docker-Aufrufe lesen sonst von stdin
+    ! ha_agent_paired || die "Dieser Knoten ist schon über den Agenten gekoppelt."
+    protect_env
+    ha_agent_up
+    local pin; pin=$(ha_gate_up "$own_ip")
+    printf '%s\n' "$secret" | ha_agent_py adopt --ip "$peer_ip" --port 8445 --pin "$peer_pin" || die "Die Kopplung ließ sich hier nicht eintragen."
+    printf 'pin=%s\n' "$pin"
+    return 0
+  fi
+  ! ha_agent_paired || die "Dieses Paar läuft schon über den Agenten."
+  protect_env
+  local services; services=$(c --profile '*' config --services 2>/dev/null || true)   # nicht per Pipe an `grep -q`: SIGPIPE ließe pipefail zuschlagen
+  grep -qx ha-gate <<<"$services" || die "Diese Installation kennt den HA-Gate noch nicht: erst auf eine Version mit Agent aktualisieren (beide Knoten)."
+  ha_ssh true >/dev/null 2>&1 || die "Der Partner ist über SSH nicht erreichbar: die Umstellung braucht die alte Verbindung noch."
+  local mine theirs
+  mine=$(running_version)
+  theirs=$(ha_peer_ssh ha status --porcelain 2>/dev/null | sed -n 's/^running_version=//p' | head -n1)
+  [ -n "$mine" ] && [ "$mine" = "$theirs" ] || die "Beide Knoten brauchen dieselbe Version (hier '$mine', Partner '${theirs:-unbekannt}')."
+  if [ "$yes" != 1 ]; then
+    echo "Das Paar wird von SSH auf den HA-Agenten umgestellt (Gate auf Port 8445 an beiden Knoten, Cron entfällt, Daten und Rollen bleiben)."
+    local answer; read -r -p "Fortfahren? [j/N] " answer
+    [[ "$answer" =~ ^[jJyY] ]] || die "Abgebrochen."
+  fi
+  say "Schalte Agent und Gate an diesem Knoten ein …"
+  ha_agent_up
+  ha_drop_half_pairing
+  local pin_here pin_there out secret
+  pin_here=$(ha_gate_up "$HA_NODE_IP")
+  secret=$(ha_agent_py newsecret) || die "Das Clustergeheimnis ließ sich nicht erzeugen."
+  say "Schalte Agent und Gate am Partner ein und koppele …"
+  out=$(printf '%s\n' "$secret" | ha_peer_ssh ha migrate-agent --partner-side --ip "$HA_PEER_IP" --peer-ip "$HA_NODE_IP" --peer-pin "$pin_here") \
+    || { ha_peer_ssh ha migrate-agent --partner-side --abort >/dev/null 2>&1 || true; die "Die Umstellung am Partner schlug fehl (Meldung oben). Nichts hat sich am Paar geändert."; }
+  pin_there=$(sed -n 's/^pin=//p' <<<"$out" | head -n1)
+  [[ "$pin_there" =~ ^[0-9a-f]{64}$ ]] || { ha_peer_ssh ha migrate-agent --partner-side --abort >/dev/null 2>&1 || true; die "Der Partner meldet kein Zertifikat des Gate."; }
+  if ! printf '%s\n' "$secret" | ha_agent_py adopt --ip "$HA_PEER_IP" --port 8445 --pin "$pin_there"; then
+    ha_peer_ssh ha migrate-agent --partner-side --abort >/dev/null 2>&1 || true   # der Partner ist schon umgestellt: zurücknehmen, sonst spräche er Agent, dieser Knoten SSH
+    die "Die Kopplung ließ sich hier nicht eintragen. Der Partner wurde zurückgenommen, die SSH-Kopplung gilt weiter."
+  fi
+  if ! ha_agent_py call ping >/dev/null 2>&1; then
+    ha_agent_py unpair >/dev/null 2>&1 || true
+    ha_peer_ssh ha migrate-agent --partner-side --abort >/dev/null 2>&1 || true
+    die "Der Partner antwortet über das Gate nicht (Port 8445 zwischen den Knoten freigeben?). Die SSH-Kopplung gilt weiter."
+  fi
+  say "Der Agent antwortet; stelle die Zeitgeber um (Cron entfällt) …"
+  ha_peer_ssh ha cron remove >/dev/null 2>&1 || say "(Cron am Partner nicht entfernt: $HA_CRON dort von Hand löschen.)"
+  cmd_ha_cron remove || say "(Cron hier nicht entfernt: $HA_CRON von Hand löschen.)"
+  say "Fertig: das Paar läuft über den Agenten. Prüfen: opnexus ha status"
+}
+
+cmd_ha_dissolve() {
+  local yes=0 local_only=0 partner_side=0 arg
+  for arg in "$@"; do
+    case "$arg" in --yes|-y) yes=1 ;; --local-only) local_only=1 ;; --partner-side) partner_side=1 ;; -*) die "Unbekannte Option: $arg" ;; esac
+  done
+  require_release_mode
+  ha_load
+  if [ "$partner_side" = 1 ]; then
+    [ "$HA_ROLE" != primary ] || die "Dieser Knoten ist Primär: er wird nie auf Wunsch des Partners geleert."
+    say "Dieser Knoten verlässt das Paar: Dienste anhalten, Datenbank und Geheimnisse löschen …"
+    ha_stop_apps
+    ha_vip_down
+    c run --rm --no-deps -T --user root --entrypoint sh postgres -c 'mkdir -p "$PGDATA" && find "$PGDATA" -mindepth 1 -delete' || die "Die Datenbank ließ sich nicht löschen."
+    c run --rm --no-deps -T --user root --entrypoint sh backend -c \
+      'for d in '"${HA_DATA_DIRS[*]}"' opnsense-backups; do [ -d "/data/$d" ] && find "/data/$d" -mindepth 1 -delete; done; true' || die "Die Geheimnis-Dateien ließen sich nicht löschen."
+    c run --rm --no-deps -T --entrypoint sh proxy -c 'rm -rf /data/caddy/pki/authorities/local /data/caddy/certificates/local' >/dev/null 2>&1 || true
+    # Kopplung und Gate bleiben: der Primär verfolgt diesen Auftrag über das Gate bis zum Ende und löst seine Seite danach; die halbe Kopplung
+    # räumt `ha prepare` (oder eine neue Kopplung) später weg.
+    ha_remove_pair_files
+    say "Starte den Knoten als frische Installation …"
+    unset COMPOSE_FILE; ha_up_apps || die "Der Neustart schlug fehl ('docker compose logs')."
+    say "Fertig: dieser Knoten ist wieder eine leere Einzelinstallation (Einrichtungsassistent unter /setup)."
+    return 0
+  fi
+  [ "$HA_ROLE" = primary ] || die "Aufgelöst wird am Primär (HA_ROLE ist '$HA_ROLE'). Ein Standby: dort 'ha promote' bzw. am Primär 'ha dissolve'."
+  if [ "$yes" != 1 ]; then
+    echo "Das HA-Paar wird aufgelöst. Dieser Knoten ($HA_NODE) bleibt Einzelinstallation mit allen Daten."
+    if [ "$local_only" = 1 ]; then echo "ACHTUNG --local-only: der Partner wird NICHT geleert und behält eine vollständige Kopie der Daten und Zugangsdaten."
+    else echo "Der Partner ($HA_PEER_IP) wird geleert (Datenbank, Geheimnisse) und startet als frische Installation."; fi
+    read -rp "Auflösen? [j/N] " ans </dev/tty
+    [[ "$ans" =~ ^[jJyY]$ ]] || die "Abgebrochen."
+  fi
+  if [ "$local_only" != 1 ]; then
+    ha_reach || die "Der Partner antwortet nicht: nichts wurde verändert. Ist er dauerhaft weg: 'ha dissolve --local-only'."
+    say "Der Partner ($HA_PEER_IP) wird geleert …"
+    ha_peer ha dissolve --partner-side || die "Der Partner ließ sich nicht auflösen (Meldung oben). Dieser Knoten bleibt unverändert."
+  fi
+  say "Löse die Replikation an diesem Knoten …"
+  psql_db -c "SELECT pg_terminate_backend(active_pid) FROM pg_replication_slots WHERE slot_name = '$HA_SLOT' AND active_pid IS NOT NULL" >/dev/null 2>&1 || true
+  psql_db -c "SELECT pg_drop_replication_slot('$HA_SLOT') WHERE EXISTS (SELECT 1 FROM pg_replication_slots WHERE slot_name = '$HA_SLOT')" >/dev/null 2>&1 || true
+  c exec -T postgres sh -c "sed -i '/$HA_REPL_USER/d' \"\$PGDATA/pg_hba.conf\"" >/dev/null 2>&1 || true
+  psql_db -c "DROP ROLE IF EXISTS $HA_REPL_USER" >/dev/null 2>&1 || true
+  psql_db -c "ALTER SYSTEM RESET max_slot_wal_keep_size" >/dev/null 2>&1 || true
+  psql_db -c "DELETE FROM ha_state WHERE id = 1" >/dev/null 2>&1 || true
+  ha_vip_down
+  ha_remove_pair_files
+  ha_drop_gate_profile
+  ha_agent_py unpair >/dev/null 2>&1 || true
+  c stop ha-gate >/dev/null 2>&1 || true
+  say "Starte die Dienste ohne die HA-Einstellungen neu …"
+  # ha_up_apps, nicht `up -d` für alles: im Updater-Container würde das den Updater selbst neu erstellen und diesen Lauf mittendrin beenden
+  # (Lab 2026-11-03: Dienste halb gestoppt, Auftrag abgebrochen).
+  unset COMPOSE_FILE
+  ha_up_apps || die "Der Neustart schlug fehl ('docker compose logs')."
+  psql_db -c 'SELECT pg_reload_conf()' >/dev/null 2>&1 || true
+  say "Fertig: dieser Knoten ist wieder eine Einzelinstallation."
+}
+
 cmd_ha() {
   local sub="${1:-}"; shift || true
   case "$sub" in
-    init) cmd_ha_init "$@" ;;
+    prepare) cmd_ha_prepare "$@" ;;
+    init) if [[ " $* " == *" --code "* ]]; then cmd_ha_init_agent "$@"; else cmd_ha_init "$@"; fi ;;
     status) cmd_ha_status "$@" ;;
     promote) cmd_ha_promote "$@" ;;
     resync) cmd_ha_resync "$@" ;;
@@ -1680,10 +2343,15 @@ cmd_ha() {
     update) cmd_ha_update "$@" ;;
     update-standby) cmd_ha_update_standby "$@" ;;
     fence) cmd_ha_fence ;;
+    suggest) cmd_ha_suggest "$@" ;;
+    switch) cmd_ha_switch ;;
+    rebuild-standby) cmd_ha_rebuild_standby ;;
+    dissolve) cmd_ha_dissolve "$@" ;;
+    migrate-agent) cmd_ha_migrate_agent "$@" ;;
     vip) cmd_ha_vip "$@" ;;
     cron) cmd_ha_cron "$@" ;;
     receive) cmd_ha_receive "$@" ;;
-    *) die "Aufruf: opnexus ha init|status|promote|resync|sync|update" ;;
+    *) die "Aufruf: opnexus ha prepare|init|status|promote|resync|sync|update|switch|rebuild-standby|dissolve|migrate-agent" ;;
   esac
 }
 

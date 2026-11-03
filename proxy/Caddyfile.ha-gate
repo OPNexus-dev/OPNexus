@@ -1,0 +1,35 @@
+# Netzseite des HA-Agenten (docs/DESIGN-HA-UI.md 3.1): der EINZIGE Port, über den der Partner den Updater erreicht.
+# Läuft als eigener Dienst `ha-gate` aus docker-compose.ha.yml mit diesem Image, ohne Docker-Socket und ohne Geheimnisse
+# außer seinem eigenen TLS-Schlüssel. Reicht nur die Pfade der Kopplung und der Partner-Verben an den Updater weiter; der
+# Updater prüft jede Anfrage selbst (Kopplungs- bzw. Clustergeheimnis). Alles andere antwortet hier mit 404.
+{
+	admin off
+	auto_https off
+	servers {
+		protocols h1 h2
+	}
+}
+
+:8445 {
+	tls /gate/cert.pem /gate/key.pem {
+		protocols tls1.3
+	}
+	request_body {
+		max_size 4GB
+	}
+	@allowed path /ha/pair/hello /ha/pair/commit /ha/peer/*
+	handle @allowed {
+		reverse_proxy updater:8080 {
+			# Absender, wie ihn dieses Gate sieht (überschreibt jeden vom Client mitgeschickten Wert).
+			header_up X-HA-Remote {remote_host}
+			flush_interval -1
+			transport http {
+				dial_timeout 5s
+				response_header_timeout 600s
+			}
+		}
+	}
+	handle {
+		respond 404
+	}
+}

@@ -3,10 +3,12 @@
 import { Badge, BadgeTone, badgeToneClasses } from "@/components/ui/Badge";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { useLanguage } from "@/components/LanguageProvider";
+import { Button } from "@/components/ui/Button";
+import { ActionDialog, PrepareDialog, SetupDialog } from "@/components/HaDialogs";
 import { api, HaStatus } from "@/lib/api";
 import { AlertTriangle } from "lucide-react";
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const REFRESH_MS = 15000;
 
@@ -25,10 +27,13 @@ function ageText(seconds: number): string {
 export function HaSection() {
   const { t, locale } = useLanguage();
   const [status, setStatus] = useState<HaStatus | null>(null);
+  const [dialog, setDialog] = useState<"prepare" | "setup" | "sync" | "switch" | "rebuild" | "dissolve" | null>(null);
+
+  const reload = useCallback(() => api.haStatus().then(setStatus).catch(() => undefined), []);
 
   useEffect(() => {
     let active = true;
-    const load = () => api.haStatus().then((next) => active && setStatus(next)).catch(() => active && setStatus(null));
+    const load = () => api.haStatus().then((next) => active && setStatus(next)).catch(() => undefined);   // a failed poll (the backend restarts during setup/switch) keeps the last state and the open dialog
     void load();
     const timer = setInterval(load, REFRESH_MS);
     return () => {
@@ -37,7 +42,42 @@ export function HaSection() {
     };
   }, []);
 
-  if (!status || !status.configured) return null;
+  const dialogs = (
+    <>
+      {dialog === "prepare" && <PrepareDialog onClose={() => { setDialog(null); void reload(); }} />}
+      {dialog === "setup" && <SetupDialog onClose={() => { setDialog(null); void reload(); }} onDone={() => void reload()} />}
+      {(dialog === "sync" || dialog === "switch" || dialog === "rebuild" || dialog === "dissolve") && (
+        <ActionDialog action={dialog} onClose={() => { setDialog(null); void reload(); }} onDone={() => void reload()} />
+      )}
+    </>
+  );
+  // The dialogs sit beside the card, not inside it: a setup that flips `configured` (or a poll that fails while services restart) must not rebuild the running dialog.
+  if (!status) return <>{null}{dialogs}</>;
+  const agent = status.agent;
+
+  // Not part of a pair: set one up (needs the updater, which is the agent) or prepare this node as the future standby.
+  if (!status.configured) {
+    return (
+      <>
+      <section id="ha" className="scroll-mt-4 space-y-3 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="flex items-center gap-2 text-lg font-medium">
+          {t("settings.ha.title")}
+          <InfoTip text={t("settings.ha.hint")} />
+        </h2>
+        <p className="text-sm text-slate-600">{t("settings.ha.manage.intro")}</p>
+        {!agent?.available ? (
+          <p className="text-sm text-slate-600" data-testid="ha-needs-updater">{t("settings.ha.manage.needsUpdater")}</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setDialog("setup")}>{t("settings.ha.manage.setupButton")}</Button>
+            <Button variant="outline" onClick={() => setDialog("prepare")}>{t("settings.ha.manage.prepareButton")}</Button>
+          </div>
+        )}
+      </section>
+      {dialogs}
+      </>
+    );
+  }
 
   const role = status.split_brain ? "fenced" : (status.db_role ?? "unknown");
   const roleTone: BadgeTone = status.split_brain ? "danger" : role === "primary" ? "success" : role === "replica" ? "info" : "neutral";
@@ -77,6 +117,7 @@ export function HaSection() {
   ];
 
   return (
+    <>
     <section id="ha" className="scroll-mt-4 space-y-4 rounded-xl border border-slate-200 bg-white p-5">
       <h2 className="flex items-center gap-2 text-lg font-medium">
         {t("settings.ha.title")}
@@ -102,7 +143,18 @@ export function HaSection() {
           </div>
         ))}
       </dl>
-      <p className="text-xs text-slate-500">{t("settings.ha.commands")}</p>
+      {agent?.available && agent.paired && status.db_role === "primary" ? (
+        <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3" data-testid="ha-actions">
+          <Button variant="outline" onClick={() => setDialog("sync")}>{t("settings.ha.manage.actions.sync.button")}</Button>
+          <Button variant="outline" onClick={() => setDialog("rebuild")}>{t("settings.ha.manage.actions.rebuild.button")}</Button>
+          <Button variant="outline" onClick={() => setDialog("switch")}>{t("settings.ha.manage.actions.switch.button")}</Button>
+          <Button variant="dangerSubtle" onClick={() => setDialog("dissolve")}>{t("settings.ha.manage.actions.dissolve.button")}</Button>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">{agent?.paired === false ? t("settings.ha.manage.sshPair") : t("settings.ha.commands")}</p>
+      )}
     </section>
+    {dialogs}
+    </>
   );
 }

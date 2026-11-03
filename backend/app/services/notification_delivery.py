@@ -50,6 +50,7 @@ _LABELS = {
     "ha_slot_retention": "Hochverfügbarkeit: Replikationsslot",
     "ha_sync_stale": "Hochverfügbarkeit: Geheimnis-Abgleich veraltet",
     "ha_split_brain": "Hochverfügbarkeit: zwei Primäre (Split-Brain)",
+    "ha_agent_down": "Hochverfügbarkeit: Agent antwortet nicht",
     "test": "Testbenachrichtigung",
 }
 

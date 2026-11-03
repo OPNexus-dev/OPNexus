@@ -18,7 +18,7 @@ ProblemType = Literal[
     "compliance_finding",
     "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk",
     "rollout_paused", "rollout_start_failed",
-    "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain",
+    "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain", "ha_agent_down",
 ]
 ChannelType = Literal["ntfy", "gotify", "telegram", "teams", "matrix"]
 

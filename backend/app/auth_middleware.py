@@ -94,7 +94,8 @@ def _security_event(parts: list[str], method: str) -> dict:
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.url.path in _PUBLIC_PATHS:
+        if request.url.path in _PUBLIC_PATHS or request.url.path.startswith("/api/ha/standby/"):
+            # The standby's own door has a sign-in of its own (a signed cookie, no session row: the database is read-only there).
             return await call_next(request)
         if request.url.path.startswith("/internal/gui/"):
             # GUI gateway only: never routed by the proxy, authenticated by the

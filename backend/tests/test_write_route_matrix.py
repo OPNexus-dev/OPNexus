@@ -70,6 +70,12 @@ OPERATOR_ALLOWED_WRITES = {
     ("POST", "/api/auth/change-password"),
     ("POST", "/api/auth/login"),
     ("POST", "/api/auth/logout"),
+    # The standby's own door (HA): it has a sign-in of its own that admits local administrator accounts only (a signed cookie, no
+    # session), so the session roles do not apply; on a node that is no standby every one of these answers NOT_STANDBY.
+    ("POST", "/api/ha/standby/login"),
+    ("POST", "/api/ha/standby/logout"),
+    ("POST", "/api/ha/standby/promote"),
+    # (the pair management under /api/system/ha/* is administration: /api/system is admin-only for operators and tokens below admin)
     ("PUT", "/api/settings"),
     ("POST", "/api/tokens"),
     ("DELETE", "/api/tokens/x"),

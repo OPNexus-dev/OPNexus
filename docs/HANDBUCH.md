@@ -1857,11 +1857,36 @@ einen Ausfall nicht von einer Netztrennung unterscheiden, und zwei Primäre mit 
 Schaden an als ein ausgefallenes OPNexus (die Firewalls laufen ohne OPNexus unverändert weiter).
 
 **Voraussetzungen:** zwei Linux-Server im selben Netz (L2), auf beiden OPNexus **derselben Version** aus dem Release-Bundle,
-SSH-Anmeldung per Schlüssel vom Primär zum Standby (als root), `openssl`, NTP auf beiden, eine freie Adresse als VIP. Auf dem
+SSH-Anmeldung per Schlüssel vom Primär zum Standby (als root), `openssl`, NTP auf beiden, eine freie Adresse als VIP (`ha init` prüft, dass sie niemand verwendet). Auf dem
 Standby genug Platz für die Datenbank (Datenbank plus Reserve; die Plattenwarnung des Servers gilt auf beiden Knoten).
 Die HA-Befehle laufen auf dem Host, nicht im Updater-Container (VIP und Cron brauchen den Host).
 
-**Einrichten** (am künftigen Primär; der Standby wird dabei überschrieben):
+**Einrichten ohne SSH (empfohlen, ab 1.37):** Auf dem **Standby** `./opnexus ha prepare` ausführen. Das schaltet den Updater und den HA-Gate ein
+(Port 8445) und gibt einen **Kopplungscode** aus, 30 Minuten gültig und einmal verwendbar. Auf dem **Primär**:
+
+```bash
+./opnexus ha init --code 'OPNX1-…' --vip 192.168.2.22/24     # --node a --peer-node b --node-ip --vip-dev --yes
+```
+
+Der Befehl prüft vorab Version, Release-Modus, Platz am Partner, ob die VIP frei ist und ob der Proxy des Partners antwortet, koppelt dann beide Knoten (das
+Zertifikat des Partners muss zum Pin im Code passen, bevor irgendetwas gesendet wird) und richtet das Paar ein. Voraussetzungen: gleiche Version auf beiden Knoten, NTP,
+Port 8445 zwischen den Knoten offen (Zugriffslisten), `openssl` auf dem Primär (für das Zertifikat der Replikation). SSH-Schlüssel, ein Root-Zugang zwischen den Knoten und der Cron entfallen:
+Fencing, Übernahme, Resync, Abgleich und Update laufen über feste Verben des Agenten, der Abgleich der Geheimnisse und die VIP-Nachführung über seinen Zeitgeber.
+Der Gate lauscht nur an der Adresse des Knotens (Zeile `HA_GATE_BIND` in der `.env`, vom Werkzeug gesetzt) und läuft ohne root. Er leitet nur die Pfade der Kopplung und der Partner-Verben an den Updater weiter; alles andere antwortet mit 404, ohne das Geheimnis mit 401. Der Updater hat damit mehr Aufgaben als das
+Aktualisieren und ist weiter nur aus dem Compose-Netz (Backend) und über das Gate (Partner) erreichbar. Schlägt das Einrichten nach der Kopplung fehl, genügt ein neuer Code
+(`ha prepare` am Standby); die halbe Kopplung wird verworfen.
+
+**Einrichten und bedienen in der Oberfläche (ab 1.37):** Einstellungen › System › Hochverfügbarkeit. Auf dem künftigen Standby zuerst anmelden und „Diesen Server zum Standby vorbereiten“ wählen: die Karte zeigt den Kopplungscode
+(30 Minuten, einmal verwendbar). Auf dem künftigen Primär „HA einrichten“: Code einfügen, die gemeinsame Adresse (VIP) mit Netzlänge eintragen (Name, Adresse und Schnittstelle des Knotens werden vorgeschlagen und lassen sich unter „ändern“ anpassen),
+„Voraussetzungen prüfen“ (ändert nichts: Version, Platz, VIP frei, Partner erreichbar), dann „Jetzt einrichten“ (die Seite zeigt das Protokoll; das Backend startet dabei neu, der Dialog bleibt offen). Mit Paar bietet die Karte
+**Jetzt abgleichen**, **Standby neu aufbauen** (nach einem Wechsel oder wenn der Standby zurückliegt), **Zum Partner wechseln** (geplant, ohne Datenverlust) und **HA auflösen** (der Partner wird geleert und ist danach eine leere
+Einzelinstallation mit Einrichtungsassistent). Jede Aktion fragt das Passwort des angemeldeten Administrators ab. Zeigt die Karte „Agent nicht erreichbar“, läuft der Updater-Container nicht (Profil `updater`). Benachrichtigung
+„HA-Agent antwortet nicht“: der Agent dieses Knotens schweigt seit über 5 Minuten (Updater-Container prüfen).
+
+**Bestehendes SSH-Paar auf den Agenten umstellen:** beide Knoten auf dieselbe Version mit Agent bringen (`./opnexus ha update`), dann an einem Knoten `./opnexus ha migrate-agent` (Port 8445 zwischen den Knoten offen). Der Befehl nutzt ein letztes Mal SSH,
+koppelt beide Gates, prüft sie mit einem Ping und entfernt erst dann den Cron beider Knoten; schlägt etwas fehl, bleibt die SSH-Kopplung bestehen. Rollen, Epoche und Daten ändern sich nicht.
+
+**Einrichten über SSH (ältere Variante, bleibt höchstens zwei Minor-Versionen):** am künftigen Primär; der Standby wird dabei überschrieben:
 
 ```bash
 ./opnexus ha init root@192.168.1.21 --vip 192.168.1.22/24     # --node-ip, --peer-ip, --vip-dev, --peer-dir, --node, --peer-node
@@ -1874,17 +1899,34 @@ Datenbank), legt einen gemeinsamen SSH-Schlüssel für beide Richtungen an, baut
 richtet den Cron ein (`/etc/cron.d/opnexus-ha`: Abgleich alle 5 Minuten, VIP nach einem Neustart). `OPNEXUS_SITES` und
 `FRONTEND_ORIGIN` enthalten danach die VIP; die Proxy-CA ist auf beiden Knoten dieselbe, Browser vertrauen also beiden.
 
+**Wo der Zustand liegt:** `.opnexus-ha/state` im Installationsverzeichnis (Rolle, Knoten, Adressen, VIP, Replikationspasswort; nur root lesbar). Diese
+Datei pflegt allein das Werkzeug, die `.env` muss man dafür nie anfassen. Dort stehen nur `COMPOSE_FILE` (damit ein von Hand ausgeführtes `docker compose up -d` den
+Datenbank-Port nicht entfernt) und eine abgeleitete Zeile `HA_ROLE`, die ältere Werkzeuge brauchen; bei Abweichung gilt die Datei. Paare aus früheren Versionen werden beim
+ersten HA-Befehl automatisch umgezogen. Die Datei gehört nicht in Sicherungen oder Umzüge (`migrate-host`): ein wiederhergestellter Server ist kein Paarknoten.
+
 **Betrieb:**
 - `./opnexus ha status` zeigt beide Knoten: Rolle, Epoche, Version, Replikationsverzug, Slot-Füllstand, Alter des letzten
   Geheimnis-Abgleichs, Uhrenabstand und ob für jede Firewall und jedes Zwei-Faktor-Konto die Geheimnis-Datei vorhanden ist.
 - `./opnexus ha sync` (am Primär, sonst vom Cron) überträgt die Geheimnisse (liegen nicht in der Datenbank), die Überlagerung,
-  neue Konfigurationssicherungen der Firewalls, die Proxy-CA und die nicht knotenspezifischen Einstellungen der `.env`. Die
+  neue Konfigurationssicherungen der Firewalls, die Proxy-CA und eine feste Liste gemeinsamer `.env`-Einstellungen (Anmeldung, Cookie, Update-Prüfung, Zertifikatsprüfung; Ports, Adressen, Registry und Profile bleiben je Knoten). Die
   Geheimnisse sind also bis zu 5 Minuten alt; `ha promote` prüft vorher, ob für alles in der Datenbank eine Datei da ist.
 - **Klick-Updates im Webinterface sind gesperrt**, solange HA eingerichtet ist, ebenso `opnexus update`. Aktualisiert wird mit
   `./opnexus ha update [VERSION]` am Primär: erst der Standby (Images ziehen, Signatur prüfen, Backend neu starten; er migriert
   nie), dann der Primär wie gewohnt (Sicherung, Migration, die per Replikation zum Standby läuft), zuletzt die Prüfung, dass
   beide Knoten dieselbe Version und Revision haben und der Standby streamt. Ein Auto-Rollback am Primär spielt einen Dump
   zurück; der Standby folgt von selbst, die Log-Historie ist danach auf beiden leer.
+
+**Übernehmen im Browser (Standby):** Auf dem Standby läuft der volle Stack. Wer dessen Adresse (nicht die VIP) aufruft, landet auf **/standby**. Dort meldet sich ein lokaler
+Administrator an (Passwort und, falls eingerichtet, der Code der Authenticator-App; Wiederherstellungscodes gehen am Standby nicht; die Anmeldung gilt 15 Minuten). Die Seite zeigt den Zustand
+des Paars und den Knopf „Jetzt übernehmen“. Ist der Agent des Partners erreichbar, wird der Partner zuerst angehalten (wie `ha promote`). Läuft das Paar noch über SSH (ohne Agent-Kopplung), kann die Seite den Partner nicht anhalten und bietet die Übernahme nicht an: dann `./opnexus ha promote` im Terminal oder vorher `./opnexus ha migrate-agent`. Antwortet der Partner gar nicht, verlangt die Seite den
+getippten Satz **alter Primaer ist aus**; Voraussetzung ist, dass er wirklich ausgeschaltet ist. Antwortet er noch als Leader (nur die Verbindung zu seinem Agenten fehlt), lehnt die Seite die
+Übernahme ab. Nach etwa einer Minute ist dieser Knoten der Primär; wer übernommen hat, steht im Audit. Das Terminal (`./opnexus ha promote`) bleibt der gleichwertige Rückweg, auch wenn kein
+lokales Administrator-Konto mit abgeglichenem zweiten Faktor vorhanden ist (reine SSO-Konten können sich am Standby nicht anmelden).
+
+**VIP und alter Primär:** Die VIP führt der Agent jede Minute nach. Sie gehört dem Primär nur, solange sein Backend nicht vom Partner-Wächter gesperrt ist (`fenced`) und der Partner nicht als
+Leader mit **höherer Epoche** antwortet; ein alter Primär nach `promote --force` gibt sie also von selbst ab, sobald der neue erreichbar ist. Eine einzelne fehlgeschlagene Abfrage zählt nicht als
+„kein Leader“ (es wird zweimal gefragt). Overlay- und GUI-Profil (`COMPOSE_PROFILES`) samt `GUI_PORTS`/`OVERLAY_PORT` gleicht `ha sync` zum Partner ab, damit nach einem Wechsel `wg-hub` und
+`gui-gateway` dort laufen; `updater` und `ha` bleiben Sache des jeweiligen Knotens.
 
 **Wechsel (der Primär ist ausgefallen oder soll gewartet werden):** am Standby
 
@@ -1898,6 +1940,9 @@ setzt die VIP. Ist der alte Primär nicht erreichbar, bricht es ab: dann ihn sic
 aus ist, und `./opnexus ha promote --force` aufrufen (verlangt die getippte Bestätigung „alter Primaer ist aus“). Im Lab war
 die VIP nach rund 12 Sekunden wieder erreichbar, die Hintergrunddienste (Alarme, geplante Wartungen) laufen nach etwa einer halben Minute.
 **Den alten Primär** holt man mit `./opnexus ha resync` (dort ausgeführt) als neuen Standby zurück; zurückwechseln muss man nicht.
+Nach einem erzwungenen Wechsel (`--force`) steht dort noch `HA_ROLE=primary`; dann gilt `./opnexus ha resync --from-peer`. Das läuft nur, wenn der
+Partner eine höhere Epoche hat, also nachweislich später übernommen hat, und lässt sonst alles unberührt. `ha promote --force` lehnt ab, solange der
+Partner unter seiner Adresse noch als Leader antwortet (SSH allein ist dann nur gestört): erst ihn sicher abschalten.
 
 **Alarme und Metriken:** Der Leader prüft fünf Dinge (ein Schalter unter Einstellungen › Benachrichtigungen, Standard an): Standby
 streamt seit 5 Minuten nicht, Replikationsverzug über 64 MB oder 60 s, Replikationsslot hält mehr als 50 % der Obergrenze zurück oder

@@ -142,6 +142,26 @@ class UpdaterTest(unittest.TestCase):
         server._status_cache["value"] = None  # the status is cached for a few seconds
         self.assertIsNone(self.call("GET", "/status")[1]["ha_role"])
 
+    def test_the_ha_state_file_decides_and_beats_the_env_line(self):
+        state = server.PROJECT_DIR / ".opnexus-ha"
+        state.mkdir()
+        (state / "state").write_text("HA_NODE=a\nHA_ROLE=standby\n")
+        env = server.PROJECT_DIR / ".env"
+        env.write_text(env.read_text() + "HA_ROLE=primary\n")  # a stale mirror must not win
+        _, body = self.call("GET", "/status")
+        self.assertEqual(body["ha_role"], "standby")
+        self.assertEqual(self.call("POST", "/update", {"version": "1.14.1"}), (409, {"error": "ha_active"}))
+
+    def test_a_state_file_without_a_role_falls_back_to_the_env_line(self):
+        state = server.PROJECT_DIR / ".opnexus-ha"
+        state.mkdir()
+        (state / "state").write_text("HA_NODE=a\n")
+        self.assertIsNone(self.call("GET", "/status")[1]["ha_role"])
+        server._status_cache["value"] = None
+        env = server.PROJECT_DIR / ".env"
+        env.write_text(env.read_text() + "HA_ROLE=primary\n")
+        self.assertEqual(self.call("GET", "/status")[1]["ha_role"], "primary")
+
     # --- Update ------------------------------------------------------------
     def test_update_runs_and_succeeds(self):
         status, body = self.call("POST", "/update", {"version": "1.14.1"})

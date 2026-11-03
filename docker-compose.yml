@@ -304,6 +304,8 @@ services:
       # nur OPNEXUS_VERSION und .opnexus-update-state hinein).
       - .:/project
       - updater_state:/state
+      # Zertifikat des HA-Gate (Profil "ha"); nur der Updater schreibt es.
+      - ha_gate:/ha-gate
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
       interval: 10s
@@ -311,7 +313,33 @@ services:
       retries: 5
       start_period: 5s
 
+  # ── Optional: HA-Gate (Profil "ha", docs/DESIGN-HA-UI.md) ────────────
+  # Netzseite des HA-Agenten: der einzige Port, über den der Partner-Knoten den Updater erreicht (Kopplung und feste Verben).
+  # Läuft mit dem Proxy-Image und einer eingebackenen Caddyfile, hat weder den Docker-Socket noch Geheimnisse außer seinem
+  # TLS-Schlüssel (nur lesend). Wird von `opnexus ha prepare` bzw. der Oberfläche aktiviert, nie von Hand.
+  ha-gate:
+    profiles: ["ha"]
+    image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-proxy:${OPNEXUS_VERSION:-latest}
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile.ha-gate", "--adapter", "caddyfile"]
+    # Kein root: nur Port 8445, die Dateien des Zertifikats sind lesbar (Volume `ha_gate`, schreibgeschützt), Arbeitsverzeichnisse im RAM.
+    user: "65534:65534"
+    read_only: true
+    tmpfs: ["/data:uid=65534,gid=65534", "/config:uid=65534,gid=65534"]
+    # Das caddy-Programm trägt die Dateifähigkeit cap_net_bind_service: ohne sie in der Menge lässt es sich nicht starten
+    # (Exit 126, „Operation not permitted“), auch wenn der Gate nur Port 8445 belegt.
+    cap_drop: ["ALL"]
+    cap_add: ["NET_BIND_SERVICE"]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ha_gate:/gate:ro
+    ports:
+      # Nur an der Adresse dieses Knotens (HA_GATE_BIND setzt `ha prepare`/`ha init`), sonst wie der Proxy.
+      - "${HA_GATE_BIND:-${PROXY_BIND_ADDRESS:-0.0.0.0}}:${HA_GATE_PORT:-8445}:8445"
+
 volumes:
+  ha_gate:
   updater_state:
   postgres_data:
   postgres_backups:

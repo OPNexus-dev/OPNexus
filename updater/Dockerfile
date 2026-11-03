@@ -3,7 +3,8 @@
 # Backend je den Docker-Socket sieht (siehe server.py und Handbuch).
 FROM python:3.12-alpine
 
-RUN apk add --no-cache bash docker-cli docker-cli-compose
+# openssl: Zertifikat des HA-Gate; iproute2/iputils (arping, ping): VIP und Nachbarn im Hilfscontainer des HA-Agenten (--network host).
+RUN apk add --no-cache bash docker-cli docker-cli-compose openssl iproute2 iputils
 
 # cosign prüft vor einem Update die Signatur der neuen Images (cosign.pub liegt im gemounteten
 # Projektverzeichnis, siehe scripts/opnexus). Version und Prüfsummen sind fest eingetragen.
@@ -23,7 +24,7 @@ RUN set -e; arch="${TARGETARCH:-amd64}"; \
 # übernimmt sie von hier (B18). Bei einem lokalen Build ohne sie bleibt /usr/share/opnexus leer. (Zwei Quellen, damit
 # das Muster auch ohne Treffer gültig ist.)
 COPY opnexus docker-compose.release.y[m]l /tmp/opx/
-COPY server.py /app/server.py
+COPY server.py ha_agent.py ha_net.py ha_cli.py /app/
 RUN install -m 0755 /tmp/opx/opnexus /usr/local/bin/opnexus \
     && mkdir -p /usr/share/opnexus \
     && if [ -f /tmp/opx/docker-compose.release.yml ]; then install -m 0644 /tmp/opx/docker-compose.release.yml /usr/share/opnexus/docker-compose.yml; fi \

@@ -182,7 +182,7 @@ export default function DashboardPage() {
     };
   }, [errorMessage, router]);
 
-  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk", "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain"].includes(p.problem_type));
+  const healthProblems = (problems ?? []).filter((p) => ["host_offline", "cert_expiry", "rule_drift", "gateway_down", "resource_threshold", "service_down", "api_rights_missing", "server_disk", "ha_standby_down", "ha_replication_lag", "ha_slot_retention", "ha_sync_stale", "ha_split_brain", "ha_agent_down"].includes(p.problem_type));
   const gatewayOrder: Record<string, number> = { offline: 0, degraded: 1, unknown: 2, forced_down: 3, online: 4 };
   const gatewayRows = (summary?.hosts ?? [])
     .flatMap((host) => (host.gateways ?? []).map((gateway) => ({ host, gateway })))

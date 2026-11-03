@@ -12,6 +12,18 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("opnexus").resolve()
+
+
+def path_without_cosign(tmp: Path) -> str:
+    """PATH of the system tools minus any real cosign: a host may have one in /usr/bin, and '/usr/bin:/bin' would still find it."""
+    nocosign = tmp / "nocosign"
+    if not nocosign.exists():
+        nocosign.mkdir()
+        for directory in ("/usr/bin", "/bin"):
+            for entry in os.scandir(directory):
+                if entry.name != "cosign" and not (nocosign / entry.name).exists():
+                    os.symlink(entry.path, nocosign / entry.name)
+    return f"{tmp / 'bin'}:{nocosign}"
 DIGEST = "registry.example/opnexus/opnexus-updater@sha256:" + "b" * 64
 FAKE_DOCKER = """#!/bin/sh
 echo "$@" >> "$FAKE_LOG"
@@ -56,7 +68,7 @@ class ComposeRefresh(unittest.TestCase):
     def run_body(self, body: str, *, no_cosign=False, env_extra=None):
         if no_cosign:
             (self.tmp / "bin" / "cosign").unlink()
-        path = f"{self.tmp / 'bin'}:/usr/bin:/bin"
+        path = path_without_cosign(self.tmp) if no_cosign else f"{self.tmp / 'bin'}:/usr/bin:/bin"
         env = {**os.environ, "PATH": path, "OPNEXUS_DIR": str(self.tmp), "FAKE_LOG": str(self.log),
                "FAKE_COMPOSE": str(self.offered), "FAKE_DIGEST": DIGEST, "TMPDIR": str(self.tmp)}
         env.pop("OPNEXUS_NO_COMPOSE_REFRESH", None)

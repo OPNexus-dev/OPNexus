@@ -360,7 +360,7 @@
     },
     "ha": {
       "title": "High availability",
-      "hint": "Two nodes: the primary runs OPNexus, the standby keeps a copy of the database ready. A switch is made by hand on the standby with “opnexus ha promote”; there is deliberately no switch by click, because the old primary has to be stopped safely first.",
+      "hint": "Two nodes: the primary runs OPNexus, the standby keeps a copy of the database ready. If the primary fails, an administrator takes over on the standby's page (or in a terminal with “opnexus ha promote”); the old primary is stopped first.",
       "node": "This node",
       "role": {
         "primary": "Primary",
@@ -390,7 +390,84 @@
       "unknownValue": "unknown",
       "splitBrain": "Split brain: this node was fenced because the partner is leader with an epoch at least as high. It runs no background services.",
       "partnerFenced": "The partner is running as a second primary and has been fenced. Rebuild it with “opnexus ha resync”.",
-      "commands": "Commands on the server: “opnexus ha status”, “opnexus ha promote” (on the standby), “opnexus ha resync”, “opnexus ha update”. See the manual, “High availability”."
+      "commands": "In a terminal: “opnexus ha status”, “opnexus ha promote” (on the standby), “opnexus ha resync”, “opnexus ha update”. See the manual, “High availability”.",
+      "manage": {
+        "intro": "With two servers OPNexus can run fail-safe: a primary and a standby that carries its database and can take over if the primary fails. Set it up here, without a terminal and without SSH keys.",
+        "needsUpdater": "This needs the updater service (it is the pair's agent): set COMPOSE_PROFILES=updater in the .env and start it with “docker compose up -d”. The setup then appears here.",
+        "setupButton": "Set up HA (this server is the primary) …",
+        "prepareButton": "Prepare this server as the standby …",
+        "sshPair": "This pair was set up over SSH: switching, rebuilding and dissolving are done in a terminal (“opnexus ha …”). Pairing with a code (set it up again) makes everything available here.",
+        "password": "Your password",
+        "passwordHint": "For safety your account's password is asked for once more.",
+        "lost": "The server has not answered for a while. Check its state in a terminal (“opnexus ha status”).",
+        "running": "Running …",
+        "succeeded": "Done.",
+        "failed": "Failed (code {code}). The messages below show why.",
+        "logLabel": "Log",
+        "back": "Back",
+        "prepare": {
+          "title": "Prepare this server as the standby",
+          "intro": "The server switches the pairing service on and creates a code. You enter the code on the future primary under “Set up HA”. The standby is overwritten with a copy of the primary.",
+          "ip": "Address of this server",
+          "ipHint": "The primary reaches this server at this address (port 8445 must be open).",
+          "create": "Create code",
+          "yourCode": "Your pairing code (valid {minutes} minutes, single use):",
+          "copy": "Copy",
+          "copied": "Copied",
+          "again": "Create a new code",
+          "next": "On the primary: Settings › System › “Set up HA”, enter the code and a free address (VIP)."
+        },
+        "setup": {
+          "title": "Set up HA",
+          "intro": "This server becomes the primary. The partner must run the same version and show its pairing code (“Prepare this server as the standby”).",
+          "code": "Partner's pairing code",
+          "codeHint": "Starts with OPNX1-.",
+          "vip": "Shared address (VIP) with prefix length",
+          "vipHint": "A free address in the same network under which OPNexus will be reached, e.g. 192.168.2.22/24.",
+          "showAdvanced": "Change names, address and interface …",
+          "hideAdvanced": "Show less",
+          "node": "Name of this node",
+          "peerNode": "Name of the partner",
+          "nodeIp": "Address of this server",
+          "vipDev": "Network card for the VIP",
+          "autoHint": "Leave empty: it is detected.",
+          "check": "Check requirements",
+          "checkTitle": "Preflight",
+          "runTitle": "Setting up",
+          "run": "Set up now",
+          "warning": "The partner is overwritten: its database and secrets are replaced by a copy of this server. This server restarts its database once."
+        },
+        "actions": {
+          "sync": {
+            "button": "Sync now",
+            "title": "Sync secrets now",
+            "text": "Sends credentials, two-factor secrets, proxy CA and shared settings to the standby right away (otherwise every 5 minutes).",
+            "run": "Sync"
+          },
+          "switch": {
+            "button": "Switch to the partner",
+            "title": "Switch to the partner",
+            "text": "The partner becomes primary, this server is stopped and then becomes the standby. This takes about a minute.",
+            "gap": "This page loses its connection meanwhile. Continue at the shared address (VIP) afterwards.",
+            "run": "Switch",
+            "after": "The partner is the primary now. Please open the shared address (VIP). Bring this server back there with “Rebuild standby” or “opnexus ha resync”."
+          },
+          "rebuild": {
+            "button": "Rebuild standby",
+            "title": "Rebuild standby",
+            "text": "The partner deletes its database and rebuilds it from the primary (about half a minute). It is no standby meanwhile.",
+            "run": "Rebuild"
+          },
+          "dissolve": {
+            "button": "Dissolve HA",
+            "title": "Dissolve HA",
+            "text": "The pair is dissolved: the partner is emptied (database and secrets; it starts as a fresh installation), this server stays a single installation with all its data.",
+            "gap": "The shared address (VIP) goes away; afterwards this server is reached at its own address.",
+            "localOnly": "The partner is unreachable: dissolve only this server. The partner then keeps a full copy of the data and credentials.",
+            "run": "Dissolve"
+          }
+        }
+      }
     }
   },
   "nav": {
@@ -531,7 +608,8 @@
       "ha_replication_lag": "High availability: replication lag",
       "ha_slot_retention": "High availability: replication slot is filling up or missing",
       "ha_sync_stale": "High availability: secrets sync is stale",
-      "ha_split_brain": "High availability: two primaries (split brain)"
+      "ha_split_brain": "High availability: two primaries (split brain)",
+      "ha_agent_down": "High availability: an agent does not answer"
     }
   },
   "hosts": {
@@ -1077,7 +1155,18 @@
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "This ACME account is used by certificate requests; you can only change its host once no request uses it any more.",
     "VPN_DEPLOY_LAEUFT_BEREITS": "A deployment or removal is already running for this VPN. Wait a moment and try again.",
     "SETTING_INVALID": "Setting “{setting}”: {reason}",
-    "NODE_FENCED": "This node is fenced (its HA partner runs OPNexus). Changes are not possible here; please work through the partner."
+    "NODE_FENCED": "This node is fenced (its HA partner runs OPNexus). Changes are not possible here; please work through the partner.",
+    "NODE_STANDBY": "This node is the standby of an HA pair and only serves the page for the takeover.",
+    "NOT_STANDBY": "This node is not a standby (any more).",
+    "PEER_IS_LEADER": "The partner still answers as leader. A takeover would make two primaries; switch the partner off safely first.",
+    "STANDBY_ADMIN_ONLY": "Only local accounts with the administrator role can sign in on the standby.",
+    "STANDBY_LOGIN_UNAVAILABLE": "Signing in is not possible here yet: the second-factor secret of this account has not been synced from the primary. Try again later or use `opnexus ha promote` in a terminal.",
+    "STANDBY_CONFIRMATION_REQUIRED": "Please type the sentence “{sentence}” exactly to confirm that the partner really is off.",
+    "HA_LOCAL_ACCOUNT_REQUIRED": "This action needs a local account with a password (single sign-on accounts cannot confirm it). Alternative: the terminal.",
+    "HA_NOT_PRIMARY": "This action is only possible on the primary.",
+    "HA_ALREADY_IN_PAIR": "This node is already part of an HA pair.",
+    "HA_INPUT_INVALID": "The input is invalid (check address, name or code).",
+    "HA_PREPARE_FAILED": "The gate for pairing could not be started. In a terminal: docker compose logs ha-gate updater."
   },
   "workflow": {
     "attention": "Check errors",
@@ -4447,5 +4536,61 @@
     "add": "Add role",
     "usedBy": "Used by: {list}",
     "adoptAs": "Adopt as role {name}"
+  },
+  "standby": {
+    "title": "Standby – takeover",
+    "intro": "This is the standby of the HA pair. Nobody works here; if the primary fails, an administrator can take over from this page.",
+    "checking": "Checking sign-in …",
+    "codeHint": "6-digit code from your authenticator app. Recovery codes do not work here.",
+    "adminOnly": "Local accounts with the administrator role only. The sign-in lasts 15 minutes.",
+    "age": {
+      "seconds": "{s} s ago",
+      "minutes": "{m} min ago",
+      "hours": "{h} h {m} min ago"
+    },
+    "badge": {
+      "standby": "Standby"
+    },
+    "rows": {
+      "node": "This node",
+      "partner": "Partner",
+      "agent": "Partner's agent",
+      "epoch": "Epoch",
+      "replication": "Replication",
+      "lastChange": "Last change applied",
+      "sync": "Last secrets sync",
+      "vip": "Shared address (VIP)"
+    },
+    "partnerSeen": "{ip}: answers as {role}, epoch {epoch}",
+    "partnerSilent": "{ip}: does not answer",
+    "agent": {
+      "up": "reachable",
+      "down": "does not answer",
+      "unknown": "unknown (this node's updater is not reachable)"
+    },
+    "replicationValue": "{state}, lag {lag}",
+    "replicationNone": "no connection to the primary",
+    "secretsMissing": "Some firewalls or accounts still lack their secret file here (last sync too old?). They would not work after the takeover.",
+    "secretsHosts": "Firewalls: {names}.",
+    "secretsTotp": "Two-factor accounts: {names}.",
+    "takeover": {
+      "title": "Takeover",
+      "unavailable": "This node's updater does not answer, or the pair still runs over SSH (without the agent the partner cannot be stopped from here). A takeover then only works in a terminal: `./opnexus ha promote`. An SSH pair can be switched to the agent with `./opnexus ha migrate-agent`.",
+      "refused": "The partner ({ip}) still answers as leader, only the connection to its agent is missing. A takeover would make two primaries. Switch the partner off safely first (power, hypervisor), then reload this page.",
+      "normal": "The partner ({ip}) is stopped first, then this node becomes the primary and takes the shared address. This takes about a minute.",
+      "force": "The partner ({ip}) does not answer and cannot be stopped. If it is still running there would be two primaries with access to the same firewalls. Only take over if it is certainly OFF.",
+      "typeLabel": "To confirm, type: {sentence}",
+      "button": "Take over now …",
+      "confirm": "Yes, take over"
+    },
+    "running": "Takeover in progress. Keep this page open; the server restarts on the way.",
+    "done": "This node is the primary now. Please sign in as usual.",
+    "failed": "The takeover failed (code {code}). The messages below show why.",
+    "lost": "The node has not answered for a while. Check its state with `./opnexus ha status` in a terminal.",
+    "logLabel": "Takeover log",
+    "toLogin": "Go to sign-in",
+    "back": "Back",
+    "signedInAs": "Signed in as {user}",
+    "signOut": "Sign out"
   }
 }

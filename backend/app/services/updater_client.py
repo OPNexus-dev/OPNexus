@@ -68,3 +68,29 @@ async def start_update(version: str) -> dict:
 
 async def start_rollback() -> dict:
     return await _call("POST", "/rollback", {}, _ACTION_TIMEOUT)
+
+
+# HA (docs/DESIGN-HA-UI.md): the updater of this node is the agent of the pair. Only the standby's own door and (later) the
+# pair card in Settings talk to these; the partner never reaches them (the gate forwards only /ha/pair and /ha/peer).
+async def ha_local_status() -> dict:
+    return await _call("GET", "/ha/local/status", None, _STATUS_TIMEOUT)
+
+
+async def ha_local_suggest(target: str | None) -> dict:
+    return await _call("POST", "/ha/local/suggest", {"target": target} if target else {}, _STATUS_TIMEOUT)
+
+
+async def ha_local_prepare(ip: str) -> dict:
+    return await _call("POST", "/ha/local/prepare", {"ip": ip}, 260.0)   # brings the gate up: image pull and start may take a while
+
+
+async def ha_local_init(body: dict) -> dict:
+    return await _call("POST", "/ha/local/init", body, _ACTION_TIMEOUT)
+
+
+async def ha_local_action(action: str) -> dict:
+    return await _call("POST", "/ha/local/action", {"action": action}, _ACTION_TIMEOUT)
+
+
+async def ha_local_promote(force: bool, actor: str) -> dict:
+    return await _call("POST", "/ha/local/promote", {"force": force, "actor": actor}, _ACTION_TIMEOUT)

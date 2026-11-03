@@ -53,7 +53,7 @@ async def _run(check):
 
 
 ALL_CHECKS = [ha_checks.check_standby_down, ha_checks.check_replication_lag, ha_checks.check_slot_retention,
-              ha_checks.check_sync_stale, ha_checks.check_split_brain]
+              ha_checks.check_sync_stale, ha_checks.check_split_brain, ha_checks.check_agent_down]
 
 
 @pytest.mark.asyncio
@@ -322,7 +322,9 @@ async def test_metrics_report_a_fenced_node(client, ha, monkeypatch):
 @pytest.mark.asyncio
 async def test_the_ha_card_endpoint_is_admin_only_and_empty_without_ha(client, monkeypatch):
     monkeypatch.setattr(settings, "ha_node", "")
-    assert (await client.get("/api/system/ha")).json() == {"configured": False}
+    body = (await client.get("/api/system/ha")).json()
+    assert body["configured"] is False and set(body) == {"configured", "agent"}   # no pair: only the agent block, which the settings card needs to offer the setup
+    assert body["agent"]["available"] is False and body["agent"]["paired"] is False
     name = f"viewer-{uuid.uuid4().hex[:6]}"
     assert (await client.post("/api/users", json={"username": name, "password": "viewer-password-123", "role": "read_only"})).status_code == 201
     viewer = await _login_as(name, "viewer-password-123")

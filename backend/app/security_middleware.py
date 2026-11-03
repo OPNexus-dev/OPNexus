@@ -27,6 +27,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from app import leader
+from app.services import ha_service
 from app.config import settings
 from app.errors import ErrorCode
 from app.routers.auth import has_session_cookie
@@ -119,6 +120,24 @@ class FencedNodeMiddleware(BaseHTTPMiddleware):
         if (request.method not in _SAFE_METHODS and path.startswith("/api/") and not path.startswith("/api/auth/")
                 and leader.current_role() == leader.FENCED):
             return JSONResponse(status_code=503, content={"detail": {"code": ErrorCode.NODE_FENCED.value, "params": {}}})
+        return await call_next(request)
+
+
+# What a standby node still answers: its health (the partner guard and the proxies read it), the metrics, and its own door.
+STANDBY_OPEN_PATHS = {"/api/health", "/api/metrics"}
+STANDBY_OPEN_PREFIX = "/api/ha/standby/"
+
+
+class StandbyNodeMiddleware(BaseHTTPMiddleware):
+    """A node of an HA pair whose database is the streaming replica refuses the whole API except its health, the metrics and
+    `/api/ha/standby/*` (docs/DESIGN-HA-UI.md section 4). An allow list on purpose: ordinary routes write on the side (sessions,
+    last-seen stamps) and would fail in unpredictable ways on a read-only database. The browser is sent to the /standby page."""
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if (path.startswith("/api/") and path not in STANDBY_OPEN_PATHS and not path.startswith(STANDBY_OPEN_PREFIX)
+                and ha_service.configured() and leader.current_role() == leader.REPLICA):
+            return JSONResponse(status_code=503, content={"detail": {"code": ErrorCode.NODE_STANDBY.value, "params": {}}})
         return await call_next(request)
 
 

@@ -360,7 +360,7 @@
     },
     "ha": {
       "title": "Hochverfügbarkeit",
-      "hint": "Zwei Knoten: der Primär führt OPNexus, der Standby hält eine Kopie der Datenbank bereit. Gewechselt wird nur von Hand am Standby mit „opnexus ha promote“; es gibt bewusst keinen Wechsel per Klick, denn dabei muss der alte Primär sicher angehalten werden.",
+      "hint": "Zwei Knoten: der Primär betreibt OPNexus, der Standby hält eine Kopie der Datenbank bereit. Bei einem Ausfall übernimmt ein Administrator auf der Seite des Standbys (oder im Terminal mit „opnexus ha promote“); der alte Primär wird dabei zuerst angehalten.",
       "node": "Dieser Knoten",
       "role": {
         "primary": "Primär",
@@ -390,7 +390,84 @@
       "unknownValue": "unbekannt",
       "splitBrain": "Split-Brain: Dieser Knoten wurde gesperrt, weil der Partner Leader mit gleicher oder höherer Epoche ist. Er führt keine Hintergrunddienste aus.",
       "partnerFenced": "Der Partner läuft als zweiter Primär und ist gesperrt. Mit „opnexus ha resync“ neu aufbauen.",
-      "commands": "Befehle auf dem Server: „opnexus ha status“, „opnexus ha promote“ (am Standby), „opnexus ha resync“, „opnexus ha update“. Siehe Handbuch, „Hochverfügbarkeit“."
+      "commands": "Im Terminal: „opnexus ha status“, „opnexus ha promote“ (am Standby), „opnexus ha resync“, „opnexus ha update“. Siehe Handbuch, „Hochverfügbarkeit“.",
+      "manage": {
+        "intro": "Mit zwei Servern lässt sich OPNexus ausfallsicher betreiben: ein Primär und ein Standby, der dessen Datenbank mitführt und bei einem Ausfall übernehmen kann. Einrichten geht hier, ohne Terminal und ohne SSH-Schlüssel.",
+        "needsUpdater": "Dafür muss der Updater-Dienst laufen (er ist der Agent des Paars): in der .env COMPOSE_PROFILES=updater setzen und mit „docker compose up -d“ starten. Danach erscheint hier die Einrichtung.",
+        "setupButton": "HA einrichten (dieser Server ist der Primär) …",
+        "prepareButton": "Diesen Server zum Standby vorbereiten …",
+        "sshPair": "Dieses Paar wurde mit SSH eingerichtet: Wechsel, Neuaufbau und Auflösen gehen dort im Terminal („opnexus ha …“). Über die Kopplung mit Code (neu einrichten) geht alles hier.",
+        "password": "Ihr Passwort",
+        "passwordHint": "Zur Sicherheit wird das Passwort Ihres Kontos noch einmal abgefragt.",
+        "lost": "Der Server antwortet seit längerer Zeit nicht. Zustand im Terminal prüfen („opnexus ha status“).",
+        "running": "Läuft …",
+        "succeeded": "Fertig.",
+        "failed": "Fehlgeschlagen (Code {code}). Die Meldungen unten zeigen den Grund.",
+        "logLabel": "Protokoll",
+        "back": "Zurück",
+        "prepare": {
+          "title": "Diesen Server zum Standby vorbereiten",
+          "intro": "Der Server schaltet den Kopplungs-Dienst ein und erzeugt einen Code. Den Code geben Sie auf dem künftigen Primär bei „HA einrichten“ ein. Der Standby wird dabei mit einer Kopie des Primärs überschrieben.",
+          "ip": "Adresse dieses Servers",
+          "ipHint": "Über diese Adresse erreicht der Primär diesen Server (Port 8445 muss offen sein).",
+          "create": "Code erzeugen",
+          "yourCode": "Ihr Kopplungscode (gilt {minutes} Minuten, einmal verwendbar):",
+          "copy": "Kopieren",
+          "copied": "Kopiert",
+          "again": "Neuen Code erzeugen",
+          "next": "Auf dem Primär: Einstellungen › System › „HA einrichten“, Code und eine freie Adresse (VIP) eintragen."
+        },
+        "setup": {
+          "title": "HA einrichten",
+          "intro": "Dieser Server wird der Primär. Der Partner muss dieselbe Version haben und seinen Kopplungscode zeigen („Diesen Server zum Standby vorbereiten“).",
+          "code": "Kopplungscode des Partners",
+          "codeHint": "Beginnt mit OPNX1-.",
+          "vip": "Gemeinsame Adresse (VIP) mit Netzlänge",
+          "vipHint": "Eine freie Adresse im selben Netz, unter der OPNexus künftig erreichbar ist, z. B. 192.168.2.22/24.",
+          "showAdvanced": "Namen, Adresse und Schnittstelle ändern …",
+          "hideAdvanced": "Weniger anzeigen",
+          "node": "Name dieses Knotens",
+          "peerNode": "Name des Partners",
+          "nodeIp": "Adresse dieses Servers",
+          "vipDev": "Netzwerkkarte für die VIP",
+          "autoHint": "Leer lassen: wird ermittelt.",
+          "check": "Voraussetzungen prüfen",
+          "checkTitle": "Vorprüfung",
+          "runTitle": "Einrichten",
+          "run": "Jetzt einrichten",
+          "warning": "Der Partner wird überschrieben: seine Datenbank und seine Geheimnisse werden durch eine Kopie dieses Servers ersetzt. Dieser Server startet seine Datenbank einmal neu."
+        },
+        "actions": {
+          "sync": {
+            "button": "Jetzt abgleichen",
+            "title": "Geheimnisse jetzt abgleichen",
+            "text": "Überträgt Zugangsdaten, Zwei-Faktor-Geheimnisse, Proxy-CA und gemeinsame Einstellungen sofort zum Standby (sonst alle 5 Minuten).",
+            "run": "Abgleichen"
+          },
+          "switch": {
+            "button": "Zum Partner wechseln",
+            "title": "Zum Partner wechseln",
+            "text": "Der Partner wird Primär, dieser Server wird angehalten und danach Standby. Das dauert etwa eine Minute.",
+            "gap": "Diese Seite verliert dabei die Verbindung. Danach unter der gemeinsamen Adresse (VIP) weiterarbeiten.",
+            "run": "Wechseln",
+            "after": "Der Partner ist jetzt Primär. Bitte die gemeinsame Adresse (VIP) aufrufen. Diesen Server holen Sie dort unter „Standby neu aufbauen“ bzw. mit „opnexus ha resync“ zurück."
+          },
+          "rebuild": {
+            "button": "Standby neu aufbauen",
+            "title": "Standby neu aufbauen",
+            "text": "Der Partner löscht seine Datenbank und baut sie vom Primär neu auf (etwa eine halbe Minute). Währenddessen ist er keine Reserve.",
+            "run": "Neu aufbauen"
+          },
+          "dissolve": {
+            "button": "HA auflösen",
+            "title": "HA auflösen",
+            "text": "Das Paar wird aufgelöst: Der Partner wird geleert (Datenbank und Geheimnisse; er startet als frische Installation), dieser Server bleibt Einzelinstallation mit allen Daten.",
+            "gap": "Die gemeinsame Adresse (VIP) verschwindet; danach ist dieser Server unter seiner eigenen Adresse erreichbar.",
+            "localOnly": "Der Partner ist nicht erreichbar: nur diesen Server auflösen. Der Partner behält dann eine vollständige Kopie der Daten und Zugangsdaten.",
+            "run": "Auflösen"
+          }
+        }
+      }
     }
   },
   "nav": {
@@ -531,7 +608,8 @@
       "ha_replication_lag": "Hochverfügbarkeit: Replikationsverzug",
       "ha_slot_retention": "Hochverfügbarkeit: Replikationsslot füllt sich oder fehlt",
       "ha_sync_stale": "Hochverfügbarkeit: Geheimnis-Abgleich veraltet",
-      "ha_split_brain": "Hochverfügbarkeit: zwei Primäre (Split-Brain)"
+      "ha_split_brain": "Hochverfügbarkeit: zwei Primäre (Split-Brain)",
+      "ha_agent_down": "Hochverfügbarkeit: ein Agent antwortet nicht"
     }
   },
   "hosts": {
@@ -1077,7 +1155,18 @@
     "ACME_KONTO_WIRD_VON_ANFRAGEN_VERWENDET": "Dieses ACME-Konto wird von Zertifikatsanfragen verwendet; den Host kannst du erst ändern, wenn keine Anfrage es mehr nutzt.",
     "VPN_DEPLOY_LAEUFT_BEREITS": "Für dieses VPN läuft gerade ein Ausrollen oder Entfernen. Warte einen Moment und versuche es erneut.",
     "SETTING_INVALID": "Einstellung „{setting}“: {reason}",
-    "NODE_FENCED": "Dieser Knoten ist gesperrt (der HA-Partner führt OPNexus). Änderungen sind hier nicht möglich; bitte über den Partner arbeiten."
+    "NODE_FENCED": "Dieser Knoten ist gesperrt (der HA-Partner führt OPNexus). Änderungen sind hier nicht möglich; bitte über den Partner arbeiten.",
+    "NODE_STANDBY": "Dieser Knoten ist die Reserve (Standby) eines HA-Paars und bedient nur die Seite für die Übernahme.",
+    "NOT_STANDBY": "Dieser Knoten ist kein Standby (mehr).",
+    "PEER_IS_LEADER": "Der Partner antwortet noch als Leader. Eine Übernahme ergäbe zwei Primäre; erst den Partner sicher abschalten.",
+    "STANDBY_ADMIN_ONLY": "Am Standby können sich nur lokale Konten mit der Rolle Administrator anmelden.",
+    "STANDBY_LOGIN_UNAVAILABLE": "Die Anmeldung ist hier noch nicht möglich: das Geheimnis für den zweiten Faktor dieses Kontos ist noch nicht vom Primär abgeglichen. Später erneut versuchen oder `opnexus ha promote` im Terminal nutzen.",
+    "STANDBY_CONFIRMATION_REQUIRED": "Bitte den Satz „{sentence}“ genau eintippen, um zu bestätigen, dass der Partner wirklich aus ist.",
+    "HA_LOCAL_ACCOUNT_REQUIRED": "Diese Aktion braucht ein lokales Konto mit Passwort (Konten über Single Sign-on können sie nicht bestätigen). Alternative: das Terminal.",
+    "HA_NOT_PRIMARY": "Diese Aktion ist nur am Primär möglich.",
+    "HA_ALREADY_IN_PAIR": "Dieser Knoten ist schon Teil eines HA-Paars.",
+    "HA_INPUT_INVALID": "Die Eingabe ist ungültig (Adresse, Name oder Code prüfen).",
+    "HA_PREPARE_FAILED": "Das Gate für die Kopplung ließ sich nicht starten. Im Terminal: docker compose logs ha-gate updater."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -4447,5 +4536,61 @@
     "add": "Rolle hinzufügen",
     "usedBy": "Verwendet von: {list}",
     "adoptAs": "Als Rolle {name} übernehmen"
+  },
+  "standby": {
+    "title": "Standby – Übernahme",
+    "intro": "Dies ist die Reserve des HA-Paars. Hier wird nicht gearbeitet; bei einem Ausfall des Primärs kann ein Administrator hier übernehmen.",
+    "checking": "Prüfe Anmeldung …",
+    "codeHint": "6-stelliger Code aus der Authenticator-App. Wiederherstellungscodes gehen hier nicht.",
+    "adminOnly": "Nur lokale Konten mit der Rolle Administrator. Die Anmeldung gilt 15 Minuten.",
+    "age": {
+      "seconds": "vor {s} s",
+      "minutes": "vor {m} min",
+      "hours": "vor {h} h {m} min"
+    },
+    "badge": {
+      "standby": "Standby"
+    },
+    "rows": {
+      "node": "Dieser Knoten",
+      "partner": "Partner",
+      "agent": "Agent des Partners",
+      "epoch": "Epoche",
+      "replication": "Replikation",
+      "lastChange": "Letzte eingespielte Änderung",
+      "sync": "Letzter Abgleich der Geheimnisse",
+      "vip": "Gemeinsame Adresse (VIP)"
+    },
+    "partnerSeen": "{ip}: antwortet als {role}, Epoche {epoch}",
+    "partnerSilent": "{ip}: antwortet nicht",
+    "agent": {
+      "up": "erreichbar",
+      "down": "antwortet nicht",
+      "unknown": "unbekannt (Updater dieses Knotens nicht erreichbar)"
+    },
+    "replicationValue": "{state}, Verzug {lag}",
+    "replicationNone": "keine Verbindung zum Primär",
+    "secretsMissing": "Für manche Firewalls oder Konten fehlt hier noch die Geheimnis-Datei (letzter Abgleich zu alt?). Nach der Übernahme wären sie nicht nutzbar.",
+    "secretsHosts": "Firewalls: {names}.",
+    "secretsTotp": "Zwei-Faktor-Konten: {names}.",
+    "takeover": {
+      "title": "Übernahme",
+      "unavailable": "Der Updater dieses Knotens antwortet nicht, oder das Paar läuft noch über SSH (ohne Agent kann der Partner von hier aus nicht angehalten werden). Die Übernahme geht dann nur im Terminal: `./opnexus ha promote`. Ein SSH-Paar lässt sich mit `./opnexus ha migrate-agent` auf den Agenten umstellen.",
+      "refused": "Der Partner ({ip}) antwortet noch als Leader, nur die Verbindung zu seinem Agenten fehlt. Eine Übernahme ergäbe zwei Primäre. Erst den Partner sicher abschalten (Strom, Hypervisor), dann diese Seite neu laden.",
+      "normal": "Der Partner ({ip}) wird dabei zuerst angehalten, danach wird dieser Knoten Primär und übernimmt die gemeinsame Adresse. Das dauert etwa eine Minute.",
+      "force": "Der Partner ({ip}) antwortet nicht und lässt sich nicht anhalten. Wenn er noch läuft, gäbe es zwei Primäre mit Zugang zu denselben Firewalls. Nur übernehmen, wenn er sicher AUS ist.",
+      "typeLabel": "Zur Bestätigung tippen: {sentence}",
+      "button": "Jetzt übernehmen …",
+      "confirm": "Ja, übernehmen"
+    },
+    "running": "Übernahme läuft. Die Seite bleibt offen; zwischendurch startet der Server neu.",
+    "done": "Dieser Knoten ist jetzt der Primär. Bitte normal anmelden.",
+    "failed": "Die Übernahme ist fehlgeschlagen (Code {code}). Die Meldungen unten zeigen den Grund.",
+    "lost": "Der Knoten antwortet seit längerer Zeit nicht. Zustand mit `./opnexus ha status` im Terminal prüfen.",
+    "logLabel": "Protokoll der Übernahme",
+    "toLogin": "Zur Anmeldung",
+    "back": "Zurück",
+    "signedInAs": "Angemeldet als {user}",
+    "signOut": "Abmelden"
   }
 }

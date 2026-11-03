@@ -4,7 +4,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { LoginInfoBanner } from "@/components/LoginInfoBanner";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { Nav } from "@/components/Nav";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { APP_CODENAME, APP_VERSION } from "@/lib/version";
 import Link from "next/link";
@@ -26,14 +26,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    if (pathname === "/login" || pathname === "/standby") return;
     api
       .me()
       .then((state) => {
         setAuthenticated(state.authenticated);
         if (!state.authenticated) router.replace("/login");
       })
-      .catch(() => router.replace("/login"))
+      .catch((err) => { if (!(err instanceof ApiError && err.code === "NODE_STANDBY")) router.replace("/login"); })   // a standby sends the browser to /standby by itself
       .finally(() => setChecked(true));
   }, [pathname, router]);
 
@@ -41,10 +41,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   // the title (and its change) to know a navigation happened and where they are. A rendered
   // <title> is hoisted into <head> by React 19 and wins over the static metadata one.
   const item = navGroups.flatMap((g) => g.items).find((i) => matchesNav(pathname, i.href));
-  const pageName = item ? t(navLabelKey(item.href)) : pathname === "/login" ? t("login.signIn") : pathname?.startsWith("/about") ? t("settings.about") : null;
+  const pageName = item ? t(navLabelKey(item.href)) : pathname === "/login" ? t("login.signIn") : pathname === "/standby" ? t("standby.title") : pathname?.startsWith("/about") ? t("settings.about") : null;
   const title = <title>{pageName ? pageName.includes("OPNexus") ? pageName : `${pageName} · OPNexus` : "OPNexus"}</title>;
 
-  if (pathname === "/login") return <>{title}{children}</>;
+  if (pathname === "/login" || pathname === "/standby") return <>{title}{children}</>;
   if (!checked || !authenticated) return null;
 
   return (

@@ -15,7 +15,7 @@ from app.errors import ErrorCode
 
 from app import models  # noqa: F401 - registers models with Base.metadata
 from app.auth_middleware import AuthMiddleware
-from app.security_middleware import FencedNodeMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
+from app.security_middleware import FencedNodeMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware, StandbyNodeMiddleware
 from app.config import settings
 from app.database import SessionLocal
 from app import migrate
@@ -27,6 +27,8 @@ from app.services.outbound_nat_deploy_service import sweep_expired_outbound_nat_
 from app.services import auth_service, audit_service
 from app.routers import audit, maintenance, settings as settings_router, notifications as notifications_router
 from app.routers import system as system_router
+from app.routers import ha_standby as ha_standby_router
+from app.routers import ha_manage as ha_manage_router
 from app.services.rule_deploy_service import sweep_expired_deployments
 from app.services.alias_deploy_service import sweep_expired_alias_deployments
 from app.services.port_forward_deploy_service import sweep_expired_port_forward_deployments
@@ -491,6 +493,7 @@ app.add_middleware(AuthMiddleware)
 # cross-site write is rejected before any session lookup happens.
 app.add_middleware(OriginCheckMiddleware)
 app.add_middleware(FencedNodeMiddleware)
+app.add_middleware(StandbyNodeMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 # Added last so it wraps outermost (Starlette runs the last-added
 # middleware first) — CORS must see and answer OPTIONS preflight requests
@@ -556,6 +559,8 @@ app.include_router(maintenance.router, prefix="/api")
 
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(system_router.router, prefix="/api")
+app.include_router(ha_standby_router.router, prefix="/api")
+app.include_router(ha_manage_router.router, prefix="/api")
 
 app.include_router(notifications_router.router, prefix="/api")
 

@@ -1,14 +1,15 @@
-"""The five HA alarms (docs/HA-H2-DESIGN.md 3.8), checked by the leader. Without HA (no HA_NODE/HA_PEER_IP) all of them
+"""The six HA alarms (docs/HA-H2-DESIGN.md 3.8, plus the agent alarm of docs/DESIGN-HA-UI.md), checked by the leader. Without HA (no HA_NODE/HA_PEER_IP) all of them
 return nothing. They work on a snapshot of the primary's database (``ha_service.collect``); an unmeasurable value
 never raises or resolves an alarm."""
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import leader
 from app.config import settings
 from app.database import SessionLocal
-from app.services import ha_service
+from app.services import ha_service, updater_client
 from app.services.notification_dedup import Problems
 
 STANDBY_DOWN_AFTER = timedelta(minutes=5)
@@ -16,6 +17,8 @@ LAG_BYTES = 64 * 1024 * 1024
 LAG_SECONDS = 60.0
 SLOT_RETENTION_SHARE = 0.5
 SYNC_STALE_AFTER = timedelta(hours=1)
+AGENT_DOWN_AFTER = timedelta(minutes=5)
+_agent_down_since: dict[str, datetime] = {}   # "own" / "partner" -> first failed look of an unbroken run (in memory, a restart starts the clock anew)
 RESYNC_HINT = "Standby neu aufbauen: am Standby 'opnexus ha resync'."
 
 
@@ -118,7 +121,7 @@ async def check_slot_retention(db: AsyncSession) -> dict[str, dict]:
 
 
 async def check_sync_stale(db: AsyncSession) -> dict[str, dict]:
-    """`opnexus ha sync` (cron, every 5 minutes) has not succeeded for an hour: the standby's secrets are old."""
+    """`opnexus ha sync` (the agent's timer or the cron, every 5 minutes) has not succeeded for an hour: the standby's secrets are old."""
     snap = await _primary_snapshot(db)
     if snap is None:
         return {}
@@ -128,8 +131,52 @@ async def check_sync_stale(db: AsyncSession) -> dict[str, dict]:
     return {"sync": {
         "knoten": settings.ha_node, "letzter_abgleich": snap.last_sync_at.isoformat(timespec="seconds") if snap.last_sync_at else "nie",
         "alter": _age(snap.last_sync_at, now) if snap.last_sync_at else None,
-        "hinweis": "Firewall-Zugänge und 2FA-Geheimnisse neuer Objekte fehlen am Standby. Cron und SSH prüfen "
-                   "('opnexus ha sync' von Hand, Log .opnexus-ha-sync.log).",
+        "hinweis": "Firewall-Zugänge und 2FA-Geheimnisse neuer Objekte fehlen am Standby. Agent (Updater-Container, Log ha-timer.log) "
+                   "bzw. Cron und SSH prüfen ('opnexus ha sync' von Hand).",
+    }}
+
+
+def _agent_marker() -> Path:
+    """The updater (the agent) keeps this file in its state volume for as long as this node is paired with an agent: only then is a silent
+    agent a fault (a pair set up over SSH, or a node whose updater was never enabled, has none and never alarms)."""
+    return Path(settings.updater_token_file).parent / "ha-paired"
+
+
+async def check_agent_down(db: AsyncSession) -> dict[str, dict]:
+    """The agent of this node or of the partner has not answered for 5 minutes. Without the agent a takeover from the browser, the
+    secrets sync (every 5 minutes) and the VIP follow-up do not work, and nothing else would tell."""
+    snap = await _primary_snapshot(db)
+    if snap is None or not snap.complete:
+        return {}
+    if not _agent_marker().exists():
+        _agent_down_since.clear()
+        return {}
+    now = datetime.now(timezone.utc)
+    try:
+        status = await updater_client.ha_local_status()
+    except (updater_client.UpdaterUnavailable, updater_client.UpdaterRejected):
+        # The partner is asked through this node's own agent: while that is silent nothing is known about the partner's.
+        _agent_down_since.setdefault("own", now)
+        _agent_down_since.pop("partner", None)   # an earlier look at the partner is stale now
+    else:
+        _agent_down_since.pop("own", None)
+        if status.get("peer_reachable") is False:   # None: not asked (not paired), not a fault
+            _agent_down_since.setdefault("partner", now)
+        else:
+            _agent_down_since.pop("partner", None)
+    if not _agent_down_since:
+        return {}
+    key, since = min(_agent_down_since.items(), key=lambda item: item[1])
+    if now - since < AGENT_DOWN_AFTER:
+        problems = Problems()
+        problems.preserve_prefixes.add("agent")   # inside the grace window: an open alarm stays as it is
+        return problems
+    who = "dieser Knoten" if key == "own" else "der Partner"
+    return {"agent": {
+        "knoten": settings.ha_node, "partner": settings.ha_peer_ip, "agent_antwortet_nicht": who,
+        "seit": since.isoformat(timespec="seconds"), "dauer": _age(since, now),
+        "hinweis": "Ohne den Agenten (Updater-Container) gehen Übernahme im Browser, Geheimnis-Abgleich und VIP-Nachführung nicht. "
+                   "'docker compose ps updater ha-gate' prüfen, Port 8445 zwischen den Knoten.",
     }}
 
 

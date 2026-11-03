@@ -48,6 +48,7 @@ _CHECKS = [
     ("ha_slot_retention", "ha_alerts_enabled", ha_checks.check_slot_retention),
     ("ha_sync_stale", "ha_alerts_enabled", ha_checks.check_sync_stale),
     ("ha_split_brain", "ha_alerts_enabled", ha_checks.check_split_brain),
+    ("ha_agent_down", "ha_alerts_enabled", ha_checks.check_agent_down),
 ]
 
 # Event-like problems: when they drop out of the window nothing was "fixed", so no

@@ -31,6 +31,46 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.0] "Shikra" — 2026-11-03
+
+- **HA: Härtung nach dem Review der Oberfläche.** Das Übernehmen am Standby funktioniert auch für Konten mit Leerzeichen oder Umlauten im Namen (der Updater bekommt nur noch die Konto-ID); bei einem Paar, das noch über SSH läuft,
+  bietet die Standby-Seite keine erzwungene Übernahme ohne Fencing an. „HA einrichten“ lehnt die falsche Richtung ab (der Partner hat Firewalls, dieser Server keine). Der HA-Gate lauscht nur noch an der Adresse des Knotens und läuft nicht
+  mehr als root. `ha migrate-agent` nimmt den Partner bei einem lokalen Fehler zurück. Behoben: Bei mehreren Adressen an einer Netzwerkkarte hielt `ha` die VIP für nicht gesetzt (SIGPIPE bei `ip … | grep -q`).
+- **HA in der Oberfläche einrichten und bedienen.** Einstellungen › System zeigt die HA-Karte auch ohne Paar: „HA einrichten“ (Kopplungscode des Partners und VIP eingeben, „Voraussetzungen prüfen“ ändert nichts,
+  „Jetzt einrichten“ zeigt den Fortschritt) und „Diesen Server zum Standby vorbereiten“ (zeigt den Code). Mit Paar: Jetzt abgleichen, Standby neu aufbauen, Zum Partner wechseln und **HA auflösen** (der Partner wird
+  zur leeren Einzelinstallation); jede Aktion verlangt das Passwort des angemeldeten Administrators. Neu im Terminal: `./opnexus ha dissolve` und `./opnexus ha migrate-agent` (stellt ein bestehendes SSH-Paar über
+  die vorhandene SSH-Verbindung auf den Agenten um, entfernt den Cron beider Knoten und nimmt bei jedem Fehler alles zurück). Neue Benachrichtigung **HA-Agent antwortet nicht** (`ha_agent_down`). Gefunden im Lab:
+  Eine veraltete ARP-Zeile galt als „VIP belegt“ (jetzt zählt nur ein bestätigter Eintrag).
+- **HA: Übernehmen per Klick am Standby.** Der Standby betreibt jetzt den vollen Stack (Proxy, Frontend, Backend). Jede Seite, die dort aufgerufen wird, führt auf `/standby`:
+  eine Anmeldung **ohne Schreibzugriff** (die Datenbank ist dort eine Replica) für lokale Administrator-Konten: Passwort gegen den replizierten Hash, zweiter Faktor aus der abgeglichenen
+  TOTP-Datei (Wiederholschutz im Speicher; Wiederherstellungscodes gehen nicht, ihr Verbrauch wäre ein Schreibzugriff; fehlt die Datei noch, kommt das Konto nicht ohne Faktor hinein), Cookie
+  `__Host-opnexus-standby` (15 Minuten, signiert, nirgends gespeichert). Die Seite zeigt den Zustand des Paars (Partner und sein Agent, Epoche, Replikation, letzte eingespielte Änderung,
+  Abgleich, fehlende Geheimnis-Dateien) und bietet **Übernehmen**: normal, wenn der Agent des Partners antwortet (er wird zuerst angehalten); bei völlig stummem Partner nur nach dem getippten Satz
+  „alter Primaer ist aus“; **abgelehnt**, solange der Partner noch als Leader antwortet. Den Modus entscheidet der Server, nicht der Browser. Das Backend stößt `ha promote` über den Updater
+  des Knotens an; wer übernommen hat, steht danach im Audit des neuen Primärs. Alles andere an der API eines Standbys antwortet mit 503 `NODE_STANDBY` (Ausnahmen: Health, Metriken).
+  `ha sync` startet nach einer neuen Proxy-CA den Proxy des Standbys neu.
+- **HA einrichten ohne SSH und ohne Cron (Agent).** Der Updater-Container wird zum Agenten des Paars: `./opnexus ha prepare` (am künftigen Standby) schaltet Updater und den neuen
+  **HA-Gate** (Profil `ha`, Proxy-Image mit eingebackener Konfiguration, Port 8445, TLS 1.3, ohne Docker-Socket und ohne Geheimnisse außer seinem Schlüssel) ein und gibt einen
+  **Kopplungscode** aus (30 Minuten gültig, einmal verwendbar, nach 5 Fehlversuchen verbraucht; er trägt Adresse, Port und den Pin des Gate-Zertifikats). `./opnexus ha init --code CODE --vip IP/LÄNGE`
+  am künftigen Primär prüft vorab (Version, Release-Modus, Platz, VIP frei, Proxy des Partners erreichbar), koppelt (der Pin wird geprüft, **bevor** das Geheimnis gesendet wird;
+  der Partner fragt über das Gate zurück) und richtet dann alles ein; im Lab dauerte das 80 s. Danach laufen Fencing, Übernahme, Resync, Abgleich und Update über feste Verben
+  (`/ha/peer/…`, kein Weg für freie Befehle; Clustergeheimnis plus Absenderadresse) statt über SSH. Der Agent gleicht die Geheimnisse alle 5 Minuten ab und führt die VIP nach
+  (nur am Primär, nie solange der Partner Leader ist), der Cron entfällt. Fencing hält die Dienste an, aber nicht Updater und Gate; die VIP wird in einem kurzlebigen Hilfscontainer
+  (`--network host`, nur `NET_ADMIN`/`NET_RAW`) gesetzt. Bestehende SSH-Paare laufen unverändert weiter. Entwurf: `docs/DESIGN-HA-UI.md`.
+- **HA: `ha resync --from-peer` holt den alten Primär auch nach einem erzwungenen Wechsel zurück.** Nach `ha promote --force` konnte die `.env` des
+  ausgefallenen Knotens nicht mehr auf `fenced` gesetzt werden und blieb `HA_ROLE=primary`; `ha resync` lehnte dort ab („Dieser Knoten ist Primär“), obwohl
+  das Handbuch genau diesen Rückweg nennt. Mit `--from-peer` baut der Knoten sich als Standby neu auf, aber nur, wenn der Partner nachweislich später übernommen
+  hat (Datenbank ist Primär, **höhere Epoche**, und er führt nicht diesen Knoten als Primär); sonst bricht es ab, ohne etwas anzufassen.
+- **HA: `ha promote --force` übernimmt nicht, solange der Partner noch als Leader antwortet.** Ist nur SSH gestört, der Partner aber läuft (`/api/health`
+  meldet `leader`), ergäbe der Wechsel zwei Primäre. Mit `--yes` wird das abgelehnt, ohne `--yes` muss der Satz „Partner laeuft noch“ getippt werden.
+- **HA: `ha init` prüft, ob die VIP schon belegt ist** (Ping, sonst ARP-Eintrag), bevor irgendetwas verändert wird.
+- **HA: Der Zustand liegt nicht mehr in der `.env`, sondern in `.opnexus-ha/state`** (Rolle, Knoten, Adressen, VIP, Replikationspasswort; Datei 0600, Verzeichnis 0700,
+  atomar geschrieben, nie ausgeführt). Bestehende Paare werden beim ersten HA-Befehl automatisch umgezogen; in der `.env` bleiben nur `COMPOSE_FILE` und eine abgeleitete
+  Zeile `HA_ROLE`, die allein dafür da ist, dass ein älteres Updater-Image oder eine alte CLI (etwa nach einem Rollback) Klick-Updates weiter sperren. Maßgeblich ist immer die Datei.
+  Der Updater-Container liest die Rolle ebenfalls dort. `HA_VIP` und `HA_REPLICATION_PASSWORD` werden nicht mehr als `.env`-Schlüssel abgeglichen.
+- **HA: `ha sync` überträgt nur noch ausdrücklich erlaubte `.env`-Schlüssel** (Erlaubnisliste statt Sperrliste). `COMPOSE_PROFILES`, `OPNEXUS_IMAGE_REPO`, Ports, Bind-Adressen und
+  `OPNEXUS_RUN_AS_ROOT` bleiben Sache des jeweiligen Knotens; bisher wurden Ports und Bind-Adressen mitgeschickt.
+
 ## [1.36.1] "Harpy" — 2026-11-02
 
 - **Korrektur: Die Backend-Images von 1.36.0 starten nicht.** Beim Bau der Release-Images waren alle Dateien im Image nur für root lesbar (Modus 600/700); das

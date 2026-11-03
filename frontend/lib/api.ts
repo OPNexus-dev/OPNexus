@@ -38,6 +38,9 @@ function currentLanguage(): Language {
 
 function makeApiError(status: number, detail: string, code?: string, params?: Record<string, string>): ApiError {
   const language = currentLanguage();
+  // A standby node of an HA pair answers its whole API with NODE_STANDBY except its own door: send the browser there
+  // (the page /standby signs in without writing and offers the takeover).
+  if (code === "NODE_STANDBY" && typeof window !== "undefined" && window.location.pathname !== "/standby") window.location.replace("/standby");
   if (code) return new ApiError(status, translate(language, `errors.${code}`, translateServerParams(language, params)), code, params);
   return new ApiError(status, translateServerText(language, detail));
 }
@@ -1351,8 +1354,31 @@ export interface UpdaterStatus {
 }
 
 /** Read-only state of the HA pair (GET /system/ha); `configured: false` = this installation is not part of a pair. */
+export interface HaAgent {
+  available: boolean;
+  paired: boolean;
+  peer: string | null;
+  peer_reachable: boolean | null;
+  role: string | null;
+  job: StandbyJob | null;
+}
+
+export type HaAction = "sync" | "switch" | "rebuild" | "dissolve" | "dissolve_local";
+
+export interface HaInitBody {
+  code: string;
+  vip: string;
+  password?: string;
+  node?: string;
+  peer_node?: string;
+  node_ip?: string;
+  vip_dev?: string;
+  check?: boolean;
+}
+
 export interface HaStatus {
   configured: boolean;
+  agent?: HaAgent;
   node?: string;
   peer_ip?: string;
   vip?: string | null;
@@ -1369,7 +1395,40 @@ export interface HaStatus {
   peer?: { reachable: boolean; role: string | null; epoch: number | null };
 }
 
+export interface StandbyStatus {
+  username: string;
+  node: string;
+  peer_ip: string;
+  vip: string | null;
+  epoch: number;
+  primary_node: string | null;
+  replication: { state: string | null; lag_bytes: number | null; lag_seconds: number | null };
+  last_replay_age_seconds: number | null;
+  sync_age_seconds: number | null;
+  secrets: { complete: boolean; hosts: string[]; totp: string[] };
+  partner: { agent: boolean | null; health: { role: string; epoch: number } | null };
+  promote: { mode: "normal" | "force" | "refused" | "unavailable"; force_sentence: string };
+  job: StandbyJob | null;
+}
+
+export interface StandbyJob {
+  id?: string;
+  verb?: string;
+  state: "running" | "succeeded" | "failed";
+  exit_code?: number | null;
+  started_at?: string;
+  finished_at?: string | null;
+}
+
 export const api = {
+  standbyLogin: (body: { username: string; password: string; totp_code?: string }) =>
+    request<{ username: string; expires_in: number }>("/ha/standby/login", { method: "POST", body: JSON.stringify(body) }),
+  health: () => request<{ status: string; role: string; epoch: number; node: string | null }>("/health"),
+  standbyLogout: () => request<{ ok: boolean }>("/ha/standby/logout", { method: "POST" }),
+  standbySession: () => request<{ username: string }>("/ha/standby/session"),
+  standbyStatus: () => request<StandbyStatus>("/ha/standby/status"),
+  standbyPromote: (body: { force?: boolean; confirm?: string }) => request<{ job: StandbyJob }>("/ha/standby/promote", { method: "POST", body: JSON.stringify(body) }),
+  standbyJob: () => request<{ job: StandbyJob | null; log: string[] }>("/ha/standby/promote/job"),
   search: (q: string, options?: RequestInit) => request<SearchHit[]>(`/search?${new URLSearchParams({ q })}`, options),
   settings: () => request<AppSettings>("/settings"),
   saveSettings: (partial:{theme?:Theme;language?:Language;setup_done?:boolean}) => request<AppSettings>("/settings",{method:"PUT",body:JSON.stringify(partial)}),
@@ -1446,6 +1505,11 @@ export const api = {
   updateUpdateCheck: (body: { enabled?: boolean; feed_url?: string }) => request<UpdateCheckSettings>("/system/update-check", { method: "PUT", body: JSON.stringify(body) }),
   updaterStatus: () => request<UpdaterStatus>("/system/updater"),
   haStatus: () => request<HaStatus>("/system/ha"),
+  haSuggest: (target?: string) => request<{ node_ip: string; dev: string }>("/system/ha/suggest", { method: "POST", body: JSON.stringify(target ? { target } : {}) }),
+  haPrepare: (body: { password: string; ip: string }) => request<{ code: string; expires_in: number; ip: string }>("/system/ha/prepare", { method: "POST", body: JSON.stringify(body) }),
+  haInit: (body: HaInitBody) => request<{ job: StandbyJob }>("/system/ha/init", { method: "POST", body: JSON.stringify(body) }),
+  haAction: (body: { password: string; action: HaAction }) => request<{ job: StandbyJob }>("/system/ha/action", { method: "POST", body: JSON.stringify(body) }),
+  haJob: () => request<{ job: StandbyJob | null; log: string[] }>("/system/ha/job"),
   updaterUpdate: (version: string) => request<{ job: UpdaterJob }>("/system/updater/update", { method: "POST", body: JSON.stringify({ version }) }),
   updaterRollback: () => request<{ job: UpdaterJob }>("/system/updater/rollback", { method: "POST" }),
   getOutboundMode: (id: string) => request<OutboundMode>(`/outbound-nat/hosts/${id}/mode`),
@@ -2121,7 +2185,7 @@ export type ProblemType =
   | "compliance_finding"
   | "gateway_down" | "resource_threshold" | "service_down" | "api_rights_missing"
   | "rollout_paused" | "rollout_start_failed" | "server_disk"
-  | "ha_standby_down" | "ha_replication_lag" | "ha_slot_retention" | "ha_sync_stale" | "ha_split_brain";
+  | "ha_standby_down" | "ha_replication_lag" | "ha_slot_retention" | "ha_sync_stale" | "ha_split_brain" | "ha_agent_down";
 
 export interface CarpEvent {
   id: string;

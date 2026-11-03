@@ -11,6 +11,18 @@ import unittest
 from pathlib import Path
 
 SCRIPT = Path(__file__).with_name("opnexus").resolve()
+
+
+def path_without_cosign(tmp: Path) -> str:
+    """PATH of the system tools minus any real cosign: a host may have one in /usr/bin, and '/usr/bin:/bin' would still find it."""
+    nocosign = tmp / "nocosign"
+    if not nocosign.exists():
+        nocosign.mkdir()
+        for directory in ("/usr/bin", "/bin"):
+            for entry in os.scandir(directory):
+                if entry.name != "cosign" and not (nocosign / entry.name).exists():
+                    os.symlink(entry.path, nocosign / entry.name)
+    return f"{tmp / 'bin'}:{nocosign}"
 DIGEST = "registry.example/opnexus/opnexus-updater@sha256:" + "a" * 64
 FAKE_DOCKER = """#!/bin/sh
 echo "$@" >> "$FAKE_LOG"
@@ -52,7 +64,7 @@ class RefreshCli(unittest.TestCase):
             (self.tmp / "cosign.pub").unlink()
         if no_cosign:
             (self.tmp / "bin" / "cosign").unlink()
-        path = f"{self.tmp / 'bin'}:/usr/bin:/bin" if no_cosign else f"{self.tmp / 'bin'}:{os.environ['PATH']}"  # a real cosign must not leak in
+        path = path_without_cosign(self.tmp) if no_cosign else f"{self.tmp / 'bin'}:{os.environ['PATH']}"  # a real cosign must not leak in
         env = {**os.environ, "PATH": path, "OPNEXUS_DIR": str(self.tmp),
                "FAKE_LOG": str(self.log), "FAKE_CLI": str(self.cli), "FAKE_DIGEST": DIGEST, "TMPDIR": str(self.tmp)}
         for name in ("OPNEXUS_NO_CLI_REFRESH", "CLI_REFRESHED"):

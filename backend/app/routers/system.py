@@ -172,13 +172,24 @@ def _iso(value) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+async def _agent_block() -> dict:
+    """What the pair card needs to know about this node's agent (the updater): is it there, paired, is the partner's agent answering, the last job."""
+    try:
+        status = await updater_client.ha_local_status()
+    except (updater_client.UpdaterUnavailable, updater_client.UpdaterRejected):
+        return {"available": False, "paired": False, "peer": None, "peer_reachable": None, "role": None, "job": None}
+    return {"available": True, "paired": bool(status.get("paired")), "peer": status.get("peer"), "peer_reachable": status.get("peer_reachable"),
+            "role": status.get("ha_role"), "job": status.get("job")}
+
+
 @router.get("/ha")
 async def ha_status(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)) -> dict:
     """Read-only state of the HA pair for the card in Settings › System (no promote button on purpose: fencing the old
     primary needs control over that host, so a switch is done with `opnexus ha promote`)."""
     _admin(user)
+    agent = await _agent_block()
     if not ha_service.configured():
-        return {"configured": False}
+        return {"configured": False, "agent": agent}
     snap = await ha_service.collect(db)
     probe = leader.http_partner(settings.ha_peer_ip)
     view = await probe() if probe else None
@@ -207,4 +218,5 @@ async def ha_status(db: AsyncSession = Depends(get_db), user: AdminUser = Depend
         },
         # The standby runs no proxy, so it only answers while it is a full node (a primary, a fenced node).
         "peer": {"reachable": view is not None, "role": view[0] if view else None, "epoch": view[1] if view else None},
+        "agent": agent,
     }
