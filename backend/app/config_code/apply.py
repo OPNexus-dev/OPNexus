@@ -85,7 +85,7 @@ MODELS = {"aliases": FirewallAlias, "rules": FirewallRule, "port_forwards": Port
 SCALARS = {
     "aliases": ("name", "type", "description", "enabled"),
     "rules": ("description", "interface", "direction", "ipprotocol", "protocol", "action", "source_net", "source_port",
-              "destination_net", "destination_port", "enabled", "log"),
+              "destination_net", "destination_port", "enabled", "log", "placement"),
     "port_forwards": ("description", "interface", "ipprotocol", "protocol", "source_net", "source_port", "destination_net",
                       "destination_port", "target", "local_port", "natreflection", "enabled"),
     "one_to_one": ("description", "interface", "type", "external", "source_net", "destination_net", "source_not",

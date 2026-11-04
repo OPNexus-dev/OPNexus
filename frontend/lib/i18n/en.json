@@ -757,7 +757,12 @@
         "no_description": "Description missing – please set one in OPNsense"
       }
     },
-    "logPackets": "Log matching packets"
+    "logPackets": "Log matching packets",
+    "placement": "Position in the rule list",
+    "placementEnd": "At the end (after all existing rules)",
+    "placementTop": "At the very top (before all existing rules)",
+    "placementInfo": "Rules are checked from top to bottom and the first match wins. OPNsense appends new rules at the end. \"At the very top\" moves the rule in front of all other rules of the same priority group when it is rolled out; rules from the policy hierarchy (\"before\") stay above it. The position is set again on every rollout.",
+    "placementBlockEnd": "A block rule at the end does nothing if a matching allow rule comes before it. You usually want \"At the very top\"."
   },
   "adopt": {
     "button": "Adopt from firewall",
@@ -1373,7 +1378,8 @@
     "log": "Logging",
     "name": "Name",
     "type": "Type",
-    "content": "Content"
+    "content": "Content",
+    "placement": "Position"
   },
   "carp": {
     "peerInMaintenance": "{peer} is already in CARP maintenance mode. Click “Restore CARP normal operation” there first instead of switching again here.",

@@ -1,5 +1,6 @@
 "use client";
 
+import { protocolSelect } from "@/lib/protocols";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import Link from "next/link";
 import { OutboundModes } from "@/components/OutboundModes";
@@ -150,12 +151,6 @@ function OutboundNatContent() {
   const [manualInterface, setManualInterface] = useState(false);
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const [protocolOptions, setProtocolOptions] = useState<InterfaceOption[]>([]);
-  const protocolFallback: InterfaceOption[] = [
-    { name: "any", label: "any" },
-    { name: "tcp", label: "TCP" },
-    { name: "udp", label: "UDP" },
-    { name: "icmp", label: "ICMP" },
-  ];
 
   useEffect(() => {
     setActiveTab(params.get("tab") === "live" ? "live" : "managed");
@@ -380,10 +375,7 @@ function OutboundNatContent() {
   const selectedInterfaceLabel = interfaceOptions.find((opt) => opt.name === form.interface)?.label;
   const interfaceMismatch = selectedInterfaceLabel?.includes(" / ") ?? false;
 
-  const protocolBase = protocolOptions.length > 0 ? protocolOptions : protocolFallback;
-  const protocolSelectOptions = protocolBase.some((opt) => opt.name === form.protocol)
-    ? protocolBase
-    : [{ name: form.protocol, label: form.protocol }, ...protocolBase];
+  const { options: protocolSelectOptions, value: protocolSelectValue } = protocolSelect(protocolOptions, form.protocol);
 
   const portAliasOptions = aliasOptions.filter((a) => a.type === "port");
   const netComboOptions: ComboOption[] = aliasOptions.map((a) => ({
@@ -579,7 +571,7 @@ function OutboundNatContent() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label={t("nat.protocol")}>
                 <Select
-                  value={form.protocol}
+                  value={protocolSelectValue}
                   onChange={(e) => setForm({ ...form, protocol: e.target.value })}
                 >
                   {protocolSelectOptions.map((opt) => (

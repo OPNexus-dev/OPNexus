@@ -325,12 +325,20 @@ def _mutation_result(data: Any, operation: str, results: set[str]) -> dict:
 #              `sequence` of the moved rule (and, when the gap is too small, of the rules behind the target); legacy
 #              rules are not in the model and cannot be an anchor.
 # apply        POST. {"status": "OK\n\n"} after `filter reload skip_alias`. FilterBaseController has no savepoint here.
+# Keys of a rule payload that only OPNexus uses (where the rule is placed); never sent to the firewall.
+OPNEXUS_ONLY_RULE_KEYS = frozenset({"placement"})
+
+
+def _wire_rule(payload: dict) -> dict:
+    return {k: v for k, v in payload.items() if k not in OPNEXUS_ONLY_RULE_KEYS}
+
+
 async def add_rule(host: OpnsenseHost, payload: dict) -> dict:
-    return _mutation_result(await _request(host, "POST", "/firewall/filter/addRule", json={"rule": payload}), "Regel anlegen", {"saved"})
+    return _mutation_result(await _request(host, "POST", "/firewall/filter/addRule", json={"rule": _wire_rule(payload)}), "Regel anlegen", {"saved"})
 
 
 async def set_rule(host: OpnsenseHost, rule_uuid: str, payload: dict) -> dict:
-    return _mutation_result(await _request(host, "POST", f"/firewall/filter/setRule/{rule_uuid}", json={"rule": payload}), "Regel ändern", {"saved"})
+    return _mutation_result(await _request(host, "POST", f"/firewall/filter/setRule/{rule_uuid}", json={"rule": _wire_rule(payload)}), "Regel ändern", {"saved"})
 
 
 async def del_rule(host: OpnsenseHost, rule_uuid: str) -> dict:

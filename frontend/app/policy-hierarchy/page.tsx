@@ -1,5 +1,6 @@
 "use client";
 
+import { protocolSelect } from "@/lib/protocols";
 import { InfoTip } from "@/components/ui/Tooltip";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -475,7 +476,9 @@ function PolicyHierarchyContent() {
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label={t("nat.protocol")}>
-                <Input value={ruleForm.protocol} onChange={(e) => setRuleForm({ ...ruleForm, protocol: e.target.value })} placeholder="tcp" />
+                <Select value={protocolSelect([], ruleForm.protocol).value} onChange={(e) => setRuleForm({ ...ruleForm, protocol: e.target.value })}>
+                  {protocolSelect([], ruleForm.protocol).options.map((opt) => <option key={opt.name} value={opt.name}>{opt.label}</option>)}
+                </Select>
               </FieldGroup>
               <FieldGroup label={t("fields.action")}>
                 <Select value={ruleForm.action} onChange={(e) => setRuleForm({ ...ruleForm, action: e.target.value as PolicyHierarchyRuleCreate["action"] })}>

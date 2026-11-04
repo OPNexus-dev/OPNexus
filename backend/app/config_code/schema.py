@@ -113,6 +113,7 @@ class RuleDoc(_Doc):
     destination_port: Port = None
     enabled: bool = True
     log: bool = False
+    placement: Literal["end", "top"] = "end"
     targets: Targets = Field(default_factory=Targets)
 
 

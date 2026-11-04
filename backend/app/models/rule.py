@@ -32,6 +32,9 @@ class FirewallRule(Base):
     destination_port: Mapped[str | None] = mapped_column(String(32), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     log: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Where a NEW rule lands in the firewall's rule list: "end" (OPNsense default: behind all existing rules of its
+    # priority group) or "top" (in front of them, moveRuleBefore). A block rule behind a pass-any rule never matches.
+    placement: Mapped[str] = mapped_column(String(8), default="end", server_default="end")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

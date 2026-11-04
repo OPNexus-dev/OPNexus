@@ -1,5 +1,6 @@
 "use client";
 
+import { protocolSelect } from "@/lib/protocols";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -109,6 +110,7 @@ const emptyForm: RuleCreate = {
   destination_port: null,
   enabled: true,
   log: false,
+  placement: "end",
   target_host_ids: [],
   target_group_ids: [],
 };
@@ -147,14 +149,9 @@ function RulesContent() {
   const roleOptions = useInterfaceRoleOptions();
   const [interfacesError, setInterfacesError] = useState<string | null>(null);
   const [manualInterface, setManualInterface] = useState(false);
+  const [placementTouched, setPlacementTouched] = useState(false);
   const [aliasOptions, setAliasOptions] = useState<AliasOption[]>([]);
   const [protocolOptions, setProtocolOptions] = useState<InterfaceOption[]>([]);
-  const protocolFallback: InterfaceOption[] = [
-    { name: "any", label: "any" },
-    { name: "tcp", label: "TCP" },
-    { name: "udp", label: "UDP" },
-    { name: "icmp", label: "ICMP" },
-  ];
 
   useEffect(() => {
     setActiveTab(params.get("tab") === "live" ? "live" : "managed");
@@ -327,6 +324,7 @@ function RulesContent() {
       ? t("rules.staleTargets")
       : null);
     setManualInterface(false);
+    setPlacementTouched(false);
     setReview(null);
     setShowModal(true);
   }
@@ -377,10 +375,7 @@ function RulesContent() {
   const selectedInterfaceLabel = interfaceOptions.find((opt) => opt.name === form.interface)?.label;
   const interfaceMismatch = selectedInterfaceLabel?.includes(" / ") ?? false;
 
-  const protocolBase = protocolOptions.length > 0 ? protocolOptions : protocolFallback;
-  const protocolSelectOptions = protocolBase.some((opt) => opt.name === form.protocol)
-    ? protocolBase
-    : [{ name: form.protocol, label: form.protocol }, ...protocolBase];
+  const { options: protocolSelectOptions, value: protocolSelectValue } = protocolSelect(protocolOptions, form.protocol);
 
   const portAliasOptions = aliasOptions.filter((a) => a.type === "port");
   const netComboOptions: ComboOption[] = aliasOptions.map((a) => ({
@@ -583,7 +578,7 @@ function RulesContent() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label={t("nat.protocol")}>
                 <Select
-                  value={form.protocol}
+                  value={protocolSelectValue}
                   onChange={(e) => setForm({ ...form, protocol: e.target.value })}
                 >
                   {protocolSelectOptions.map((opt) => (
@@ -596,13 +591,33 @@ function RulesContent() {
               <FieldGroup label={t("fields.action")}>
                 <Select
                   value={form.action}
-                  onChange={(e) => setForm({ ...form, action: e.target.value as RuleAction })}
+                  onChange={(e) => {
+                    const action = e.target.value as RuleAction;
+                    // A new block/reject rule belongs in front of the allow rules unless the user chose otherwise.
+                    const placement = !editing && !placementTouched ? (action === "pass" ? "end" : "top") : form.placement;
+                    setForm({ ...form, action, placement });
+                  }}
                 >
                   <option value="pass">{t("rules.actionPass")}</option>
                   <option value="block">{t("rules.actionBlock")}</option>
                   <option value="reject">{t("rules.actionReject")}</option>
                 </Select>
               </FieldGroup>
+            </div>
+
+            <div className="space-y-2">
+              <FieldGroup label={t("rules.placement")} hint={t("rules.placementInfo")}>
+                <Select
+                  value={form.placement ?? "end"}
+                  onChange={(e) => { setPlacementTouched(true); setForm({ ...form, placement: e.target.value as "end" | "top" }); }}
+                >
+                  <option value="end">{t("rules.placementEnd")}</option>
+                  <option value="top">{t("rules.placementTop")}</option>
+                </Select>
+              </FieldGroup>
+              {form.action !== "pass" && (form.placement ?? "end") === "end" && (
+                <p className="text-xs text-amber-700" role="note">{t("rules.placementBlockEnd")}</p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

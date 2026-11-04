@@ -696,6 +696,15 @@
           "title": "Log",
           "type": "boolean"
         },
+        "placement": {
+          "default": "end",
+          "enum": [
+            "end",
+            "top"
+          ],
+          "title": "Placement",
+          "type": "string"
+        },
         "targets": {
           "$ref": "#/$defs/Targets"
         }

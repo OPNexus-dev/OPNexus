@@ -8,7 +8,7 @@ from app.models.policy import RuleRevision
 from app.services.rule_deploy_service import _build_payload
 from app.services import variables_service
 
-RULE_FIELDS = ("description", "interface", "direction", "ipprotocol", "protocol", "action", "source_net", "source_port", "destination_net", "destination_port", "enabled", "log")
+RULE_FIELDS = ("description", "interface", "direction", "ipprotocol", "protocol", "action", "source_net", "source_port", "destination_net", "destination_port", "enabled", "log", "placement")
 
 
 async def policy_lock(db):

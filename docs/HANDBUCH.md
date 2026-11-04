@@ -591,6 +591,21 @@ Weitere Regeln dazu:
 - Jede Regel hat einen **Verlauf**: jede Änderung ist ein unveränderlicher Stand,
   der sich ins Formular übernehmen und als neuen Entwurf speichern lässt.
 
+### Position in der Regelliste
+
+Firewalls prüfen Regeln von oben nach unten, die erste passende gewinnt. OPNsense legt neue Regeln **am Ende** ab; eine Block-Regel hinter einer passenden Erlaubnis-Regel greift deshalb nie.
+Im Regelformular wählst du die **Position**:
+
+- **Am Ende** (Standard, das bisherige Verhalten): hinter allen bestehenden Regeln.
+- **Ganz oben**: OPNexus verschiebt die Regel beim Ausrollen vor die erste Regel ihrer Prioritätsgruppe (OPNsense kennt dafür nur „vor Regel X“). Regeln aus der
+  Richtlinien-Hierarchie (Pre-Regeln) bleiben darüber. Die Position wird bei **jedem** Ausrollen erneut gesetzt, auch nach einem Bearbeiten.
+
+Eine neue Block- oder Reject-Regel schlägt „Ganz oben“ vor; steht sie auf „Am Ende“, weist das Formular darauf hin. Ändert sich nur die Position, ist das in der Vorschau eine Änderung (Feld „Position“).
+Lehnt die Firewall das Verschieben ab, meldet OPNexus einen Fehler; die Frist für den automatischen Rollback bleibt dabei scharf. Der Rollback stellt den Inhalt der Regel wieder her, **nicht** ihre Position.
+In der Konfiguration als Code heißt das Feld `placement` (`end` oder `top`).
+
+**Protokoll „TCP/UDP“:** Für Dienste, die beides brauchen (z. B. DNS auf Port 53), wähle im Protokoll-Feld **TCP/UDP**. Die Auswahl steht in Regeln, Port-Weiterleitungen, Outbound-NAT und Hierarchie-Regeln immer zur Verfügung.
+
 ### Zustände einer Regel
 
 Das Backend berechnet den Zustand aus Zielen und Deployments: *Ziele fehlen*,

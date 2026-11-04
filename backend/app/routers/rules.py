@@ -66,6 +66,7 @@ def _to_read(
         destination_port=rule.destination_port,
         enabled=rule.enabled,
         log=rule.log,
+        placement=rule.placement,
         created_at=rule.created_at,
         updated_at=rule.updated_at,
         target_host_ids=[host.id for host in rule.targets],
@@ -152,6 +153,7 @@ async def create_rule(payload: RuleCreate, db: AsyncSession = Depends(get_db)):
         destination_port=payload.destination_port,
         enabled=payload.enabled,
         log=payload.log,
+        placement=payload.placement,
         targets=hosts,
         groups=groups,
     )

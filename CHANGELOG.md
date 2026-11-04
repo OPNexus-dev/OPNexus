@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.1] "Shikra" — 2026-11-04
+
+- **Regeln: Position in der Regelliste wählbar.** OPNsense hängt neue Regeln ans Ende ihrer Prioritätsgruppe; eine Block-Regel hinter einer „Alles erlauben“-Regel griff deshalb nie. Im Regelformular
+  gibt es jetzt **Position**: „Am Ende“ (wie bisher, Standard) oder „Ganz oben“ (beim Ausrollen per `moveRuleBefore` vor die erste Regel der Gruppe; Regeln aus der Richtlinien-Hierarchie bleiben darüber).
+  Neue Block-/Reject-Regeln schlagen „Ganz oben“ vor. Die Position steht in Vorschau, Verlauf und Konfiguration als Code (`placement: top`). Wird die Verschiebung abgelehnt, gilt der Push als Fehler
+  und die Auto-Rollback-Frist bleibt scharf, statt eine falsch platzierte Block-Regel als Erfolg zu melden. Live auf einer Test-Firewall geprüft. Migration 0035.
+- **Protokoll-Auswahl: TCP/UDP immer verfügbar.** In Regeln, Port-Weiterleitungen und Outbound-NAT stehen `any`, TCP, UDP, **TCP/UDP** und ICMP immer oben, auch wenn die Live-Liste der Firewall noch nicht
+  geladen ist; ein gespeichertes „tcp“ wird als Eintrag „TCP“ gezeigt statt als Doppelgänger. Die Hierarchie-Regeln haben statt eines Freitextfelds dieselbe Auswahl.
+
 ## [1.37.0] "Shikra" — 2026-11-03
 
 - **HA: Härtung nach dem Review der Oberfläche.** Das Übernehmen am Standby funktioniert auch für Konten mit Leerzeichen oder Umlauten im Namen (der Updater bekommt nur noch die Konto-ID); bei einem Paar, das noch über SSH läuft,

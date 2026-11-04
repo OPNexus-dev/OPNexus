@@ -561,6 +561,7 @@ export interface Rule {
   destination_port: string | null;
   enabled: boolean;
   log: boolean;
+  placement: "end" | "top";
   created_at: string;
   updated_at: string;
   target_host_ids: string[];
@@ -584,6 +585,7 @@ export interface RuleCreate {
   destination_port: string | null;
   enabled: boolean;
   log?: boolean;
+  placement?: "end" | "top";
   target_host_ids: string[];
   target_group_ids: string[];
 }

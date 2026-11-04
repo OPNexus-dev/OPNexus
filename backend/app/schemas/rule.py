@@ -20,6 +20,7 @@ class RuleCreate(BaseModel):
     destination_port: str | None = Field(default=None, max_length=32)
     enabled: bool = True
     log: bool = False
+    placement: Literal["end", "top"] = "end"
     target_host_ids: list[uuid.UUID] = Field(default_factory=list)
     target_group_ids: list[uuid.UUID] = Field(default_factory=list)
 
@@ -67,6 +68,7 @@ class RuleRead(BaseModel):
     destination_port: str | None
     enabled: bool
     log: bool = False
+    placement: str = "end"
     created_at: datetime
     updated_at: datetime
     target_host_ids: list[uuid.UUID]

@@ -757,7 +757,12 @@
         "no_description": "Beschreibung fehlt – bitte in OPNsense setzen"
       }
     },
-    "logPackets": "Protokollieren"
+    "logPackets": "Protokollieren",
+    "placement": "Position in der Regelliste",
+    "placementEnd": "Am Ende (hinter allen bestehenden Regeln)",
+    "placementTop": "Ganz oben (vor allen bestehenden Regeln)",
+    "placementInfo": "Regeln werden von oben nach unten geprüft, die erste passende gewinnt. OPNsense hängt neue Regeln ans Ende. „Ganz oben“ verschiebt die Regel beim Ausrollen vor alle anderen Regeln derselben Prioritätsgruppe; Regeln aus der Richtlinien-Hierarchie („vorher“) bleiben darüber. Die Position wird bei jedem Ausrollen erneut gesetzt.",
+    "placementBlockEnd": "Eine Block-Regel am Ende greift nicht, wenn davor eine passende Erlaubnis-Regel steht. Meist willst du „Ganz oben“."
   },
   "adopt": {
     "button": "Von Firewall übernehmen",
@@ -1373,7 +1378,8 @@
     "log": "Logging",
     "name": "Name",
     "type": "Typ",
-    "content": "Inhalt"
+    "content": "Inhalt",
+    "placement": "Position"
   },
   "carp": {
     "peerInMaintenance": "{peer} steht bereits im CARP-Wartungsmodus. Zuerst dort „CARP-Normalbetrieb herstellen“ klicken, nicht hier erneut umschalten.",

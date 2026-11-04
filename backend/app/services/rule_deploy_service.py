@@ -42,6 +42,15 @@ def _build_payload(rule: FirewallRule, host: OpnsenseHost | None = None) -> dict
 
 
 def _base_payload(rule: FirewallRule) -> dict:
+    payload = _wire_payload(rule)
+    if rule.placement == "top":
+        # Not sent to the firewall (opnsense_client strips it); part of the payload so that a changed placement shows up
+        # in the preview, makes the deploy a real change and is remembered in last_payload.
+        payload["placement"] = "top"
+    return payload
+
+
+def _wire_payload(rule: FirewallRule) -> dict:
     return {
         "enabled": "1" if rule.enabled else "0",
         "action": rule.action,
@@ -79,24 +88,76 @@ async def _deploy_to_host(db: AsyncSession, rule: FirewallRule, host: OpnsenseHo
 
     prior_uuid = existing.opnsense_rule_uuid if existing else None
     prior_live_payload = existing.last_payload if existing else None
+    written: dict[str, str] = {}
 
     async def write(uuid_):
         if uuid_:
             await opnsense_client.set_rule(host, uuid_, payload)
+            written["uuid"] = uuid_
             return uuid_
         result = await opnsense_client.add_rule(host, payload)
         new_uuid = result.get("uuid") if isinstance(result, dict) else None
         if not new_uuid:
             raise OpnsenseAmbiguousError("Firewall hat keine Regel-UUID zurückgegeben; Stand manuell prüfen")
+        written["uuid"] = new_uuid
         return new_uuid
+
+    async def apply():
+        # Positioning runs after the UUID is recorded (push_to_host), so a refused move leaves an armed "error" row that
+        # the revert sweeper undoes - never an unplaced block rule that looks fine.
+        if payload.get("placement") == "top":
+            await place_on_top(host, written["uuid"])
+        await opnsense_client.apply(host)
 
     deployment = await push_to_host(
         db, existing=existing, uuid_attr="opnsense_rule_uuid",
         make=lambda **fields: RuleDeployment(rule_id=rule.id, host_id=host.id, **fields),
         prior_uuid=prior_uuid, prior_live_payload=prior_live_payload, payload=payload,
-        write=write, apply=lambda: opnsense_client.apply(host),
+        write=write, apply=apply,
     )
     return deployment
+
+
+def _truthy(value) -> bool:
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+async def place_on_top(host: OpnsenseHost, rule_uuid: str) -> None:
+    """Moves a rule in front of the first rule of its priority group (moveRuleBefore; OPNsense has no "to top" call).
+
+    The prio_group is NOT the interface (every single-interface rule of every interface shares one group), which is
+    harmless: pf evaluates per interface, so being first in the group means first on its own interface too. Rules that
+    are not in the model (legacy, automatic) cannot be an anchor and are skipped. A rule that already is first is left
+    alone. The move is read back (a refused moveRuleBefore is an HTTP 500 = ambiguous) and a rule that did not end up
+    first raises, so the caller marks the deployment as failed instead of reporting success for a misplaced rule.
+    """
+    rows = [r for r in ((await opnsense_client.search_rules(host, all_rows=True)) or {}).get("rows") or []
+            if isinstance(r, dict) and r.get("uuid")]
+    own = next((r for r in rows if str(r["uuid"]).lower() == rule_uuid.lower()), None)
+    if own is None:
+        raise OpnsenseAPIError("Regel nach dem Anlegen nicht auffindbar, Position nicht gesetzt")
+
+    def group(row) -> str:
+        return str(row.get("prio_group") or str(row.get("sort_order") or "").partition(".")[0])
+
+    def order(row) -> float:
+        try:
+            return float(row.get("sort_order"))
+        except (TypeError, ValueError):
+            return float("inf")
+
+    movable = sorted((r for r in rows if group(r) == group(own) and not _truthy(r.get("legacy"))
+                      and not _truthy(r.get("is_automatic"))), key=order)
+    if not movable or str(movable[0]["uuid"]).lower() == rule_uuid.lower():
+        return
+    await opnsense_client.move_rule_before(host, rule_uuid, str(movable[0]["uuid"]))
+    after = (await opnsense_client.search_rules(host, all_rows=True)) or {}
+    rows = [r for r in after.get("rows") or [] if isinstance(r, dict) and r.get("uuid")]
+    own = next((r for r in rows if str(r["uuid"]).lower() == rule_uuid.lower()), None)
+    first = sorted((r for r in rows if own is not None and group(r) == group(own) and not _truthy(r.get("legacy"))
+                    and not _truthy(r.get("is_automatic"))), key=order)
+    if own is None or not first or str(first[0]["uuid"]).lower() != rule_uuid.lower():
+        raise OpnsenseAPIError("Regel konnte nicht an die erste Stelle verschoben werden")
 
 
 async def deploy_rule(db: AsyncSession, rule: FirewallRule, hosts: list[OpnsenseHost]) -> list[RuleDeployment]:

@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.37.0` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.37.1` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -70,7 +70,7 @@ For access from other machines and for production use with TLS (bundled Caddy pr
 
 ```bash
 OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev
-OPNEXUS_VERSION=1.37.0
+OPNEXUS_VERSION=1.37.1
 ```
 
 The same images (identical digests and signatures) are also available from this Gitea's registry as `git.opnexus.dev/opnexus`; existing installations that use it keep working unchanged.
