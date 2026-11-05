@@ -23,6 +23,7 @@ from app.models.one_to_one import OneToOneRule
 from app.models.one_to_one_deployment import OneToOneDeployment
 from app.models.one_to_one_target import one_to_one_targets
 from app.models.policy import OneToOneRevision
+from app.models.rule_order import RuleOrderChange
 __all__ += ["OneToOneRule", "OneToOneDeployment", "one_to_one_targets", "OneToOneRevision"]
 
 from app.models.outbound_nat import OutboundNatRule

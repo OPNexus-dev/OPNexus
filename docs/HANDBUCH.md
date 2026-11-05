@@ -598,13 +598,34 @@ Im Regelformular wählst du die **Position**:
 
 - **Am Ende** (Standard, das bisherige Verhalten): hinter allen bestehenden Regeln.
 - **Ganz oben**: OPNexus verschiebt die Regel beim Ausrollen vor die erste Regel ihrer Prioritätsgruppe (OPNsense kennt dafür nur „vor Regel X“). Regeln aus der
-  Richtlinien-Hierarchie (Pre-Regeln) bleiben darüber. Die Position wird bei **jedem** Ausrollen erneut gesetzt, auch nach einem Bearbeiten.
+  Richtlinien-Hierarchie (Pre-Regeln) bleiben darüber. Die Position wird beim Anlegen gesetzt und wenn du sie änderst, nicht bei jedem Ausrollen: eine Regel, die du später verschiebst (siehe unten), bleibt dort.
 
 Eine neue Block- oder Reject-Regel schlägt „Ganz oben“ vor; steht sie auf „Am Ende“, weist das Formular darauf hin. Ändert sich nur die Position, ist das in der Vorschau eine Änderung (Feld „Position“).
 Lehnt die Firewall das Verschieben ab, meldet OPNexus einen Fehler; die Frist für den automatischen Rollback bleibt dabei scharf. Der Rollback stellt den Inhalt der Regel wieder her, **nicht** ihre Position.
 In der Konfiguration als Code heißt das Feld `placement` (`end` oder `top`).
 
 **Protokoll „TCP/UDP“:** Für Dienste, die beides brauchen (z. B. DNS auf Port 53), wähle im Protokoll-Feld **TCP/UDP**. Die Auswahl steht in Regeln, Port-Weiterleitungen, Outbound-NAT und Hierarchie-Regeln immer zur Verfügung.
+
+### Reihenfolge ansehen, Regeln verschieben und bearbeiten
+
+Der Reiter **Live über alle Hosts** zeigt pro Firewall (ein HA-Paar gemeinsam, Einzel-Firewalls für sich) alle Regeln **in der Reihenfolge, in der die Firewall sie prüft**. Ein Abzeichen sagt, woher die Regel kommt:
+**Zentral** (von OPNexus verwaltet), **Nur lokal** (von Hand auf der Firewall angelegt), **Hierarchie** (von der Policy-Hierarchie gesetzt) oder **System** (eingebaut, nur auf Wunsch sichtbar). Bei einem Paar zeigen Haken, auf welcher Firewall die Regel steht.
+
+- **Verschieben:** mit den Pfeilen (ganz nach oben, eine Stelle nach oben/unten, ans Ende) oder per Ziehen auf eine andere Regel (sie landet davor; die Fläche „Hier ablegen“ am Ende der Tabelle setzt sie ans Ende). Verschoben wird innerhalb einer Prioritätsgruppe
+  (Floating-Regeln, Regeln pro Interface, Interface-Gruppen); Regeln der Hierarchie und Systemregeln lassen sich nicht verschieben. Bei einem Paar wird auf beiden Firewalls verschoben.
+- **Auf Probe:** Die neue Reihenfolge ist sofort live, gilt aber nur auf Probe. Ein gelber Hinweis zeigt die Restzeit; **Bestätigen** macht sie dauerhaft (nur im Browser, nie per API-Token), **Zurücknehmen** stellt die alte sofort wieder her. Ohne Bestätigung nimmt
+  OPNexus sie nach der Frist (Standard 180 Sekunden, wie beim Ausrollen) selbst zurück. Mehrere Verschiebungen nacheinander gelten als eine Reihe: jede neue erneuert die Frist, bestätigt oder zurückgenommen wird die ganze Reihe, die neueste zuerst.
+  Schlägt das Zurücknehmen fehl (z. B. Firewall nicht erreichbar), meldet OPNexus das als Benachrichtigung; bis es geklärt ist (erneut zurücknehmen), sind weitere Verschiebungen und das Ausrollen auf diesem Host gesperrt.
+- **Bearbeiten:** Eine zentrale Regel öffnet den normalen Editor (Vorschau, Bestätigen, Auto-Rollback). Eine **nur lokale** Regel wird dafür zuerst zentral übernommen (nur ein Eintrag in OPNexus, nichts wird geschrieben; bei einem Paar wird sie auf der zweiten Firewall verknüpft)
+  und dann genauso bearbeitet.
+- Gleiche Regeln auf den Firewalls eines Paars werden am Inhalt erkannt (Beschreibung, Interface, Richtung, Protokoll, Quelle, Ziel, Aktion), nicht an der Kennung.
+
+### Regeln, die es nur auf einzelnen Firewalls gibt
+
+Unter der Liste der zentralen Regeln zeigt der aufklappbare Abschnitt **Nur auf einzelnen Firewalls** die Regeln, die von Hand direkt auf einer Firewall angelegt wurden und nicht zentral verwaltet werden
+(eingebaute Systemregeln erscheinen nicht). Sie sind nach Firewall gruppiert; ein HA-Paar steht einmal da, weil beide Firewalls dieselbe Konfiguration haben. Pro Regel zeigt ein Hinweis, ob sie **nur dort** steht oder
+**auch auf** anderen Firewalls (dann lohnt sich meist eine zentrale Regel). Die Firewalls werden beim Öffnen des Abschnitts live abgefragt, nicht mit der Seite; antwortet eine nicht, bleibt der Rest sichtbar.
+**Übernehmen …** öffnet den Übernehmen-Dialog (siehe „Von Hand angelegte Regeln übernehmen“) auf dieser Firewall. Der Abschnitt ist rein lesend: OPNexus ändert diese Regeln nicht.
 
 ### Zustände einer Regel
 

@@ -14,6 +14,8 @@ interface Props {
   hosts: Host[];
   onClose: () => void;
   onAdopted: () => void;
+  /** Firewall shown first (e.g. when opened from the host-local overview). */
+  initialHostId?: string;
 }
 
 function summary(rule: UnmanagedRule): string {
@@ -26,12 +28,12 @@ function summary(rule: UnmanagedRule): string {
  * lets the operator take them over. Taking over only records the rule — nothing is
  * written to the firewall until the rule is changed and pushed the normal way.
  */
-export function AdoptRulesModal({ hosts, onClose, onAdopted }: Props) {
+export function AdoptRulesModal({ hosts, onClose, onAdopted, initialHostId }: Props) {
   const { t, errorMessage } = useLanguage();
   const toast = useToast();
   const enabledHosts = hosts.filter((h) => h.enabled);
   // Derived rather than initialised once: the host list may still be loading when the dialog opens.
-  const [chosenHostId, setHostId] = useState("");
+  const [chosenHostId, setHostId] = useState(initialHostId ?? "");
   const hostId = chosenHostId || enabledHosts[0]?.id || "";
   const [rules, setRules] = useState<UnmanagedRule[] | null>(null);
   const [error, setError] = useState<string | null>(null);

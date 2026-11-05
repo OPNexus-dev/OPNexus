@@ -204,6 +204,16 @@ async def check_revert_failed(db: AsyncSession) -> dict[str, dict]:
                 "message": deployment.message,
             }
     problems.update(await _cleanup_problems(db))
+    from app.models.rule_order import RuleOrderChange
+    for change in (await db.scalars(select(RuleOrderChange).where(RuleOrderChange.status == "revert_failed"))).all():
+        host = await db.get(OpnsenseHost, change.host_id)
+        problems[f"rule_order:{change.id}"] = {
+            "deployment_type": "rule_order", "deployment_id": str(change.id), "entity_id": change.rule_uuid,
+            "host_id": str(change.host_id), "host_name": host.name if host else None, "rule": change.description,
+            "message": change.message,
+            "hinweis": "Reihenfolge: Das automatische Zurücksetzen einer verschobenen Regel ist fehlgeschlagen. "
+                       "Die Reihenfolge auf der Firewall prüfen und in OPNexus erneut zurücknehmen.",
+        }
     return problems
 
 

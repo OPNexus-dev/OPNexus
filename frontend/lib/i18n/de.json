@@ -762,7 +762,62 @@
     "placementEnd": "Am Ende (hinter allen bestehenden Regeln)",
     "placementTop": "Ganz oben (vor allen bestehenden Regeln)",
     "placementInfo": "Regeln werden von oben nach unten geprüft, die erste passende gewinnt. OPNsense hängt neue Regeln ans Ende. „Ganz oben“ verschiebt die Regel beim Ausrollen vor alle anderen Regeln derselben Prioritätsgruppe; Regeln aus der Richtlinien-Hierarchie („vorher“) bleiben darüber. Die Position wird bei jedem Ausrollen erneut gesetzt.",
-    "placementBlockEnd": "Eine Block-Regel am Ende greift nicht, wenn davor eine passende Erlaubnis-Regel steht. Meist willst du „Ganz oben“."
+    "placementBlockEnd": "Eine Block-Regel am Ende greift nicht, wenn davor eine passende Erlaubnis-Regel steht. Meist willst du „Ganz oben“.",
+    "local": {
+      "title": "Nur auf einzelnen Firewalls",
+      "info": "Regeln, die von Hand direkt auf einer Firewall angelegt wurden und nicht zentral verwaltet werden. OPNexus ändert sie nicht. Mit „Übernehmen“ werden sie zentral verwaltet oder mit einer zentralen Regel verknüpft; vorher schreibt OPNexus nichts auf die Firewall.",
+      "intro": "Diese Regeln gibt es nur direkt auf der Firewall, sie sind nicht zentral verwaltet. Die Firewalls werden beim Öffnen live abgefragt.",
+      "refresh": "Neu laden",
+      "noHosts": "Keine aktiven Hosts.",
+      "pair": "HA-Paar mit {count} Firewalls",
+      "adopt": "Übernehmen …",
+      "none": "Keine lokalen Regeln, alles wird zentral verwaltet.",
+      "loadFailed": "{host} antwortet nicht, die Regeln konnten nicht gelesen werden.",
+      "onlyHere": "Nur hier",
+      "alsoOn": "Auch auf: {hosts}"
+    },
+    "order": {
+      "showSystem": "Systemregeln anzeigen",
+      "hostFailed": "{host} antwortet nicht, die Regeln konnten nicht gelesen werden.",
+      "pendingTitle": "Neue Reihenfolge gilt nur auf Probe",
+      "pendingBody": "{count} Verschiebung(en) sind live. Ohne Bestätigung wird in {time} die alte Reihenfolge wiederhergestellt.",
+      "confirm": "Bestätigen",
+      "revert": "Zurücknehmen",
+      "retry": "Erneut zurücknehmen",
+      "revertFailedBanner": "Das Zurücknehmen von „{rule}“ auf {host} ist fehlgeschlagen. Reihenfolge auf der Firewall prüfen. Solange das offen ist, sind weitere Verschiebungen und Ausrollen auf diesem Host gesperrt.",
+      "colMove": "Verschieben",
+      "group": {
+        "floating": "Floating-Regeln",
+        "ifgroup": "Interface-Gruppen",
+        "interface": "Regeln pro Interface",
+        "system": "System",
+        "other": "Weitere"
+      },
+      "origin": {
+        "central": "Zentral",
+        "local": "Nur lokal",
+        "hierarchy": "Hierarchie",
+        "system": "System"
+      },
+      "mixed": "nicht überall zentral",
+      "present": "vorhanden",
+      "absent": "fehlt",
+      "moveTop": "„{rule}“ ganz nach oben",
+      "moveUp": "„{rule}“ eine Stelle nach oben",
+      "moveDown": "„{rule}“ eine Stelle nach unten",
+      "moveEnd": "„{rule}“ ans Ende",
+      "edit": "„{rule}“ bearbeiten",
+      "editShort": "Bearbeiten",
+      "editLocalHint": "Diese Regel gibt es nur auf der Firewall. Beim Bearbeiten wird sie zentral übernommen (dabei wird nichts geschrieben), geändert wird dann wie üblich mit Vorschau und Bestätigung.",
+      "moved": "„{rule}“ verschoben. Bitte bestätigen, sobald du die Firewall noch erreichst.",
+      "confirmed": "Reihenfolge bestätigt.",
+      "reverted": "Reihenfolge zurückgenommen.",
+      "confirmFailed": "Bestätigen fehlgeschlagen.",
+      "revertFailed": "Zurücknehmen fehlgeschlagen.",
+      "moveFailed": "Verschieben fehlgeschlagen.",
+      "adopted": "„{rule}“ ist jetzt zentral verwaltet.",
+      "dropEnd": "Hier ablegen: ans Ende der Gruppe"
+    }
   },
   "adopt": {
     "button": "Von Firewall übernehmen",
@@ -1171,7 +1226,13 @@
     "HA_NOT_PRIMARY": "Diese Aktion ist nur am Primär möglich.",
     "HA_ALREADY_IN_PAIR": "Dieser Knoten ist schon Teil eines HA-Paars.",
     "HA_INPUT_INVALID": "Die Eingabe ist ungültig (Adresse, Name oder Code prüfen).",
-    "HA_PREPARE_FAILED": "Das Gate für die Kopplung ließ sich nicht starten. Im Terminal: docker compose logs ha-gate updater."
+    "HA_PREPARE_FAILED": "Das Gate für die Kopplung ließ sich nicht starten. Im Terminal: docker compose logs ha-gate updater.",
+    "OPEN_ORDER_CHANGE_BLOCKS_DEPLOY": "Für diesen Host gibt es eine offene Änderung der Regel-Reihenfolge. Bitte zuerst bestätigen oder zurücknehmen.",
+    "ORDER_RULE_NOT_FOUND": "Die Regel gibt es auf der Firewall nicht mehr. Bitte die Ansicht neu laden.",
+    "ORDER_RULE_NOT_MOVABLE": "Diese Regel lässt sich hier nicht verschieben (Systemregel, von der Hierarchie bestimmt oder in einer anderen Prioritätsgruppe).",
+    "ORDER_MOVE_FAILED": "{host}: Das Verschieben hat nicht geklappt, die alte Reihenfolge wurde wiederhergestellt ({reason}).",
+    "ORDER_NOTHING_OPEN": "Es gibt keine offene Verschiebung, die sich bestätigen ließe (die Frist ist vielleicht abgelaufen).",
+    "ORDER_HOST_UNREACHABLE": "{host} antwortet nicht, die Reihenfolge konnte nicht gelesen werden ({reason})."
   },
   "workflow": {
     "attention": "Fehler prüfen",
@@ -2489,7 +2550,8 @@
       "acme": "ACME",
       "notification": "Benachrichtigungen",
       "system": "OPNexus-System",
-      "gui_access": "GUI-Zugriff"
+      "gui_access": "GUI-Zugriff",
+      "rule_order": "Regel-Reihenfolge"
     },
     "action": {
       "deploy": "Push",

@@ -16,6 +16,7 @@ import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { LiveRulesDrift } from "@/components/LiveRulesDrift";
 import { AdoptRulesModal } from "@/components/AdoptRulesModal";
+import { HostLocalRules } from "@/components/HostLocalRules";
 import { useReadOnly } from "@/lib/useReadOnly";
 import {
   api,
@@ -135,6 +136,8 @@ function RulesContent() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showAdopt, setShowAdopt] = useState(false);
+  const [adoptHostId, setAdoptHostId] = useState<string | undefined>(undefined);
+  const [adoptReload, setAdoptReload] = useState(0);
   const [form, setForm] = useState<RuleCreate>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -329,6 +332,18 @@ function RulesContent() {
     setShowModal(true);
   }
 
+  // Opened from the order view: the rule list may not know a rule that was just taken over, so read it fresh.
+  async function editRuleById(id: string) {
+    try {
+      const list = await api.listRules();
+      setRules(list);
+      const rule = list.find((r) => r.id === id);
+      if (rule) openEditor(rule);
+    } catch (e) {
+      setError(errorMessage(e, "rules.loadFailed"));
+    }
+  }
+
   async function handleConfirm(id: string) {
     setConfirmingId(id);
     try {
@@ -421,7 +436,7 @@ function RulesContent() {
       />
 
       {activeTab === "live" ? (
-        <LiveRulesDrift />
+        <LiveRulesDrift onEditRule={editRuleById} onRulesChanged={async () => { await load(); }} />
       ) : (
         <>
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
@@ -508,11 +523,12 @@ function RulesContent() {
         })}
         </fieldset>
       </div>
+      {!selectedGroup && <HostLocalRules hosts={hosts} reloadKey={adoptReload} onAdopt={(id) => { setAdoptHostId(id); setShowAdopt(true); }} />}
         </>
       )}
 
       <fieldset disabled={readOnly} className="contents">
-      {showAdopt && <AdoptRulesModal hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
+      {showAdopt && <AdoptRulesModal hosts={hosts} initialHostId={adoptHostId} onClose={() => { setShowAdopt(false); setAdoptHostId(undefined); }} onAdopted={() => { load(); setAdoptReload((n) => n + 1); }} />}
       {review && <RuleReview rule={review.rule} mode={review.mode} onClose={() => setReview(null)} onDeployed={() => { setReview(null); load(); }} onChanged={load} onRestore={snapshot => openEditor(review.rule, false, snapshot)} />}
       {showModal && (
         <Modal title={editing ? t("rules.editDraft") : t("rules.new")} onClose={() => setShowModal(false)}>

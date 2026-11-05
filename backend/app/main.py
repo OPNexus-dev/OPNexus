@@ -57,6 +57,7 @@ from app.routers import maintenance_windows as maintenance_windows_router
 from app.routers import rollouts as rollouts_router
 from app.routers import rule_analysis as rule_analysis_router
 from app.routers import rule_cleanup as rule_cleanup_router
+from app.routers import rule_order as rule_order_router
 from app.routers import config_code as config_code_router
 from app.routers import gui_access as gui_access_router
 from app.services import scheduled_maintenance_service
@@ -68,6 +69,7 @@ from app.services import backup_schedule_service
 from app.services import carp_event_service, carp_maintenance_window_service
 from app.services import rule_history_service
 from app.services import rule_cleanup_service
+from app.services import rule_order_service
 from app.services import heartbeat_service
 from app import leader
 
@@ -158,6 +160,13 @@ async def _deploy_revert_sweep_loop():
                 logger.info("Regel-Bereinigung: %d Operation(en) automatisch zurückgenommen/abgeschlossen", len(reverted))
         except Exception:
             logger.exception("Rule-cleanup revert sweep failed")
+        try:
+            async with SessionLocal() as db:
+                reverted = await rule_order_service.sweep_expired_order_changes(db)
+            if reverted:
+                logger.info("Regel-Reihenfolge: %d unbestätigte Verschiebung(en) automatisch zurückgenommen", len(reverted))
+        except Exception:
+            logger.exception("Rule-order revert sweep failed")
         await asyncio.sleep(_SWEEP_INTERVAL_SECONDS)
 
 
@@ -521,6 +530,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(hosts.router, prefix="/api")
 app.include_router(rules.router, prefix="/api")
+app.include_router(rule_order_router.router, prefix="/api")
 app.include_router(search_router.router, prefix="/api")
 app.include_router(users_router.router, prefix="/api")
 app.include_router(tokens_router.router, prefix="/api")

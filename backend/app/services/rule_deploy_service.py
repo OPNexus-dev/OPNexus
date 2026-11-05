@@ -105,7 +105,10 @@ async def _deploy_to_host(db: AsyncSession, rule: FirewallRule, host: OpnsenseHo
     async def apply():
         # Positioning runs after the UUID is recorded (push_to_host), so a refused move leaves an armed "error" row that
         # the revert sweeper undoes - never an unplaced block rule that looks fine.
-        if payload.get("placement") == "top":
+        # Only when the position was asked for now (new rule, placement changed, or a retry after an error): a rule that was
+        # "top" already stays wherever it has been moved to since (the order view lets people move rules).
+        retry = existing is not None and existing.status == "error"
+        if payload.get("placement") == "top" and (prior_uuid is None or retry or (prior_live_payload or {}).get("placement") != "top"):
             await place_on_top(host, written["uuid"])
         await opnsense_client.apply(host)
 

@@ -390,6 +390,50 @@ export interface HostNetwork {
   unavailable: string[];
 }
 
+export interface OrderRow {
+  uuid: string;
+  description: string;
+  action: string;
+  action_label: string;
+  direction: string;
+  direction_label: string;
+  interface: string | null;
+  interface_label: string | null;
+  protocol: string | null;
+  protocol_label: string | null;
+  source_net: string;
+  source_port: string | null;
+  destination_net: string;
+  destination_port: string | null;
+  enabled: boolean;
+  is_automatic: boolean;
+  prio_group: string;
+  sort_order: string;
+  movable: boolean;
+  /** central (an OPNexus rule), hierarchy (policy hierarchy), local (made by hand on this firewall), system (built in). */
+  origin: "central" | "hierarchy" | "local" | "system";
+  central_rule_id: string | null;
+}
+
+export interface OrderChange {
+  id: string;
+  host_id: string;
+  host_name: string | null;
+  rule_uuid: string;
+  description: string;
+  status: "pending" | "revert_failed" | "confirmed" | "reverted" | "failed";
+  message: string | null;
+  actor: string;
+  created_at: string;
+  revert_deadline: string | null;
+}
+
+export interface HostOrder {
+  host_id: string;
+  rows: OrderRow[];
+  open: OrderChange[];
+}
+
 export interface LiveRule {
   uuid: string;
   description: string;
@@ -1557,6 +1601,11 @@ export const api = {
   // The server wants the host's own name too (T4): deleting drops its stored credentials at once.
   deleteHost: (id: string, confirmName: string) => request<void>(`/hosts/${id}?confirm_name=${encodeURIComponent(confirmName)}`, { method: "DELETE" }),
   getLiveRules: (id: string) => request<LiveRule[]>(`/hosts/${id}/live-rules`),
+  getRuleOrder: (id: string) => request<HostOrder>(`/rule-order/hosts/${id}`),
+  moveRule: (hostId: string, ruleUuid: string, beforeUuid: string | null) =>
+    request<OrderChange | null>(`/rule-order/hosts/${hostId}/move`, { method: "POST", body: JSON.stringify({ rule_uuid: ruleUuid, before_uuid: beforeUuid }) }),
+  confirmOrder: (hostId: string) => request<OrderChange[]>(`/rule-order/hosts/${hostId}/confirm`, { method: "POST" }),
+  revertOrder: (hostId: string) => request<OrderChange[]>(`/rule-order/hosts/${hostId}/revert`, { method: "POST" }),
   getHostNetwork: (id: string) => request<HostNetwork>(`/hosts/${id}/network`),
   runPing: (id: string, data: { target: string; ipproto: string; count: number; packetsize?: number | null; source?: string }) =>
     request<PingResult>(`/hosts/${id}/diagnostics/ping`, { method: "POST", body: JSON.stringify(data) }),

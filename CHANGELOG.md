@@ -31,6 +31,19 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.2] "Shikra" — 2026-11-05
+
+- **Regeln: „Live über alle Hosts“ zeigt jetzt die echte Reihenfolge und lässt Regeln bearbeiten und verschieben.** Pro Firewall (ein HA-Paar zusammen, Einzel-Firewalls für sich) stehen alle Regeln in der Reihenfolge, in der die Firewall sie prüft:
+  zentrale (Abzeichen „Zentral“), nur auf der Firewall angelegte („Nur lokal“), von der Hierarchie gesetzte und, auf Wunsch, Systemregeln, mit Haken je Firewall des Paars. **Verschieben** per Pfeilen (eine Stelle, ganz nach oben, ans Ende) oder per Ziehen;
+  bei einem Paar gilt die Verschiebung auf beiden Firewalls. Eine neue Reihenfolge gilt nur **auf Probe**: Ohne Bestätigen innerhalb der Frist stellt OPNexus die alte wieder her (mehrere Verschiebungen nacheinander werden zusammen bestätigt oder zusammen,
+  die neueste zuerst, zurückgenommen); schlägt das Zurücknehmen fehl, kommt eine Benachrichtigung, und weitere Verschiebungen und Ausrollen auf dem Host sind gesperrt, bis es geklärt ist. **Bearbeiten**: zentrale Regeln öffnen den normalen Editor; eine nur lokale Regel wird dabei
+  zuerst zentral übernommen (nur ein Eintrag in OPNexus, nichts wird geschrieben; auf dem zweiten Host des Paars wird sie verknüpft) und dann wie üblich mit Vorschau, Bestätigung und Auto-Rollback geändert. Von der Hierarchie gesetzte Regeln und Systemregeln lassen sich hier nicht verschieben.
+  Neue API `/api/rule-order/…` (Verschieben und Zurücknehmen wie Ausrollen berechtigt, Bestätigen nur im Browser). Migration 0036.
+- **Position „Ganz oben“ gilt beim Anlegen und beim Ändern der Position, nicht bei jedem Ausrollen.** Wer eine Regel später verschiebt, behält diese Position auch nach einem erneuten Ausrollen (Wiederholung nach einem Fehler setzt die Position erneut).
+- **Regeln: Übersicht der Regeln, die es nur auf einzelnen Firewalls gibt.** Unter der Liste der zentralen Regeln gibt es den aufklappbaren Abschnitt „Nur auf einzelnen Firewalls“: die von Hand direkt auf einer Firewall
+  angelegten Regeln, nach Firewall gruppiert (ein HA-Paar zählt einmal), mit dem Hinweis „Nur hier“ oder „Auch auf: …“, wenn dieselbe Regel auf einer anderen Firewall steht. Die Firewalls werden erst beim Öffnen live abgefragt;
+  eine, die nicht antwortet, zeigt nur ihre eigene Fehlermeldung. „Übernehmen …“ öffnet den bestehenden Übernehmen-Dialog direkt auf dieser Firewall (zentral verwalten oder mit einer zentralen Regel verknüpfen). Nichts davon schreibt auf die Firewalls.
+
 ## [1.37.1] "Shikra" — 2026-11-04
 
 - **Regeln: Position in der Regelliste wählbar.** OPNsense hängt neue Regeln ans Ende ihrer Prioritätsgruppe; eine Block-Regel hinter einer „Alles erlauben“-Regel griff deshalb nie. Im Regelformular

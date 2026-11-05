@@ -65,6 +65,11 @@ async def ensure_no_maintenance(db, hosts, *, cleanup=True):
         raise api_error(409, ErrorCode.OPEN_RESTORE_BLOCKS_DEPLOY)
     if cleanup and ids:
         await ensure_no_open_cleanup(db, hosts)
+        # An unconfirmed (or failed-to-revert) change of the rule ORDER: a deploy now would build on a position that may be
+        # taken back, and its own positioning would fight the revert.
+        from app.services.rule_order_service import has_open_change
+        if await has_open_change(db, ids):
+            raise api_error(409, ErrorCode.OPEN_ORDER_CHANGE_BLOCKS_DEPLOY)
 
 
 async def _shared_change_blockers(db, fleet):

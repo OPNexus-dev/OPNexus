@@ -762,7 +762,62 @@
     "placementEnd": "At the end (after all existing rules)",
     "placementTop": "At the very top (before all existing rules)",
     "placementInfo": "Rules are checked from top to bottom and the first match wins. OPNsense appends new rules at the end. \"At the very top\" moves the rule in front of all other rules of the same priority group when it is rolled out; rules from the policy hierarchy (\"before\") stay above it. The position is set again on every rollout.",
-    "placementBlockEnd": "A block rule at the end does nothing if a matching allow rule comes before it. You usually want \"At the very top\"."
+    "placementBlockEnd": "A block rule at the end does nothing if a matching allow rule comes before it. You usually want \"At the very top\".",
+    "local": {
+      "title": "Only on individual firewalls",
+      "info": "Rules that were created by hand directly on a firewall and are not managed centrally. OPNexus does not change them. \"Take over\" manages them centrally or links them to a central rule; OPNexus writes nothing to the firewall before that.",
+      "intro": "These rules exist only directly on the firewall and are not managed centrally. The firewalls are queried live when you open this section.",
+      "refresh": "Reload",
+      "noHosts": "No active hosts.",
+      "pair": "HA pair of {count} firewalls",
+      "adopt": "Take over …",
+      "none": "No local rules, everything is managed centrally.",
+      "loadFailed": "{host} does not answer, its rules could not be read.",
+      "onlyHere": "Only here",
+      "alsoOn": "Also on: {hosts}"
+    },
+    "order": {
+      "showSystem": "Show system rules",
+      "hostFailed": "{host} does not answer, its rules could not be read.",
+      "pendingTitle": "The new order is on probation",
+      "pendingBody": "{count} move(s) are live. Without confirmation the old order is restored in {time}.",
+      "confirm": "Confirm",
+      "revert": "Revert",
+      "retry": "Revert again",
+      "revertFailedBanner": "Reverting \"{rule}\" on {host} failed. Check the order on the firewall. While this is open, further moves and rollouts on this host are blocked.",
+      "colMove": "Move",
+      "group": {
+        "floating": "Floating rules",
+        "ifgroup": "Interface groups",
+        "interface": "Rules per interface",
+        "system": "System",
+        "other": "Other"
+      },
+      "origin": {
+        "central": "Central",
+        "local": "Local only",
+        "hierarchy": "Hierarchy",
+        "system": "System"
+      },
+      "mixed": "not central everywhere",
+      "present": "present",
+      "absent": "missing",
+      "moveTop": "Move \"{rule}\" to the very top",
+      "moveUp": "Move \"{rule}\" up one place",
+      "moveDown": "Move \"{rule}\" down one place",
+      "moveEnd": "Move \"{rule}\" to the end",
+      "edit": "Edit \"{rule}\"",
+      "editShort": "Edit",
+      "editLocalHint": "This rule exists only on the firewall. Editing takes it over centrally (nothing is written for that); changes then go out as usual with preview and confirmation.",
+      "moved": "\"{rule}\" moved. Please confirm as soon as you can still reach the firewall.",
+      "confirmed": "Order confirmed.",
+      "reverted": "Order reverted.",
+      "confirmFailed": "Confirming failed.",
+      "revertFailed": "Reverting failed.",
+      "moveFailed": "Moving failed.",
+      "adopted": "\"{rule}\" is now managed centrally.",
+      "dropEnd": "Drop here: to the end of the group"
+    }
   },
   "adopt": {
     "button": "Adopt from firewall",
@@ -1171,7 +1226,13 @@
     "HA_NOT_PRIMARY": "This action is only possible on the primary.",
     "HA_ALREADY_IN_PAIR": "This node is already part of an HA pair.",
     "HA_INPUT_INVALID": "The input is invalid (check address, name or code).",
-    "HA_PREPARE_FAILED": "The gate for pairing could not be started. In a terminal: docker compose logs ha-gate updater."
+    "HA_PREPARE_FAILED": "The gate for pairing could not be started. In a terminal: docker compose logs ha-gate updater.",
+    "OPEN_ORDER_CHANGE_BLOCKS_DEPLOY": "There is an open change of the rule order for this host. Please confirm or revert it first.",
+    "ORDER_RULE_NOT_FOUND": "The rule no longer exists on the firewall. Please reload the view.",
+    "ORDER_RULE_NOT_MOVABLE": "This rule cannot be moved here (system rule, placed by the hierarchy, or in another priority group).",
+    "ORDER_MOVE_FAILED": "{host}: The move did not work and the old order was restored ({reason}).",
+    "ORDER_NOTHING_OPEN": "There is no open move to confirm (the window may have expired).",
+    "ORDER_HOST_UNREACHABLE": "{host} does not answer, the order could not be read ({reason})."
   },
   "workflow": {
     "attention": "Check errors",
@@ -2489,7 +2550,8 @@
       "acme": "ACME",
       "notification": "Notifications",
       "system": "OPNexus system",
-      "gui_access": "GUI access"
+      "gui_access": "GUI access",
+      "rule_order": "Rule order"
     },
     "action": {
       "deploy": "Push",

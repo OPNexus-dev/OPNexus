@@ -41,7 +41,7 @@ _SAFE_METHODS = ("GET", "HEAD", "OPTIONS")
 # GUI tickets open a firewall's web interface in the browser: an interactive admin session only.
 # Rule cleanup (1.31): "I still have access" is a human decision, so confirming a cleanup is never possible with a
 # token, whatever its scope (a script must not be able to confirm blindly).
-_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-ticket$|^/api/hosts/[^/]+/rule-cleanup/[^/]+/confirm/?$")
+_SESSION_ONLY = re.compile(r"^/api/(tokens|auth)(/|$)|^/api/hosts/[^/]+/gui-ticket$|^/api/hosts/[^/]+/rule-cleanup/[^/]+/confirm/?$|^/api/rule-order/hosts/[^/]+/confirm/?$")
 # Reads that expose secrets (config.xml holds password hashes and VPN keys, the
 # notification settings the webhook URL/SMTP data): admin scope only.
 _ADMIN_SCOPE_READS = re.compile(r"^/api/hosts/[^/]+/backups/[^/]+$|^/api/notifications(/|$)|^/api/settings/|^/api/overlay/peers/[^/]+/instructions$")
@@ -108,6 +108,8 @@ _ROLLOUT_POST = re.compile(
     # Rule cleanup (1.31): switching rules off (/deploy matches above) and taking it back. Confirming and
     # previewing stay open, like confirm_rule.
     r"|rule-cleanup/[^/]+/(revert|retry)"
+    # Moving rules (1.38): the order is part of a rule's meaning; taking a move back is a deploy-class write, confirming is not.
+    r"|rule-order/hosts/[^/]+/(move|revert)"
     r"|maintenance/(execute|carp-execute|schedule)"
     r"|network/changes"
     r"|snapshots"  # creating a boot environment (deleting one is in _ROLLOUT_DELETE)

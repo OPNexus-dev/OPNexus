@@ -58,6 +58,7 @@ OPERATOR_ALLOWED_WRITES = {
     ("POST", "/api/hosts/x/restore/x/handoff"),
     ("POST", "/api/hosts/x/rule-cleanup/x/cancel"),
     ("POST", "/api/hosts/x/rule-cleanup/x/confirm"),
+    ("POST", "/api/rule-order/hosts/x/confirm"),  # "I still have access": session only, never a token (api_token_service._SESSION_ONLY)
     ("POST", "/api/one-to-one/x/confirm"),
     ("POST", "/api/outbound-nat/x/confirm"),
     ("POST", "/api/policy-hierarchy/rules/x/confirm"),
