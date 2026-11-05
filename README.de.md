@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.37.3` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.37.5` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -43,41 +43,42 @@ Alle Screenshots zeigen fiktive Beispieldaten.
 
 ## Schnellstart
 
-Voraussetzung: Docker mit Compose-Plugin.
+Voraussetzung: Docker mit Compose-Plugin (unter Debian 13: `apt install docker.io docker-compose`). Der empfohlene Weg ist das **Release-Bundle** mit fertigen, signierten Images – auf deinem Rechner wird nichts gebaut:
 
 ```bash
-git clone https://git.opnexus.dev/opnexus/opnexus.git
-cd opnexus
-install -m 600 .env.example .env   # POSTGRES_PASSWORD (und ADMIN_PASSWORD) setzen; nur für dich lesbar
-docker compose up -d --build
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.5/opnexus-1.37.5.tar.gz
+tar xzf opnexus-1.37.5.tar.gz && cd opnexus-1.37.5
+install -m 600 .env.example .env     # nur für dich lesbar
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # eigenes Datenbank-Passwort erzeugen
+docker compose up -d
+./opnexus password                   # zeigt das Admin-Passwort
 ```
 
-Die Oberfläche läuft dann unter `http://localhost:3100`. Ohne `ADMIN_PASSWORD` wird beim ersten Start ein zufälliges Admin-Passwort erzeugt und **einmalig** im Backend-Log ausgegeben. Verloren oder nie gesehen? Dieses Kommando setzt ein neues Zufallspasswort und zeigt es an (im Repo-Checkout `scripts/opnexus`, im Release-Bundle `./opnexus`):
+Dann `https://<server-ip>` öffnen (auf demselben Rechner `https://localhost`) und als `admin` anmelden. Der Browser warnt einmal vor der eigenen Zertifizierungsstelle von OPNexus – das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) zeigt, wie man ihr vertraut und Adressen für den Zugriff von anderen Rechnern einträgt.
 
-```bash
-scripts/opnexus password
-```
+`POSTGRES_PASSWORD` gilt nur beim **allerersten Start** mit einem leeren Datenbank-Volume. Startest du später mit einem anderen Passwort neu, starten Backend und Sicherungsdienst in einer Schleife neu, und das Log nennt den Grund – entweder das ursprüngliche Passwort wieder eintragen oder, bei einer Installation ohne Daten, die alten Volumes mit `docker compose down -v` entfernen (löscht die Datenbank).
+
+Ohne `ADMIN_PASSWORD` in der `.env` wird beim ersten Start ein zufälliges Admin-Passwort erzeugt und **einmalig** im Backend-Log ausgegeben. Verloren oder nie gesehen? `./opnexus password` setzt ein neues Zufallspasswort und zeigt es an (im Repo-Checkout `scripts/opnexus password`).
 
 Nach der ersten Anmeldung öffnet sich von selbst ein kurzer **Einrichtungsassistent**: eigenes Passwort setzen, optional Zwei-Faktor-Anmeldung einschalten, die erste Firewall verbinden (samt Anleitung für den API-Key in OPNsense). Er lässt sich überspringen und jederzeit unter System › Einrichtung wieder öffnen.
 
-**Windows:** läuft in Docker Desktop mit WSL 2, siehe die [Installationsanleitung für Windows](https://opnexus.dev/docs/windows/). Entwickelt und getestet wird unter Linux; für den Dauerbetrieb ist ein Linux-Server oder eine Linux-VM besser.
+**Windows und macOS:** läuft in Docker Desktop, siehe die Installationsanleitungen für [Windows](https://opnexus.dev/docs/windows/) und [macOS](https://opnexus.dev/docs/macos/). Entwickelt und getestet wird unter Linux; für den Dauerbetrieb ist ein Linux-Server oder eine Linux-VM besser.
 
-Für den Zugriff von anderen Rechnern und den Produktivbetrieb mit TLS (mitgelieferter Caddy-Proxy) siehe das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls).
+**Aktualisieren:** `./opnexus update` und `./opnexus rollback` (erst ziehen, vor Migrationen ein Datenbank-Backup, automatisches Zurückrollen, wenn die Dienste nicht gesund werden). Die Images (amd64 und arm64) sind mit [cosign](https://github.com/sigstore/cosign) signiert und liegen in der GitHub Container Registry (`ghcr.io/opnexus-dev`); dieselben Images (gleiche Digests und Signaturen) gibt es auch als `git.opnexus.dev/opnexus`, bestehende Installationen, die diese Registry nutzen, laufen unverändert weiter.
 
-**Fertige Images** (amd64 und arm64, mit [cosign](https://github.com/sigstore/cosign) signiert) liegen in der GitHub Container Registry. In der `.env`:
+### Aus dem Quellcode bauen
 
-```bash
-OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev
-OPNEXUS_VERSION=1.37.3
-```
-
-Dieselben Images (gleiche Digests und Signaturen) gibt es auch in der Registry dieses Gitea als `git.opnexus.dev/opnexus`; bestehende Installationen, die sie nutzen, laufen unverändert weiter.
+Nur für die Entwicklung oder wenn du die Images selbst bauen willst (der Bau des Frontends braucht mehrere GB freien Arbeitsspeicher):
 
 ```bash
-docker compose pull && docker compose up -d --no-build
+git clone https://git.opnexus.dev/opnexus/opnexus.git && cd opnexus
+install -m 600 .env.example .env
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
+docker compose up -d --build
+scripts/opnexus password
 ```
 
-Aktualisiert wird danach mit `scripts/opnexus update` / `rollback` (erst ziehen, vor Migrationen ein Datenbank-Backup, automatisches Zurückrollen, wenn die Dienste nicht gesund werden).
+Die Oberfläche läuft dann unter `http://localhost:3100`.
 
 ## Datenschutz
 

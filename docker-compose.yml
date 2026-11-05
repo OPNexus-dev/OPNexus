@@ -84,11 +84,18 @@ services:
         while true; do
           ts=$$(date +%Y%m%d-%H%M%S)
           echo "postgres-backup: dumping to /backups/opnexus-$$ts.dump"
-          pg_dump -h postgres -U ${POSTGRES_USER:-opnexus} -d ${POSTGRES_DB:-opnexus} -F c \
+          if pg_dump -h postgres -U ${POSTGRES_USER:-opnexus} -d ${POSTGRES_DB:-opnexus} -F c \
             --exclude-table=firewall_log_entries --exclude-table=host_resource_samples \
-            -f "/backups/opnexus-$$ts.dump"
-          find /backups -name 'opnexus-*.dump' -mtime +14 -delete
-          sleep 86400
+            -f "/backups/opnexus-$$ts.dump"; then
+            find /backups -name 'opnexus-*.dump' -mtime +14 -delete
+            sleep 86400
+          else
+            # Kein Absturz-Neustart-Kreis: häufigster Grund ist ein Datenbank-Volume aus einem früheren Versuch mit anderem
+            # Passwort (POSTGRES_PASSWORD gilt nur beim ersten Start; siehe Handbuch, "Fehlerbehebung").
+            find /backups -name "opnexus-$$ts.dump" -size 0 -delete
+            echo "postgres-backup: Sicherung fehlgeschlagen (Passwort/Datenbank passen nicht zum Volume?), neuer Versuch in 10 Minuten" >&2
+            sleep 600
+          fi
         done
 
   backend:
@@ -165,7 +172,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      # Der erste Start legt das ganze Schema an (Migrationen); auf langsamen Rechnern (Raspberry Pi, schwache VM)
+      # dauert das mehrere Minuten. Währenddessen zählen Fehlschläge nicht, ein gesundes Backend gilt sofort als gesund.
+      start_period: 180s
 
   frontend:
     image: ${OPNEXUS_IMAGE_REPO:-local}/opnexus-frontend:${OPNEXUS_VERSION:-latest}

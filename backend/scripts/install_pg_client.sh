@@ -14,14 +14,18 @@ set -eu
 PG_MAJOR="${1:-16}"
 . /etc/os-release
 
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates curl gnupg
+# www.postgresql.org und apt.postgresql.org verteilen auf mehrere Spiegel, von denen gelegentlich einer abbricht
+# ("unexpected eof", Exit 56) oder hängt. Ohne Wiederholungen scheiterte deshalb der Image-Bau von Zeit zu Zeit.
+APT="apt-get -o Acquire::Retries=5"
+$APT update
+$APT install -y --no-install-recommends ca-certificates curl gnupg
 install -d /usr/share/postgresql-common/pgdg
-curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+curl -fsSL --retry 8 --retry-all-errors --retry-delay 3 --connect-timeout 15 --max-time 90 \
+  -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
   https://www.postgresql.org/media/keys/ACCC4CF8.asc
 echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
   > /etc/apt/sources.list.d/pgdg.list
-apt-get update
-apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}"
+$APT update
+$APT install -y --no-install-recommends "postgresql-client-${PG_MAJOR}"
 rm -rf /var/lib/apt/lists/*
 pg_dump --version

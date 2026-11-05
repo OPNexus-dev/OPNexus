@@ -1,4 +1,7 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.db_url import normalize_database_url
 
 
 class Settings(BaseSettings):
@@ -20,6 +23,12 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://opnexus:opnexus@postgres:5432/opnexus"
     )
+
+    @field_validator("database_url")
+    @classmethod
+    def _quote_database_password(cls, value: str) -> str:
+        return normalize_database_url(value)
+
     # ── Schema migrations (app/migrate.py) ────────────────────────────
     # Vor jeder Migration an einer bestehenden Datenbank wird per pg_dump
     # ein Sicherheits-Backup abgelegt (dasselbe Volume wie der

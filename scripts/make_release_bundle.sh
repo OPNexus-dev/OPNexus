@@ -37,20 +37,28 @@ cp cosign.pub "$out/"
 cat > "$out/INSTALL.txt" <<TXT
 OPNexus $version
 
-1. install -m 600 .env.example .env     und POSTGRES_PASSWORD (und was sonst nötig ist) eintragen
-2. docker compose pull && docker compose up -d --no-build
+1. install -m 600 .env.example .env      (Datei nur für dich lesbar)
+   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=\$(openssl rand -hex 24)|" .env
+                                         (eigenes Datenbank-Passwort erzeugen; unter macOS/Windows die .env im Editor
+                                          öffnen und POSTGRES_PASSWORD von Hand eintragen)
+2. docker compose up -d                  (lädt die Images beim ersten Mal selbst)
 3. Anmelden:  ./opnexus password          (zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war)
-              dann im Browser öffnen — der Einrichtungsassistent führt durch den Rest
+              dann https://<server-ip> im Browser öffnen (lokal https://localhost) — der Einrichtungsassistent führt durch den Rest
 4. Updates:   ./opnexus update            (neueste Version der in .env gewählten Spur)
               ./opnexus update 1.10.1     (feste Version)
    Zurück:    ./opnexus rollback
    Sichern:   ./opnexus backup
 
+Wichtig: POSTGRES_PASSWORD gilt nur beim allerersten Start mit leerem Datenbank-Volume. Startet das Backend danach in einer
+Schleife neu ("password authentication failed"), stammt das Volume aus einem früheren Versuch: das ursprüngliche Passwort
+wieder eintragen oder ohne Daten "docker compose down -v" (löscht die Datenbank). Der Compose-Projektname ist immer
+"opnexus", egal in welchem Ordner; für eine zweite Instanz COMPOSE_PROJECT_NAME in der .env setzen.
+
 Optional: Updates per Klick im Webinterface (Einstellungen › "OPNexus aktualisieren"):
    in .env  COMPOSE_PROFILES=updater  und UPDATE_CHECK_URL setzen, dann
-   docker compose up -d --no-build     (Hinweise zur Sicherheit: Handbuch)
+   docker compose up -d     (Hinweise zur Sicherheit: Handbuch)
 
-Vollständige Anleitung: README.md im Repository, Abschnitt "Release-Images & CI".
+Vollständige Anleitung: Handbuch (docs/HANDBUCH.md), Abschnitt "Erste Schritte", und https://opnexus.dev.
 TXT
 
 # Reproduzierbar: gleiche Eingaben ergeben dasselbe Archiv (feste Reihenfolge, Besitzer und Zeit = Commit des Tags, gzip ohne Zeitstempel), damit die

@@ -18,6 +18,7 @@ from app.auth_middleware import AuthMiddleware
 from app.security_middleware import FencedNodeMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware, StandbyNodeMiddleware
 from app.config import settings
 from app.database import SessionLocal
+from app.db_url import explain_database_error
 from app import migrate
 from app.routers import auth, hosts, logs, rules, groups, aliases, port_forward, search as search_router, users as users_router, tokens as tokens_router, metrics as metrics_router, mcp as mcp_router, compliance as compliance_router, audit_export as audit_export_router, backups as backups_router, oidc as oidc_router, governance as governance_router, overlay as overlay_router, variables as variables_router
 from app.routers import one_to_one
@@ -389,7 +390,13 @@ async def lifespan(app: FastAPI):
     if conflicts:
         # A GUI-gateway slot must never be a trusted OPNexus origin (CORS with credentials).
         raise RuntimeError(f"OPNEXUS_GUI_SITES overlaps FRONTEND_ORIGIN: {', '.join(conflicts)} — refusing to start")
-    await migrate.run()
+    try:
+        await migrate.run()
+    except Exception as exc:
+        hint = explain_database_error(exc)
+        if hint:
+            logger.error("Start abgebrochen: Verbindung zur Datenbank nicht möglich.\n%s", hint)
+        raise
     try:  # values from Settings › Betrieb; refreshed in every process (leader or not)
         await runtime_settings.refresh()
     except Exception:  # a replica whose schema is older than this code (standby updated first) has no such table yet

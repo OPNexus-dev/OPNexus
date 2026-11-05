@@ -50,38 +50,63 @@ Eine Kurzfassung steht in der [README](../README.md), die Änderungen je Version
 
 ### Installation aus dem Release-Bundle
 
-Das Bundle (`opnexus-<version>.tar.gz` auf der Release-Seite) enthält eine
-fertige Compose-Datei mit den Release-Images (Standard-Registry: `ghcr.io/opnexus-dev`),
-eine Vorlage für die `.env`, das Werkzeug `opnexus` und eine Kurzanleitung.
+Das ist der empfohlene Weg, auf Linux, macOS und Windows (WSL). Das Bundle
+(`opnexus-<version>.tar.gz` auf der Release-Seite) enthält eine fertige Compose-Datei mit den
+signierten Release-Images (Standard-Registry: `ghcr.io/opnexus-dev`), eine Vorlage für die
+`.env`, das Werkzeug `opnexus` und eine Kurzanleitung (`INSTALL.txt`). Auf dem Rechner wird
+nichts gebaut; `docker compose up -d` lädt die Images beim ersten Mal selbst.
 
 ```bash
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v<version>/opnexus-<version>.tar.gz
 tar xzf opnexus-<version>.tar.gz && cd opnexus-<version>
-install -m 600 .env.example .env   # POSTGRES_PASSWORD setzen (und was sonst nötig ist); nur für dich lesbar
-docker compose pull && docker compose up -d --no-build
-./opnexus password            # zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war
+install -m 600 .env.example .env     # nur für dich lesbar
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # eigenes Datenbank-Passwort
+docker compose up -d
+./opnexus password                   # zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war
 ```
+
+Danach `https://<server-ip>` öffnen (lokal `https://localhost`); der Einrichtungsassistent führt durch die ersten Schritte.
+Das Datenbank-Passwort musst du dir nicht merken, es steht in der `.env`. Weitere Einstellungen (Adressen, TLS) stehen unter
+[Konfiguration (`.env`)](#konfiguration-env).
+
+**Gut zu wissen**
+
+- `POSTGRES_PASSWORD` (ebenso `POSTGRES_DB` und `POSTGRES_USER`) gilt **nur beim allerersten Start** mit einem leeren
+  Datenbank-Volume. Das Volume behält sein Passwort. Ändert sich das Passwort in der `.env` später, lehnt die Datenbank
+  das Backend ab, und Backend und `postgres-backup` starten in einer Schleife neu (das Backend-Log nennt den Grund). Entweder das
+  ursprüngliche Passwort wieder eintragen oder, wenn noch keine Daten da sind, mit `docker compose down -v` die Volumes entfernen
+  (**löscht die Datenbank und alle Zugangsdaten**).
+- Der Compose-Projektname ist immer `opnexus`, **egal in welchem Ordner** du installierst. Ein zweiter Ordner (etwa ein neu
+  entpacktes Bundle neben dem alten) nutzt deshalb dieselben Container und Volumes. Für eine wirklich getrennte zweite Instanz
+  siehe [Zweite Instanz auf demselben Rechner](#zweite-instanz-auf-demselben-rechner).
+- Der erste Start legt das Datenbankschema an; auf langsamen Rechnern (Raspberry Pi, kleine VM) kann das mehrere Minuten dauern.
+  `docker compose ps` zeigt „starting“, bis das Backend gesund ist.
 
 ### Installation aus dem Quellcode
 
+Nur für die Entwicklung oder wenn du die Images selbst bauen willst. Der Bau des Frontends braucht mehrere GB freien
+Arbeitsspeicher und dauert auf kleinen Rechnern lange.
+
 ```bash
 git clone https://git.opnexus.dev/opnexus/opnexus.git && cd opnexus
-install -m 600 .env.example .env   # POSTGRES_PASSWORD setzen; nur für dich lesbar
+install -m 600 .env.example .env
+sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env
 docker compose up -d --build
 scripts/opnexus password
 ```
 
-Alternativ lassen sich auch aus einem Checkout die fertigen Images verwenden: in
+Oberfläche: `http://localhost:3100`. Alternativ lassen sich auch aus einem Checkout die fertigen Images verwenden: in
 der `.env` `OPNEXUS_IMAGE_REPO=ghcr.io/opnexus-dev` und `OPNEXUS_VERSION=<version>`
 setzen, dann `docker compose pull && docker compose up -d --no-build`.
 
-### Installation unter Windows
+### Installation unter Windows und macOS
 
-Unter Windows läuft derselbe Stack in **Docker Desktop mit WSL 2**: WSL und Docker Desktop
-installieren, in der WSL-Umgebung (Ubuntu) das Release-Bundle wie oben entpacken, `.env`
-anlegen und `docker compose up -d --no-build` ausführen; die Oberfläche öffnet sich unter
-`https://localhost`. Die ausführliche Anleitung mit Zertifikatsimport, Zugriff aus dem Netz
-(Windows-Firewall), Updates und Fehlerbehebung steht auf der Website:
-<https://opnexus.dev/docs/windows/>. Entwickelt und getestet wird OPNexus unter Linux; für den
+Unter Windows und macOS läuft derselbe Stack in **Docker Desktop** (Windows mit WSL 2): Docker Desktop
+installieren, das Release-Bundle entpacken, `.env` anlegen (`POSTGRES_PASSWORD` und `ADMIN_PASSWORD`
+eintragen) und `docker compose up -d` ausführen; die Oberfläche öffnet sich unter
+`https://localhost`. Die ausführlichen Anleitungen mit Zertifikatsimport, Zugriff aus dem Netz
+(Windows-Firewall), Updates und Fehlerbehebung stehen auf der Website:
+<https://opnexus.dev/docs/windows/> und <https://opnexus.dev/docs/macos/>. Entwickelt und getestet wird OPNexus unter Linux; für den
 Dauerbetrieb ist ein Linux-Server oder eine Linux-VM besser, weil Docker Desktop erst nach der
 Anmeldung startet und im Ruhezustand anhält.
 
@@ -2167,8 +2192,9 @@ opnexus;` und `ALTER ROLE <alt> RENAME TO opnexus;` ausführen, `POSTGRES_DB` un
 
 ### Zweite Instanz auf demselben Rechner
 
-Lege das Compose-File in ein eigenes Verzeichnis (oder nutze `docker compose -p
-<name>`), mit eigener `.env`: anderes `POSTGRES_PASSWORD` und `ADMIN_PASSWORD`,
+Lege das Compose-File in ein eigenes Verzeichnis, mit eigener `.env`. Wichtig ist ein eigener
+Projektname (`COMPOSE_PROJECT_NAME=opnexus2`): Die Compose-Datei nennt das Projekt fest `opnexus`, und
+ohne eigenen Namen teilt sich der zweite Ordner Container und Volumes mit dem ersten. Dazu: anderes `POSTGRES_PASSWORD` und `ADMIN_PASSWORD`,
 abweichende `PROXY_HTTPS_PORT` (z. B. 8443), `PROXY_HTTP_PORT`, `BACKEND_PORT`,
 `FRONTEND_PORT` und passendes `FRONTEND_ORIGIN`. Browser trennen Cookies nicht nach
 Port: Öffne zwei Instanzen unter derselben IP in getrennten Profilen oder Fenstern.
@@ -2236,6 +2262,8 @@ Sicherheitslücken meldest du vertraulich an **security@opnexus.dev**
 | Beide Knoten stehen im CARP-Wartungsmodus | An dem Knoten, der zuerst herabgestuft wurde, „Normalbetrieb herstellen“; hängt der Vorgang, „Vorgang abbrechen“. |
 | Backend startet nicht, Meldung zur Datenbank-Revision | Die Datenbank wurde von einer neueren Version migriert. Neuere Version starten oder eine Sicherung einspielen. |
 | Backend startet nicht, Migrations-Backup fehlgeschlagen | Platz auf `postgres_backups` und Version des Postgres-Servers prüfen (Dump und Server brauchen dieselbe Hauptversion). |
+| `docker compose up -d` bricht ab („dependency failed to start“); Backend und `postgres-backup` starten in einer Schleife neu, im Log „password authentication failed“ | Das Datenbank-Volume stammt aus einem früheren Versuch und hat ein anderes Passwort (`POSTGRES_PASSWORD` gilt nur beim ersten Start; der Projektname `opnexus` ist für jeden Ordner derselbe). Ursprüngliches Passwort in die `.env` eintragen oder, ohne Daten, `docker compose down -v` und neu starten (löscht die Datenbank). |
+| Backend startet nicht, Log: Datenbank-Host nicht auflösbar | `POSTGRES_PASSWORD` enthält Sonderzeichen, die in der Verbindungsadresse stören (neuere Versionen kodieren das Passwort selbst, ältere nicht). Sicher sind Buchstaben und Ziffern, z. B. `openssl rand -hex 24`. |
 | Alles wird langsam oder Postgres startet neu | Datenträger voll: Platz schaffen, Log-Aufbewahrung und -Limit senken. |
 | Zeitfilter in den Logs sind verschoben | Die Firewall steht nicht auf UTC, die Zeitstempel sind unkorrigiert. |
 

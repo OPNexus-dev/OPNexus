@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.5] "Shikra" — 2026-11-05
+
+- **Image-Bau übersteht gelegentliche Ausfälle der PostgreSQL-Spiegel.** Das Installationsskript für den Datenbank-Client lädt Schlüssel und Pakete jetzt mit Wiederholungen; vorher brach der Bau ab, wenn einer der Spiegel von `postgresql.org` die Verbindung beendete. Betrifft nur den Bau der Images, nicht den Betrieb.
+
+- **Installation: eine einzige, überall gleiche Anleitung.** README (Deutsch/Englisch), Handbuch, `INSTALL.txt` im Bundle und die Website beschreiben jetzt denselben Weg: Release-Bundle laden, `.env` anlegen, eigenes Datenbank-Passwort erzeugen (`openssl rand -hex 24`), `docker compose up -d`, `./opnexus password`. Bauen aus dem Quellcode steht als eigener Abschnitt „nur für die Entwicklung“. Das Handbuch erklärt neu, dass `POSTGRES_PASSWORD` nur beim ersten Start mit leerem Volume gilt und dass der Compose-Projektname für jeden Ordner `opnexus` ist (Container und Volumes werden also zwischen Ordnern geteilt; für eine zweite Instanz `COMPOSE_PROJECT_NAME` setzen).
+- **Neustart-Schleife von Backend und Datenbank-Sicherung behoben.** Lag noch ein Datenbank-Volume eines früheren Versuchs mit anderem Passwort vor (`docker compose up -d` in einem neuen Ordner nutzt wegen des festen Projektnamens dieselben Volumes), starteten Backend und `postgres-backup` endlos neu, ohne dass jemand den Grund erfuhr. Das Backend bricht jetzt mit einer klaren Meldung ab (Ursache und die zwei Auswege), und `postgres-backup` meldet den Fehler, wartet zehn Minuten und versucht es erneut, statt abzustürzen.
+- **Passwörter mit Sonderzeichen** (`@ / # ? :` u. a.) in `POSTGRES_PASSWORD` führten zu „Datenbank-Host nicht auflösbar“ und einer Neustart-Schleife des Backends. Das Backend kodiert solche Passwörter jetzt selbst; Passwörter ohne Sonderzeichen bleiben unverändert.
+- **Backend-Gesundheitsprüfung wartet beim ersten Start 3 Minuten** (vorher 10 Sekunden). Auf langsamen Rechnern (Raspberry Pi, kleine VM) dauert das Anlegen des Schemas länger; `docker compose up -d` brach vorher mit „dependency failed to start“ ab, obwohl das Backend noch startete.
+
 ## [1.37.3] "Shikra" — 2026-11-05
 
 - **Regelformular: „Position“ nur noch für neue Regeln.** Bei einer schon ausgerollten Regel stand dort „Am Ende“, obwohl sie längst woanders sitzt. Jetzt zeigt das Formular dort einen Hinweis mit Link zur Ansicht „Live über alle Hosts“,
