@@ -31,6 +31,11 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.3] "Shikra" — 2026-11-05
+
+- **Regelformular: „Position“ nur noch für neue Regeln.** Bei einer schon ausgerollten Regel stand dort „Am Ende“, obwohl sie längst woanders sitzt. Jetzt zeigt das Formular dort einen Hinweis mit Link zur Ansicht „Live über alle Hosts“,
+  wo die Position per Pfeil oder Ziehen geändert wird. Neue Regeln behalten das Feld (richtige Stelle schon beim ersten Ausrollen, auf allen Ziel-Hosts).
+
 ## [1.37.2] "Shikra" — 2026-11-05
 
 - **Regeln: „Live über alle Hosts“ zeigt jetzt die echte Reihenfolge und lässt Regeln bearbeiten und verschieben.** Pro Firewall (ein HA-Paar zusammen, Einzel-Firewalls für sich) stehen alle Regeln in der Reihenfolge, in der die Firewall sie prüft:

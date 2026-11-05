@@ -621,20 +621,31 @@ function RulesContent() {
               </FieldGroup>
             </div>
 
-            <div className="space-y-2">
-              <FieldGroup label={t("rules.placement")} hint={t("rules.placementInfo")}>
-                <Select
-                  value={form.placement ?? "end"}
-                  onChange={(e) => { setPlacementTouched(true); setForm({ ...form, placement: e.target.value as "end" | "top" }); }}
-                >
-                  <option value="end">{t("rules.placementEnd")}</option>
-                  <option value="top">{t("rules.placementTop")}</option>
-                </Select>
-              </FieldGroup>
-              {form.action !== "pass" && (form.placement ?? "end") === "end" && (
-                <p className="text-xs text-amber-700" role="note">{t("rules.placementBlockEnd")}</p>
-              )}
-            </div>
+            {editing && editing.deployments.length > 0 ? (
+              // Already rolled out: the rule sits wherever it sits now (it may have been moved). The position is not a
+              // property of the draft any more; it is changed in the live order view.
+              <p className="text-sm text-slate-600">
+                {t("rules.placementDeployed")}{" "}
+                <button type="button" className="text-brand-700 underline" onClick={() => { setShowModal(false); setActiveTab("live"); }}>
+                  {t("rules.placementGoLive")}
+                </button>
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <FieldGroup label={t("rules.placement")} hint={t("rules.placementInfo")}>
+                  <Select
+                    value={form.placement ?? "end"}
+                    onChange={(e) => { setPlacementTouched(true); setForm({ ...form, placement: e.target.value as "end" | "top" }); }}
+                  >
+                    <option value="end">{t("rules.placementEnd")}</option>
+                    <option value="top">{t("rules.placementTop")}</option>
+                  </Select>
+                </FieldGroup>
+                {form.action !== "pass" && (form.placement ?? "end") === "end" && (
+                  <p className="text-xs text-amber-700" role="note">{t("rules.placementBlockEnd")}</p>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FieldGroup label="Source">

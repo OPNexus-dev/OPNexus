@@ -817,7 +817,9 @@
       "moveFailed": "Verschieben fehlgeschlagen.",
       "adopted": "„{rule}“ ist jetzt zentral verwaltet.",
       "dropEnd": "Hier ablegen: ans Ende der Gruppe"
-    }
+    },
+    "placementDeployed": "Diese Regel ist schon ausgerollt und steht dort, wo sie jetzt auf der Firewall sitzt. Die Position änderst du in der Ansicht „Live über alle Hosts“ (Pfeile oder Ziehen).",
+    "placementGoLive": "Zur Reihenfolge"
   },
   "adopt": {
     "button": "Von Firewall übernehmen",

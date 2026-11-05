@@ -594,7 +594,7 @@ Weitere Regeln dazu:
 ### Position in der Regelliste
 
 Firewalls prüfen Regeln von oben nach unten, die erste passende gewinnt. OPNsense legt neue Regeln **am Ende** ab; eine Block-Regel hinter einer passenden Erlaubnis-Regel greift deshalb nie.
-Im Regelformular wählst du die **Position**:
+Im Regelformular wählst du bei einer **neuen** (noch nicht ausgerollten) Regel die **Position**; bei einer schon ausgerollten Regel erscheint das Feld nicht, ihre Position änderst du in der Ansicht „Live über alle Hosts“ (siehe unten):
 
 - **Am Ende** (Standard, das bisherige Verhalten): hinter allen bestehenden Regeln.
 - **Ganz oben**: OPNexus verschiebt die Regel beim Ausrollen vor die erste Regel ihrer Prioritätsgruppe (OPNsense kennt dafür nur „vor Regel X“). Regeln aus der

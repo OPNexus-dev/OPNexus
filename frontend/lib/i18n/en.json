@@ -817,7 +817,9 @@
       "moveFailed": "Moving failed.",
       "adopted": "\"{rule}\" is now managed centrally.",
       "dropEnd": "Drop here: to the end of the group"
-    }
+    },
+    "placementDeployed": "This rule is already rolled out and sits wherever it is on the firewall now. You change its position in the Live across all hosts view (arrows or drag and drop).",
+    "placementGoLive": "Go to the order"
   },
   "adopt": {
     "button": "Adopt from firewall",
