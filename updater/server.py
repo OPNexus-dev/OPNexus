@@ -840,9 +840,27 @@ def mark_interrupted() -> None:
             log.write("Agent: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus ha status).\n")
 
 
+def probe_docker() -> None:
+    """Startprüfung des Docker-Sockets: Der Healthcheck testet nur das HTTP-Ende,
+    ein nicht nutzbarer Socket bliebe sonst bis zum ersten Auftrag unentdeckt —
+    unter Rootless Docker ist ein falscher Mount-Pfad dann schwer einzuordnen."""
+    try:
+        proc = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"],
+                               capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None
+    if proc is not None and proc.returncode == 0:
+        print(f"updater: Docker-Socket erreichbar (Engine {proc.stdout.strip()}).", flush=True)
+    else:
+        print("updater: Docker-Socket nicht erreichbar — bei Rootless Docker "
+              "DOCKER_HOST_SOCKET in der .env setzen ('opnexus updater enable' erkennt ihn).",
+              file=sys.stderr, flush=True)
+
+
 def main() -> None:
     Handler.token = load_token()
     mark_interrupted()
+    probe_docker()
     threading.Thread(target=ha_timer_loop, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
