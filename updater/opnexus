@@ -6,6 +6,10 @@
 #   opnexus update [VERSION]  Neue Images ziehen, wechseln, auf "gesund" warten;
 #                             bei Fehler automatisch zurückrollen
 #   opnexus rollback          Letztes Update rückgängig machen
+#   opnexus updater enable    Updater für "Updates per Klick" einschalten; bei
+#                             Rootless Docker wird der Socket-Pfad erkannt und
+#                             als DOCKER_HOST_SOCKET in die .env eingetragen
+#   opnexus updater disable   Updater ausschalten und den Container entfernen
 #   opnexus backup            Sofort-Backup der OPNexus-Datenbank
 #   opnexus backup --full [DATEI] [--with-env] [--with-ca]
 #                             Vollsicherung: Datenbank UND alle Geheimnisse
@@ -123,6 +127,34 @@ updater_enabled() {
   local profiles
   profiles="${COMPOSE_PROFILES:-$(env_get COMPOSE_PROFILES)}"
   [[ ",$profiles," == *",updater,"* ]]
+}
+
+# Wo der Docker-Socket des Hosts liegt, für den Compose-Mount des Updaters
+# (DOCKER_HOST_SOCKET). Rootless Docker legt ihn unter /run/user/<UID> ab; der
+# klassische Pfad gilt unverändert, wenn nichts erkannt oder gesetzt wird.
+# Ein in der .env stehender Wert ist verbindlich und wird nie überschrieben;
+# nur ein fehlender wird gefüllt. Im Updater-Container läuft nichts davon —
+# dort ist der Socket längst gemountet.
+ensure_host_socket() {
+  if [ -n "${OPNEXUS_UPDATER:-}" ] || [ -n "$(env_get DOCKER_HOST_SOCKET)" ]; then return 0; fi
+  local sock="" ep
+  # 1) Der Daemon kennt seinen Socket selbst: DOCKER_HOST oder der aktuelle Kontext.
+  ep="${DOCKER_HOST:-$(docker context inspect --format '{{.Endpoints.docker.Host}}' 2>/dev/null || true)}"
+  case "$ep" in
+    unix:///*)
+      if [ -S "${ep#unix://}" ]; then sock="${ep#unix://}"; fi
+      ;;
+  esac
+  # 2) Klassischer Pfad.  3) Rootless: das Runtime-Verzeichnis des Nutzers.
+  if [ -z "$sock" ] && [ -S /var/run/docker.sock ]; then sock=/var/run/docker.sock; fi
+  if [ -z "$sock" ]; then
+    ep="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/docker.sock"
+    if [ -S "$ep" ]; then sock="$ep"; fi
+  fi
+  # Ohne Fund (z. B. Daemon per TCP) bleibt alles beim Compose-Standard.
+  if [ -z "$sock" ] || [ "$sock" = /var/run/docker.sock ]; then return 0; fi
+  env_set DOCKER_HOST_SOCKET "$sock"
+  say "Docker-Socket erkannt: DOCKER_HOST_SOCKET=$sock (in $ENV_FILE eingetragen)."
 }
 
 overlay_enabled() {
@@ -640,6 +672,7 @@ restore_compose() {
 cmd_update() {
   require_release_mode
   protect_env
+  ensure_host_socket
   if [ -n "$(ha_role_get)" ] && [ "${OPNEXUS_HA_UPDATE:-}" != 1 ]; then
     die "Dieser Server gehört zu einem HA-Paar. Aktualisieren geht mit 'opnexus ha update' (erst der Standby, dann der Primär); sonst bliebe der Standby hinter der Datenbank zurück."
   fi
@@ -779,6 +812,31 @@ cmd_rollback() {
   say "Fertig: läuft wieder auf $(running_version) (DB-Revision $(db_revision)). OPNEXUS_VERSION in $ENV_FILE ist jetzt fest auf $prev_version gesetzt."
   rm -f "$STATE_FILE"
   phase done
+}
+
+# Updater für „Updates per Klick" ein- und ausschalten (siehe Handbuch). Bei
+# Rootless Docker wird vorher der Socket-Pfad erkannt und als
+# DOCKER_HOST_SOCKET in die .env eingetragen — künftige Nutzer müssen dazu
+# nichts von Hand wissen; ein dort stehender Wert hat Vorrang.
+cmd_updater() {
+  case "${1:-}" in
+    enable)
+      ensure_host_socket
+      profile_add updater
+      c up -d --no-build updater \
+        || die "Der Updater ließ sich nicht starten ('docker compose logs updater')."
+      say "Updater aktiviert: Updates per Klick sind verfügbar."
+      say "Nicht vergessen: Versionsprüfung im Webinterface einschalten (Einstellungen)."
+      ;;
+    disable)
+      profile_remove updater
+      c rm -sf updater
+      say "Updater deaktiviert, Container entfernt."
+      ;;
+    *)
+      die "Aufruf: opnexus updater enable|disable"
+      ;;
+  esac
 }
 
 # Setzt ein neues Zufallspasswort und gibt es einmalig aus. Gedacht für die
@@ -1966,6 +2024,13 @@ profile_add() {  # NAME — Profil in COMPOSE_PROFILES der .env ergänzen (vom W
   local cur; cur=$(env_get COMPOSE_PROFILES)
   [[ ",$cur," == *",$1,"* ]] || env_set_literal COMPOSE_PROFILES "${cur:+$cur,}$1"
 }
+profile_remove() {  # NAME — Profil aus COMPOSE_PROFILES der .env entfernen (vom Werkzeug gepflegte Zeile)
+  local cur kept=() p
+  cur=$(env_get COMPOSE_PROFILES)
+  local IFS=,
+  for p in ${cur:-}; do [[ "$p" = "$1" ]] || kept+=("$p"); done
+  env_set_literal COMPOSE_PROFILES "${kept[*]:-}"
+}
 ha_agent_up() {  # Updater (Agent) starten und warten, bis er antwortet
   profile_add updater
   if [ -z "${OPNEXUS_UPDATER:-}" ]; then
@@ -2376,9 +2441,10 @@ case "${1:-}" in
   status)   if [ "${2:-}" = "--porcelain" ]; then cmd_status_porcelain; else cmd_status; fi ;;
   update)   shift; cmd_update "${1:-}" ;;
   rollback) cmd_rollback ;;
+  updater)  shift; cmd_updater "$@" ;;
   backup)   if [ "${2:-}" = "--full" ]; then shift 2; cmd_backup_full "$@"; else cmd_backup; fi ;;
   restore)  shift; cmd_restore "$@" ;;
   migrate-host) shift; cmd_migrate_host "$@" ;;
   ha)       shift; cmd_ha "$@" ;;
-  *) sed -n '2,37p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+  *) sed -n '2,41p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

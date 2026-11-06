@@ -40,6 +40,11 @@ STATE_DIR = Path(os.environ.get("UPDATER_STATE_DIR", "/state"))
 PROJECT_DIR = Path(os.environ.get("OPNEXUS_DIR", "/project"))
 SCRIPT = os.environ.get("OPNEXUS_SCRIPT", "/usr/local/bin/opnexus")
 PORT = int(os.environ.get("UPDATER_PORT", "8080"))
+# Wo der Docker-Socket im Container liegt (Ziel des Mounts aus der Compose-Datei).
+# Der Pfad AUF DEM HOST kann ein anderer sein (Rootless Docker:
+# /run/user/<UID>/docker.sock, via DOCKER_HOST_SOCKET in der .env) — self_update()
+# liest ihn deshalb aus den eigenen Mounts statt ihn fest einzugeben.
+DOCKER_SOCKET = "/var/run/docker.sock"
 # Wie in einem Docker-Tag, aber ohne Vorabversionen: nur X.Y.Z wird akzeptiert.
 VERSION_RE = re.compile(r"^(\d{1,4})\.(\d{1,5})\.(\d{1,6})$")
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
@@ -619,6 +624,16 @@ def self_update() -> None:
         if inspect.returncode != 0 or not host_dir.startswith("/"):
             note("Updater: eigenes Verzeichnis auf dem Host nicht ermittelbar — Updater-Container nicht erneuert.")
             return
+        # Der Docker-Socket kann auf dem Host unter einem anderen Pfad liegen
+        # als im Container (Rootless Docker: /run/user/<UID>/docker.sock).
+        # Der Hilfscontainer braucht die QUELLE des Mounts — dieselbe Technik
+        # wie beim Projektverzeichnis oben; nur lesend, kein Rückschluss auf
+        # unbekannte Mounts. Ohne Fund (z. B. TCP statt Socket) bleibt der
+        # klassische Pfad, wie bisher.
+        socket_inspect = _docker("inspect", me, "--format",
+                                 '{{range .Mounts}}{{if eq .Destination "' + DOCKER_SOCKET + '"}}{{.Source}}{{end}}{{end}}')
+        host_socket = socket_inspect.stdout.strip() if socket_inspect.returncode == 0 else ""
+        host_socket = host_socket if host_socket.startswith("/") else DOCKER_SOCKET
         images = _docker("compose", "config", "--images").stdout.split()
         new_image = next((i for i in images if "/opnexus-updater:" in i or i.startswith("opnexus-updater:")), "")
         if not new_image or new_image == current_image:
@@ -626,7 +641,7 @@ def self_update() -> None:
         _docker("rm", "-f", "opnexus-updater-self-update")
         started = _docker(
             "run", "-d", "--rm", "--name", "opnexus-updater-self-update",
-            "-v", "/var/run/docker.sock:/var/run/docker.sock", "-v", f"{host_dir}:{host_dir}", "-w", host_dir,
+            "-v", f"{host_socket}:{DOCKER_SOCKET}", "-v", f"{host_dir}:{host_dir}", "-w", host_dir,
             "--entrypoint", "docker", new_image, "compose", "up", "-d", "--no-build", "--no-deps", "updater",
         )
         note("Updater: erneuert sich selbst auf " + new_image if started.returncode == 0
@@ -825,9 +840,27 @@ def mark_interrupted() -> None:
             log.write("Agent: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus ha status).\n")
 
 
+def probe_docker() -> None:
+    """Startprüfung des Docker-Sockets: Der Healthcheck testet nur das HTTP-Ende,
+    ein nicht nutzbarer Socket bliebe sonst bis zum ersten Auftrag unentdeckt —
+    unter Rootless Docker ist ein falscher Mount-Pfad dann schwer einzuordnen."""
+    try:
+        proc = subprocess.run(["docker", "version", "--format", "{{.Server.Version}}"],
+                               capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None
+    if proc is not None and proc.returncode == 0:
+        print(f"updater: Docker-Socket erreichbar (Engine {proc.stdout.strip()}).", flush=True)
+    else:
+        print("updater: Docker-Socket nicht erreichbar — bei Rootless Docker "
+              "DOCKER_HOST_SOCKET in der .env setzen ('opnexus updater enable' erkennt ihn).",
+              file=sys.stderr, flush=True)
+
+
 def main() -> None:
     Handler.token = load_token()
     mark_interrupted()
+    probe_docker()
     threading.Thread(target=ha_timer_loop, daemon=True).start()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
