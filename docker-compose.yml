@@ -308,7 +308,14 @@ services:
     restart: unless-stopped
     logging: *default-logging
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      # Docker-Socket des Hosts. Rootless Docker legt ihn unter
+      # /run/user/<UID>/docker.sock, nicht unter /var/run/docker.sock;
+      # DOCKER_HOST_SOCKET in der .env setzt dann den echten Host-Pfad
+      # (siehe .env.example und Handbuch, "Updates per Klick"). Im Container
+      # liegt der Socket immer unter /var/run/docker.sock — auch der
+      # Selbst-Update-Hilfscontainer (updater/server.py, self_update) liest
+      # den Host-Pfad aus den eigenen Mounts, statt ihn fest einzugeben.
+      - ${DOCKER_HOST_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
       # Das Verzeichnis mit docker-compose.yml und .env (der Updater schreibt
       # nur OPNEXUS_VERSION und .opnexus-update-state hinein).
       - .:/project
