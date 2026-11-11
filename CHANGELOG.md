@@ -31,6 +31,15 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.7] "Shikra" — 2026-11-11
+
+- **Updates per Klick funktionieren mit Rootless Docker.** Bisher hängte der Updater immer `/var/run/docker.sock` ein; unter Rootless Docker liegt der Socket aber unter `/run/user/<UID>/docker.sock`, und der Updater lief mit einem leeren Verzeichnis statt eines Sockets (gesund laut Gesundheitsprüfung, aber ohne Zugriff auf Docker).
+  `opnexus updater enable` erkennt den Socket jetzt selbst (`DOCKER_HOST`, Docker-Kontext, klassischer Pfad, `$XDG_RUNTIME_DIR` bzw. `/run/user/<UID>`) und trägt ihn als `DOCKER_HOST_SOCKET` in die `.env` ein; ein von Hand gesetzter Wert hat Vorrang und wird nie überschrieben. `opnexus updater disable` schaltet den Updater wieder ab und lässt den restlichen Stack unberührt.
+  Auch der Hilfscontainer der Selbst-Erneuerung nutzt den echten Host-Pfad (er liest ihn aus den Mounts des Updaters). Mit klassischem Docker ändert sich nichts. Diese Rootless-Unterstützung (Mount, Erkennung, `enable`/`disable`) stammt von [@electronicm](https://github.com/electronicm) (Pull Request #3), auf einer echten Rootless-Installation geprüft; er hat auch die Ursache gefunden (Issue #2).
+  Ergänzt im Projekt: Der HA-Weg, der den Updater ebenfalls startet, nutzt die Erkennung jetzt auch; bei `opnexus update` läuft sie nicht mehr mit, weil sie dabei die `.env` anfasst, auch wenn der Updater gar nicht aktiv ist.
+- **Updater: verständlichere Fehlerdiagnose.** @electronicm hat in Issue #4 drei Lücken gemeldet; behoben im Projekt. Die Signaturprüfung unterscheidet jetzt eine nicht erreichbare Registry (DNS, Netz, TLS) von einer fehlenden oder ungültigen Signatur und zeigt cosigns eigene Meldung. Die Selbst-Erneuerung meldet „gestartet“ statt „erneuert“, solange nur der Start belegt ist; scheitert der Hilfscontainer, stehen Exit-Code und Ausgabe im Protokoll.
+  Protokoll und Ergebnis des letzten Updater-Auftrags bleiben im Webinterface nach Abschluss und nach einem Neuladen sichtbar; ein gescheiterter Teilschritt bei einem insgesamt erfolgreichen Auftrag wird hervorgehoben.
+
 ## [1.37.5] "Shikra" — 2026-11-05
 
 - **Image-Bau übersteht gelegentliche Ausfälle der PostgreSQL-Spiegel.** Das Installationsskript für den Datenbank-Client lädt Schlüssel und Pakete jetzt mit Wiederholungen; vorher brach der Bau ab, wenn einer der Spiegel von `postgresql.org` die Verbindung beendete. Betrifft nur den Bau der Images, nicht den Betrieb.

@@ -2150,15 +2150,18 @@ zurück.
 Das ist **bewusst aus** und muss aktiviert werden, weil es Docker-Zugriff braucht:
 
 ```bash
-# .env
-COMPOSE_PROFILES=updater
+./opnexus updater enable
 ```
+
+Das trägt `COMPOSE_PROFILES=updater` in die `.env` ein, zieht das Updater-Image
+und startet den Container. Unter **Rootless Docker** erkennt es zusätzlich den
+Socket-Pfad und legt ihn als `DOCKER_HOST_SOCKET` in der `.env` ab — ein dort
+bereits stehender Wert hat Vorrang und wird nie überschrieben. Von Hand geht es
+weiterhin mit `COMPOSE_PROFILES=updater` in die `.env` und
+`docker compose pull && docker compose up -d --no-build`; ausgeschaltet wird
+mit `./opnexus updater disable`.
 
 Die Versionsprüfung (Feed) schaltest du dazu im Webinterface ein, siehe oben.
-
-```bash
-docker compose pull && docker compose up -d --no-build
-```
 
 **Sicherheitsmodell:**
 - Der **Updater** ist der einzige Container mit dem Docker-Socket, was

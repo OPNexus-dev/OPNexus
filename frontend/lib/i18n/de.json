@@ -185,7 +185,9 @@
         "succeededUpdate": "OPNexus läuft jetzt auf {version}. Die Seite wird neu geladen …",
         "succeededRollback": "OPNexus wurde auf {version} zurückgesetzt. Die Seite wird neu geladen …",
         "rolledBack": "Das Update auf {target} ist fehlgeschlagen. OPNexus wurde automatisch auf die vorherige Version zurückgesetzt.",
-        "failed": "Der Vorgang ist fehlgeschlagen. Protokoll und Serverzustand prüfen (auf dem Server: opnexus status)."
+        "failed": "Der Vorgang ist fehlgeschlagen. Protokoll und Serverzustand prüfen (auf dem Server: opnexus status).",
+        "lastSucceeded": "Der letzte Auftrag wurde erfolgreich abgeschlossen.",
+        "succeededWithWarning": "Der Auftrag lief durch, aber ein Teilschritt ist fehlgeschlagen (die Erneuerung des Updaters selbst). Details im Protokoll."
       },
       "showLog": "Protokoll",
       "rollback": {

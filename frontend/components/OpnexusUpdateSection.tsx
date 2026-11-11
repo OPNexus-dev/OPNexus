@@ -165,6 +165,8 @@ export function OpnexusUpdateSection() {
   const phases = status?.phases ?? [];
   const steps = phases.filter((p, i) => p !== phases[i - 1]);
   const isRollbackJob = job?.action === "rollback";
+  // Der Updater meldet einen gescheiterten Teilschritt (Selbst-Erneuerung) nur im Protokoll; der Auftrag selbst gilt dann als erfolgreich.
+  const partialFailure = job?.state === "succeeded" && (status?.log ?? []).some((line) => /Selbst-(Erneuerung|Update) fehlgeschlagen/.test(line));
   const finishedAt = job?.finished_at ? new Date(job.finished_at).toLocaleString(locale) : "";
   const releaseUrl = status?.release_url && /^https?:\/\//.test(status.release_url) ? status.release_url : null;
 
@@ -272,6 +274,17 @@ export function OpnexusUpdateSection() {
                 : t("settings.update.result.succeededUpdate", { version: status.current })}
             </p>
           )}
+          {!running && job?.state === "succeeded" && !sawRunning.current && (
+            <p role="status" className="text-sm text-slate-700">
+              {t("settings.update.result.lastSucceeded")}
+              {finishedAt && <span className="mt-1 block text-xs opacity-80">{t("settings.update.resultTime", { time: finishedAt })}</span>}
+            </p>
+          )}
+          {!running && partialFailure && (
+            <p role="alert" className={clsx("rounded-lg border p-3 text-sm", badgeToneClasses.warning)}>
+              {t("settings.update.result.succeededWithWarning")}
+            </p>
+          )}
           {!running && job?.state === "rolled_back" && (
             <p role="alert" className={clsx("rounded-lg border p-3 text-sm", badgeToneClasses.warning)}>
               {t("settings.update.result.rolledBack", { target: job.target ?? "" })}
@@ -285,8 +298,8 @@ export function OpnexusUpdateSection() {
             </p>
           )}
 
-          {status.log.length > 0 && (job?.state !== "succeeded" || running) && (
-            <details className="text-xs" open={!running && job?.state !== "succeeded"}>
+          {status.log.length > 0 && (
+            <details className="text-xs" open={!running && (job?.state !== "succeeded" || partialFailure)}>
               <summary className="cursor-pointer text-slate-600">{t("settings.update.showLog")}</summary>
               <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-slate-50 p-3">{status.log.join("\n")}</pre>
             </details>

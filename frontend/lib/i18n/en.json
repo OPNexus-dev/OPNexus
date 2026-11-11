@@ -182,6 +182,8 @@
         "done": "Done"
       },
       "result": {
+        "lastSucceeded": "The last job finished successfully.",
+        "succeededWithWarning": "The job went through, but one sub-step failed (renewing the updater itself). See the log for details.",
         "succeededUpdate": "OPNexus is now running {version}. Reloading the page …",
         "succeededRollback": "OPNexus was rolled back to {version}. Reloading the page …",
         "rolledBack": "The update to {target} failed. OPNexus was rolled back to the previous version automatically.",

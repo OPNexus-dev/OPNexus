@@ -7,7 +7,7 @@ Central management for multiple [OPNsense](https://opnsense.org) firewalls: rule
 
 ![Central firewall rules](docs/screenshots/readme-rules-en.webp)
 
-> **Status:** `1.37.5` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
+> **Status:** `1.37.7` is the current stable release. It has been developed and tested against real OPNsense instances; a clean install from the release bundle, updates and rollbacks have been verified end to end. Please report rough edges.
 
 ## What it does
 
@@ -48,8 +48,8 @@ All screenshots show fictitious sample data.
 Requires Docker with the Compose plugin (on Debian 13: `apt install docker.io docker-compose`). The recommended way is the **release bundle** with ready-made, signed images – nothing is built on your machine:
 
 ```bash
-curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.5/opnexus-1.37.5.tar.gz
-tar xzf opnexus-1.37.5.tar.gz && cd opnexus-1.37.5
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.7/opnexus-1.37.7.tar.gz
+tar xzf opnexus-1.37.7.tar.gz && cd opnexus-1.37.7
 install -m 600 .env.example .env     # readable by you only
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # your own database password
 docker compose up -d

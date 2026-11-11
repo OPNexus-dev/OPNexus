@@ -53,6 +53,7 @@ FAKE_COSIGN = r'''#!__PY__
 import os, sys
 with open(os.path.join(os.environ["FAKE_DIR"], "calls.log"), "a") as f:
     f.write("cosign " + " ".join(sys.argv[1:]) + "\n")
+sys.stderr.write(os.environ.get("FAKE_COSIGN_ERR", ""))
 sys.exit(int(os.environ.get("FAKE_COSIGN_RC", "0")))
 '''
 
@@ -127,6 +128,26 @@ class RegistryBehaviour(unittest.TestCase):
         up = next(i for i, c in enumerate(calls) if c.startswith("docker compose up"))
         self.assertLess(pull, verify)
         self.assertLess(verify, up)
+
+    def test_an_unreachable_registry_is_not_reported_as_a_bad_signature(self):
+        # Fehlende Namensauflösung im Updater-Container war früher „Signatur ungültig oder fehlt" und führte die Fehlersuche in die Irre.
+        self.install(GHCR)
+        r = self.cli("update", "1.36.0", env={"FAKE_COSIGN_RC": "1",
+                     "FAKE_COSIGN_ERR": 'Error: dial tcp: lookup ghcr.io on 127.0.0.11:53: no such host\n'})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("Registry war nicht erreichbar", r.stderr)
+        self.assertNotIn("ungültig oder fehlt", r.stderr)
+        self.assertIn("no such host", r.stderr)  # cosigns Ausgabe bleibt sichtbar
+        self.assertEqual(self.env_value("OPNEXUS_VERSION"), "1.35.0")
+        self.assertFalse([c for c in self.calls() if c.startswith("docker compose up")])
+
+    def test_a_real_signature_failure_still_says_so_and_shows_cosign_output(self):
+        self.install(GHCR)
+        r = self.cli("update", "1.36.0", env={"FAKE_COSIGN_RC": "1", "FAKE_COSIGN_ERR": "Error: no matching signatures\n"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("ungültig oder fehlt", r.stderr)
+        self.assertNotIn("nicht erreichbar", r.stderr)
+        self.assertIn("no matching signatures", r.stderr)
 
     def test_a_bad_signature_stops_the_update_before_the_switch(self):
         for repo in self.for_each_registry():
