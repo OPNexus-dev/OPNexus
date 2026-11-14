@@ -50,7 +50,7 @@ def _cert_request_payload(host_id: str, account_id: str, **overrides) -> dict:
 # ── Accounts ─────────────────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_create_acme_account(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     assert resp.status_code == 201, resp.text
@@ -62,7 +62,7 @@ async def test_create_acme_account(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_custom_ca_requires_url(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"], ca="custom"))
     assert resp.status_code == 422
@@ -70,7 +70,7 @@ async def test_custom_ca_requires_url(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_push_acme_account_with_eab(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]), )
     account_id = resp.json()["id"]
@@ -93,7 +93,7 @@ async def test_register_account_regression_response_shape(client, respx_mock):
     ACME action-trigger shape — a THIRD distinct shape after IPsec's
     {"status":"ok"} (ipsec/service/reconfigure) and OpenVPN/WireGuard's
     {"result":"ok"} (openvpn|wireguard/service/reconfigure)."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -114,7 +114,7 @@ async def test_register_account_regression_response_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_register_account_failed_precheck_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -130,7 +130,7 @@ async def test_register_account_failed_precheck_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_register_requires_push_first(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -141,7 +141,7 @@ async def test_register_requires_push_first(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_delete_account_blocked_while_referenced(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -155,7 +155,7 @@ async def test_delete_account_blocked_while_referenced(client, respx_mock):
 # ── Certificate requests ────────────────────────────────────────────
 @pytest.mark.asyncio
 async def test_create_certificate_request_requires_matching_account_host(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host1 = await _create_host(client, "fw1", "https://fw1.test")
     host2 = await _create_host(client, "fw2", "https://fw2.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host1["id"]))
@@ -171,7 +171,7 @@ async def test_push_certificate_request_injects_account_uuid(client, respx_mock)
     `connection` UUID pattern: the account's OPNsense-side uuid must
     appear on the wire even though it's never part of the OPNexus-level
     payload the user edits."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -198,7 +198,7 @@ async def test_push_certificate_request_injects_account_uuid(client, respx_mock)
 
 @pytest.mark.asyncio
 async def test_push_certificate_request_is_noop_when_unchanged(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -225,7 +225,7 @@ async def test_push_certificate_request_repushes_after_account_switch(client, re
     warns about: switching account_id alone (every other visible field
     unchanged) must still trigger a real re-push with the NEW account's
     uuid on the wire."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"], name="Account A"))
@@ -268,7 +268,7 @@ async def test_push_certificate_request_repushes_after_account_switch(client, re
 
 @pytest.mark.asyncio
 async def test_sign_is_async_trigger_not_a_success_claim(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -298,7 +298,7 @@ async def test_sign_is_async_trigger_not_a_success_claim(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_poll_certificate_status_updates_remote_fields(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/acme/accounts", json=_account_payload(host["id"]))
     account_id = resp.json()["id"]
@@ -331,7 +331,7 @@ async def test_poll_certificate_status_updates_remote_fields(client, respx_mock)
 @pytest.mark.asyncio
 async def test_acme_target_host_is_fixed_once_deployed_or_used_by_requests(client, respx_mock):
     """Audit AUD-03: the same re-pointing problem for ACME accounts and certificate requests."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     a = await _create_host(client, "acme-a", "https://acme-a.test")
     b = await _create_host(client, "acme-b", "https://acme-b.test")
     acct = (await client.post("/api/acme/accounts", json=_account_payload(a["id"]))).json()

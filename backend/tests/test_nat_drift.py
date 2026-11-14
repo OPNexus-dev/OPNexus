@@ -44,7 +44,7 @@ def _outbound_row(uuid_: str, description: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_check_nat_drift_detects_missing_port_forward(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json=_vip_empty()))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json=_vip_empty()))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -70,7 +70,7 @@ async def test_check_nat_drift_detects_missing_port_forward(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_nat_drift_detects_missing_one_to_one_and_outbound(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json=_vip_empty()))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json=_vip_empty()))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -97,7 +97,7 @@ async def test_check_nat_drift_detects_missing_one_to_one_and_outbound(client, r
 
 @pytest.mark.asyncio
 async def test_check_nat_drift_no_drift_when_identical(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json=_vip_empty()))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json=_vip_empty()))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -114,7 +114,7 @@ async def test_check_nat_drift_no_drift_when_identical(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_nat_drift_ignores_automatic_rules(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json=_vip_empty()))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json=_vip_empty()))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 

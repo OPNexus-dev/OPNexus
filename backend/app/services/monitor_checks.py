@@ -143,10 +143,10 @@ async def check_gateway_down(db: AsyncSession) -> dict[str, dict]:
 # and api/diagnostics/system/system_swap).
 API_READS: dict[str, tuple[str, str]] = {
     # Die Basis-Messungen selbst (Speicher, Last, Platte, Schnittstellen): ohne sie gibt es keinen einzigen Messwert.
-    "base": ("Lobby: Dashboard", "/api/diagnostics/system/systemResources"),
+    "base": ("Lobby: Dashboard", "/api/diagnostics/system/system_resources"),
     "gateways": ("System: Gateways", "/api/routes/gateway/status"),
     "services": ("Status: Services", "/api/core/service/search"),
-    "swap": ("Lobby: Dashboard", "/api/diagnostics/system/systemSwap"),
+    "swap": ("Lobby: Dashboard", "/api/diagnostics/system/system_swap"),
     "cpu": ("Lobby: Dashboard", "/api/diagnostics/cpu_usage/getCPUType"),
 }
 

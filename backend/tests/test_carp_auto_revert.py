@@ -37,7 +37,7 @@ def _stateful_cluster(respx_mock):
                 "rows": [{"vhid": "1", "status": current["role"]}],
                 "carp": {"allow": "1", "maintenancemode": current["maintenance"], "demotion": "240" if current["maintenance"] else "0", "status_msg": ""},
             })
-        respx_mock.get(f"{base}/api/diagnostics/interface/getVipStatus").mock(side_effect=vip_response)
+        respx_mock.get(f"{base}/api/diagnostics/interface/get_vip_status").mock(side_effect=vip_response)
         respx_mock.get(f"{base}/api/core/firmware/running").respond(200, json={"status": "ready"})
 
     def toggle(request):
@@ -210,7 +210,7 @@ async def test_sweep_failed_revert_keeps_the_enter_operation_open(client, respx_
 
 @pytest.mark.asyncio
 async def test_sweep_marks_revert_failed_on_toggle_error(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": [{"vhid": "1", "status": "BACKUP"}], "carp": {"allow": "1", "maintenancemode": True, "demotion": "240"}})
     )
     a = await _create_host(client, "fw-a", "https://fw-a.test")

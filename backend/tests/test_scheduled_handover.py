@@ -30,7 +30,7 @@ class FakeCluster:
         self.backup = respx_mock.get(f"{A}/api/core/backup/download/this").respond(200, content=b"<opnsense/>")
         respx_mock.get(f"{A}/api/core/snapshots/isSupported").respond(200, json={"supported": False})
         for base in (A, B):
-            respx_mock.get(f"{base}/api/diagnostics/interface/getVipStatus").mock(side_effect=lambda r, b=base: self._vip(b))
+            respx_mock.get(f"{base}/api/diagnostics/interface/get_vip_status").mock(side_effect=lambda r, b=base: self._vip(b))
             respx_mock.get(f"{base}/api/core/firmware/info").respond(200, json={"product_version": "26.7.5"})
             respx_mock.get(f"{base}/api/core/firmware/status").respond(
                 200, json={"status": firmware, "all_packages": {}, "status_msg": "x", "status_reboot": "0"})
@@ -327,7 +327,7 @@ async def test_schedule_api_accepts_handover_for_the_master_only_with_the_flag(c
 
 @pytest.mark.asyncio
 async def test_schedule_api_handover_needs_a_cluster(client, respx_mock):
-    respx_mock.get("https://solo.test/api/diagnostics/interface/getVipStatus").respond(200, json={"rows": []})
+    respx_mock.get("https://solo.test/api/diagnostics/interface/get_vip_status").respond(200, json={"rows": []})
     h = await _create_host(client, "solo", "https://solo.test")
     when = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     r = await client.post(f"/api/hosts/{h['id']}/maintenance/schedule",

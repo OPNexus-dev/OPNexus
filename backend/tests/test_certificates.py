@@ -38,7 +38,7 @@ def _cert_payload(host_id: str, **overrides) -> dict:
 
 @pytest.mark.asyncio
 async def test_create_managed_certificate(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"], private_key="FAKE-PRIVATE-KEY"))
@@ -51,7 +51,7 @@ async def test_create_managed_certificate(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_import_requires_crt_payload(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"], crt_payload=None))
     assert resp.status_code == 422
@@ -59,7 +59,7 @@ async def test_import_requires_crt_payload(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_internal_action_requires_commonname(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/certificates/managed", json=_cert_payload(host["id"], action="internal", crt_payload=None, commonname="")
@@ -69,7 +69,7 @@ async def test_internal_action_requires_commonname(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_internal_action_with_commonname_accepted(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/certificates/managed",
@@ -80,7 +80,7 @@ async def test_internal_action_with_commonname_accepted(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_private_key_only_allowed_for_import_action(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/certificates/managed", json=_cert_payload(host["id"], action="manual", private_key="not-allowed-here")
@@ -90,7 +90,7 @@ async def test_private_key_only_allowed_for_import_action(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_push_managed_certificate(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
@@ -107,7 +107,7 @@ async def test_push_managed_certificate(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_push_is_noop_when_nothing_changed(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
@@ -126,7 +126,7 @@ async def test_push_is_noop_when_nothing_changed(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_delete_before_ever_pushed_skips_firewall_call(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
@@ -143,7 +143,7 @@ async def test_delete_in_use_certificate_returns_stable_error_code(client, respx
     """OPNsense itself blocks deleting an in-use cert (checkAndThrowValueInUse
     inside CertController::delAction()) — this app does not pre-check that,
     it must pass the firewall's own error text straight through."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"]))
     cert_id = resp.json()["id"]
@@ -170,7 +170,7 @@ async def test_delete_in_use_certificate_returns_stable_error_code(client, respx
 
 async def test_a_ca_cannot_be_requested_through_the_managed_certificate_api(client, respx_mock):
     """T3 (1.31.0 test run): cert_type=v3_ca created a certificate with the CA extension, not a usable CA."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-ca", "https://fw-ca.test")
     resp = await client.post("/api/certificates/managed", json=_cert_payload(host["id"], cert_type="v3_ca"))
     assert resp.status_code == 422
@@ -181,7 +181,7 @@ async def test_a_ca_cannot_be_requested_through_the_managed_certificate_api(clie
 @pytest.mark.asyncio
 async def test_target_host_of_a_deployed_certificate_is_fixed_but_free_before_the_first_push(client, respx_mock):
     """Audit AUD-03: re-pointing a deployed certificate reported success for a host that never received it."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     a = await _create_host(client, "fix-a", "https://fix-a.test")
     b = await _create_host(client, "fix-b", "https://fix-b.test")
     cert = (await client.post("/api/certificates/managed", json=_cert_payload(a["id"]))).json()

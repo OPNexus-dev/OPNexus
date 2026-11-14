@@ -27,7 +27,7 @@ def _mock_alias_push(respx_mock, base_url: str, uuid_: str = "alias-uuid-1"):
 
 @pytest.mark.asyncio
 async def test_create_alias(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/aliases", json=_alias_payload([host["id"]]))
@@ -42,7 +42,7 @@ async def test_create_alias(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_create_alias_duplicate_name_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     assert (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).status_code == 201
     dupe = await client.post("/api/aliases", json=_alias_payload([host["id"]]))
@@ -51,7 +51,7 @@ async def test_create_alias_duplicate_name_rejected(client: AsyncClient, respx_m
 
 @pytest.mark.asyncio
 async def test_deploy_alias_success(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/aliases", json=_alias_payload([host["id"]]))
     alias_id = resp.json()["id"]
@@ -70,7 +70,7 @@ async def test_deploy_alias_success(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_alias_mixed_host_failure(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_ok = await _create_host(client, "fw-ok", "https://fw-ok.test")
     host_down = await _create_host(client, "fw-down", "https://fw-down.test")
 
@@ -90,7 +90,7 @@ async def test_deploy_alias_mixed_host_failure(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_alias_edit_creates_revision_history(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
 
@@ -108,7 +108,7 @@ async def test_alias_edit_creates_revision_history(client: AsyncClient, respx_mo
 
 @pytest.mark.asyncio
 async def test_stale_alias_editor_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
     stale = await client.put(f"/api/aliases/{r['id']}", json=_alias_payload([host["id"]], expected_updated_at=r["updated_at"]))
@@ -119,7 +119,7 @@ async def test_stale_alias_editor_rejected(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_delete_alias(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
 
@@ -132,7 +132,7 @@ async def test_delete_alias(client: AsyncClient, respx_mock):
 async def test_delete_alias_refused_by_firewall_names_the_reason(client: AsyncClient, respx_mock):
     """Live 26.7: an alias still used by a rule cannot be removed; the user must
     see why (it used to be a bare "request failed")."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
     _mock_alias_push(respx_mock, "https://fw1.test")
@@ -158,7 +158,7 @@ async def test_deploy_alias_without_targets_rejected(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_alias_group_target_and_preview(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     group = (await client.post("/api/groups", json={"name": "Branch", "host_ids": [host["id"]]})).json()
 
@@ -179,7 +179,7 @@ async def test_rule_deploy_blocked_while_referenced_alias_unconfirmed(client: As
     # alias's auto-rollback fail ("Alias in use") and left it in revert_failed.
     from tests.test_rules import _rule_payload
 
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     alias_id = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()["id"]
     _mock_alias_push(respx_mock, "https://fw1.test")

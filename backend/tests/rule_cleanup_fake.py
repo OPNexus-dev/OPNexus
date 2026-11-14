@@ -2,7 +2,7 @@
 
 It keeps its rules in memory and answers searchRule, getRule, toggleRule, delRule, addRule, moveRuleBefore, apply,
 ruleStats, pfStatistics (generated from the enabled rules, like pf after an apply), interfacesInfo, groups, aliases,
-port forwards, getVipStatus and core/hasync/get in the shapes seen live (OPNsense 26.7, see opnsense_client.py).
+port forwards, get_vip_status and core/hasync/get in the shapes seen live (OPNsense 26.7, see opnsense_client.py).
 ``fail`` injects errors per call: {("toggle", uuid): httpx.ReadTimeout | httpx.Response | callable}.
 Addresses: documentation/private ranges only.
 """
@@ -134,7 +134,7 @@ class FakeFirewall:
             self.log.append((self.base, method, path))
         if self.down:
             raise httpx.ConnectError("down")
-        if method == "GET" and path == "/diagnostics/interface/getVipStatus":
+        if method == "GET" and path == "/diagnostics/interface/get_vip_status":
             rows = [] if self.role is None else [{"interface": "LAN", "vhid": "10", "status": self.role}]
             return httpx.Response(200, json={"rows": rows, "carp": {"allow": "1", "maintenancemode": False}})
         if method == "GET" and path == "/firewall/filter/searchRule":
@@ -142,9 +142,9 @@ class FakeFirewall:
             if got is not None:
                 return got
             return httpx.Response(200, json={"rows": copy.deepcopy(sorted(self.rules, key=lambda r: r["sort_order"]))})
-        if method == "GET" and path == "/diagnostics/firewall/pfStatistics/rules":
+        if method == "GET" and path == "/diagnostics/firewall/pf_statistics/rules":
             return httpx.Response(200, json=self.pf_lines())
-        if method == "GET" and path == "/firewall/filter_util/ruleStats":
+        if method == "GET" and path == "/firewall/filter_util/rule_stats":
             return httpx.Response(200, json={"status": "ok", "stats": {}})
         if method == "GET" and path == "/interfaces/overview/interfacesInfo":
             return httpx.Response(200, json={"rows": [

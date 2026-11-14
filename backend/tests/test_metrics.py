@@ -51,7 +51,7 @@ async def test_metrics_requires_auth_and_is_prometheus_text(client, anon_client)
 
 @pytest.mark.asyncio
 async def test_host_metrics_from_stored_samples_without_calling_the_firewall(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     await _seed(host["id"], age_s=30, carp="MASTER")
     before = len(respx_mock.calls)

@@ -44,7 +44,7 @@ def _hrule_payload(hierarchy_group_id: str, **overrides) -> dict:
 
 
 def mock_status(respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/firewall/filter/searchRule.*").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )

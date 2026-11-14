@@ -19,7 +19,7 @@ from app.models.rule_deployment import RuleDeployment
 async def test_dashboard_summary_aggregates_pending_actions_across_kinds(client, respx_mock):
     import httpx
 
-    respx_mock.get("https://fw-dash.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-dash.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
 
@@ -74,7 +74,7 @@ async def test_dashboard_summary_aggregates_pending_actions_across_kinds(client,
 async def test_dashboard_excludes_settled_deployments(client, respx_mock):
     import httpx
 
-    respx_mock.get("https://fw-settled.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-settled.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
 
@@ -116,7 +116,7 @@ async def test_dashboard_includes_recent_activity(client):
 async def test_dashboard_lists_stuck_alias_deployment(client, respx_mock):
     import httpx
 
-    respx_mock.get("https://fw-alias.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-alias.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
     resp = await client.post(

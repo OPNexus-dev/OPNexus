@@ -11,7 +11,7 @@ ENDPOINTS = {
     "/interfaces/overview/interfacesInfo": INTERFACES_INFO, "/interfaces/assignment/searchItem": ASSIGNMENTS,
     "/interfaces/vlan_settings/searchItem": VLANS, "/interfaces/vip_settings/searchItem": VIPS,
     "/routing/settings/searchGateway": GATEWAYS, "/routes/routes/searchroute": ROUTES,
-    "/unbound/settings/searchHostOverride": DNS_HOSTS, "/dnsmasq/settings/searchHost": DHCP_HOSTS,
+    "/unbound/settings/search_host_override/": DNS_HOSTS, "/dnsmasq/settings/searchHost": DHCP_HOSTS,
     "/kea/dhcpv4/searchSubnet": KEA_SUBNETS, "/kea/dhcpv4/searchReservation": KEA_RESERVATIONS,
 }
 
@@ -65,7 +65,7 @@ def test_a_category_one_node_cannot_deliver_is_not_reported_as_a_difference():
 
 @pytest.mark.asyncio
 async def test_endpoint_and_alert_report_a_route_missing_on_one_node(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _host(client, "fw-da", "https://10.20.30.91")
     await _host(client, "fw-db", "https://10.20.30.92")
     _serve(respx_mock, "https://10.20.30.91")
@@ -84,7 +84,7 @@ async def test_endpoint_and_alert_report_a_route_missing_on_one_node(client, res
 
 @pytest.mark.asyncio
 async def test_an_unreachable_node_keeps_open_alerts_instead_of_resolving_them(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _host(client, "fw-dc", "https://10.20.30.93", cluster="ha2")
     await _host(client, "fw-dd", "https://10.20.30.94", cluster="ha2")
     _serve(respx_mock, "https://10.20.30.93")

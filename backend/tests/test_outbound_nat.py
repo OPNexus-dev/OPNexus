@@ -33,7 +33,7 @@ def _mock_nat_push(respx_mock, base_url: str, uuid_: str = "pf-uuid-1"):
 
 @pytest.mark.asyncio
 async def test_create_outbound_nat_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))
@@ -48,7 +48,7 @@ async def test_create_outbound_nat_rule(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_outbound_nat_success_and_confirm(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -68,7 +68,7 @@ async def test_deploy_outbound_nat_success_and_confirm(client: AsyncClient, resp
 @pytest.mark.asyncio
 async def test_payload_fields(client, respx_mock):
     import json
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     h = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/outbound-nat", json=_nat_payload([h["id"]], enabled=False, source_not=True))).json()
     _mock_nat_push(respx_mock, "https://fw1.test")
@@ -83,7 +83,7 @@ async def test_payload_fields(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_outbound_nat_mixed_host_failure(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/firewall/filter/getRule").mock(return_value=httpx.Response(200, json={"rule": {"interface": {"wan": {"value": "WAN"}}}}))
     respx_mock.get(url__regex=r".*/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_ok = await _create_host(client, "fw-ok", "https://fw-ok.test")
@@ -105,7 +105,7 @@ async def test_deploy_outbound_nat_mixed_host_failure(client: AsyncClient, respx
 
 @pytest.mark.asyncio
 async def test_outbound_nat_edit_creates_revision_history(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))).json()
 
@@ -123,7 +123,7 @@ async def test_outbound_nat_edit_creates_revision_history(client: AsyncClient, r
 
 @pytest.mark.asyncio
 async def test_stale_outbound_nat_editor_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))).json()
     stale = await client.put(f"/api/outbound-nat/{r['id']}", json=_nat_payload([host["id"]], expected_updated_at=r["updated_at"]))
@@ -134,7 +134,7 @@ async def test_stale_outbound_nat_editor_rejected(client: AsyncClient, respx_moc
 
 @pytest.mark.asyncio
 async def test_delete_outbound_nat_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))).json()
 
@@ -152,7 +152,7 @@ async def test_deploy_outbound_nat_without_targets_rejected(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_outbound_nat_stale_preview_token_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/outbound-nat", json=_nat_payload([host["id"]]))).json()
 

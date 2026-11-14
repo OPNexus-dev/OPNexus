@@ -126,7 +126,7 @@ async def test_s3_connection_test_proves_write_read_delete(respx_mock):
 # ── schedule, retention, offsite ─────────────────────────────────────────
 
 def _mock_fw(respx_mock, content=CONFIG):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     return respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(200, content=content))
 
 
@@ -187,7 +187,7 @@ async def test_retention_keeps_only_the_newest_n(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_failure_is_counted_a_garbage_answer_is_not_stored_and_others_continue(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     ok = await _create_host(client, "fw-ok", "https://ok.test")
     bad = await _create_host(client, "fw-bad", "https://bad.test")
     junk = await _create_host(client, "fw-junk", "https://junk.test")

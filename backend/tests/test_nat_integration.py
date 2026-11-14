@@ -6,7 +6,7 @@ from tests.helpers import delete_host
 @pytest.mark.asyncio
 @pytest.mark.parametrize('kind,remote,fields',[('port-forward','d_nat',{'target':'192.0.2.20'}),('one-to-one','one_to_one',{'external':'192.0.2.20'}),('outbound-nat','source_nat',{'target':'192.0.2.20'})])
 async def test_nat_groups_and_deletion_guards(client,respx_mock,outbound_mode_hybrid,kind,remote,fields):
-    respx_mock.get(url__regex=r'.*/getVipStatus').respond(200,json={'rows':[]})
+    respx_mock.get(url__regex=r'.*/get_vip_status').respond(200,json={'rows':[]})
     h=await _create_host(client,'fw1','https://fw1.test')
     g=(await client.post('/api/groups',json={'name':'NAT group','description':'','host_ids':[h['id']]})).json()
     r=(await client.post('/api/'+kind,json={'description':'NAT group rule','interface':'wan','target_group_ids':[g['id']],**fields})).json()
@@ -32,7 +32,7 @@ async def test_nat_groups_and_deletion_guards(client,respx_mock,outbound_mode_hy
 async def test_pf_disabled_polarity_and_readonly_automatic_rows(client,respx_mock):
     import json
     from tests.test_port_forward import _pf_payload,_mock_pf_push
-    respx_mock.get(url__regex=r'.*/getVipStatus').respond(200,json={'rows':[]})
+    respx_mock.get(url__regex=r'.*/get_vip_status').respond(200,json={'rows':[]})
     h=await _create_host(client,'fw1','https://fw1.test')
     r=(await client.post('/api/port-forward',json=_pf_payload([h['id']],enabled=False))).json()
     _mock_pf_push(respx_mock,'https://fw1.test')

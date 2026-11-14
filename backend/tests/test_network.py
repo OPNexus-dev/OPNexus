@@ -40,7 +40,7 @@ ROUTES = {"rows": [{"uuid": "r1", "network": "10.9.0.0/16", "gateway": "WAN_GW",
 
 
 async def _host(client, respx_mock, base=BASE, name="fw-net"):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post("/api/hosts", json={"name": name, "base_url": base, "api_key": "k", "api_secret": "s"})
     return resp.json()["id"]
 
@@ -53,7 +53,7 @@ def _mock(respx_mock, base=BASE, info=INTERFACES_INFO, **overrides):
         "/interfaces/vip_settings/searchItem": VIPS,
         "/routing/settings/searchGateway": GATEWAYS,
         "/routes/routes/searchroute": ROUTES,
-        "/unbound/settings/searchHostOverride": DNS_HOSTS,
+        "/unbound/settings/search_host_override/": DNS_HOSTS,
         "/dnsmasq/settings/searchHost": DHCP_HOSTS,
         "/kea/dhcpv4/searchSubnet": KEA_SUBNETS,
         "/kea/dhcpv4/searchReservation": KEA_RESERVATIONS,

@@ -13,7 +13,7 @@ VALID_XML = (
 
 
 def mock_backup_download(respx_mock, base="https://fw1.test", content=VALID_XML):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(f"{base}/api/core/backup/download/this").mock(
         return_value=httpx.Response(200, content=content)
     )

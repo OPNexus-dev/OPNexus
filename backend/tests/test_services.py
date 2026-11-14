@@ -5,7 +5,7 @@ from tests.test_users import _login_as
 
 
 def _mock_vip(respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
 def _mock_service_list(respx_mock):

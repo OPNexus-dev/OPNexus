@@ -56,7 +56,7 @@ KINDS = {
 
 
 async def _setup(client, respx_mock, kind: Kind):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await client.post("/api/hosts", json={"name": "vpn-fw", "base_url": "https://vpn-fw.test", "api_key": "k", "api_secret": "s", "verify_tls": False})
     assert host.status_code == 201, host.text
     host = host.json()

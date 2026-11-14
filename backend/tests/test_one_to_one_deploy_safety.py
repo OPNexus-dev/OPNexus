@@ -16,7 +16,7 @@ from tests.test_one_to_one import _nat_payload, _mock_nat_push
 
 @pytest.mark.asyncio
 async def test_nat_deploy_starts_in_pending_state(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -32,7 +32,7 @@ async def test_nat_deploy_starts_in_pending_state(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_nat_confirm_makes_deployment_permanent(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -49,7 +49,7 @@ async def test_nat_confirm_makes_deployment_permanent(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_nat_redeploy_unchanged_payload_skips_pending(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -72,7 +72,7 @@ async def test_nat_redeploy_unchanged_payload_skips_pending(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_nat_sweep_reverts_fresh_deploy_by_deleting_it(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -99,7 +99,7 @@ async def test_nat_sweep_reverts_fresh_deploy_by_deleting_it(client, respx_mock)
 
 @pytest.mark.asyncio
 async def test_nat_sweep_reverts_redeploy_by_restoring_previous_payload(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -137,7 +137,7 @@ async def test_nat_sweep_reverts_redeploy_by_restoring_previous_payload(client, 
 
 @pytest.mark.asyncio
 async def test_nat_sweep_marks_revert_failed_when_host_unreachable(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]

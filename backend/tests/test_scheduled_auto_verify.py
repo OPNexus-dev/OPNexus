@@ -20,7 +20,7 @@ H = "https://fw-solo.test"
 
 
 class FakeHost:
-    """One stand-alone firewall: job = ready | running | down; boot = what systemTime reports."""
+    """One stand-alone firewall: job = ready | running | down; boot = what system_time reports."""
 
     def __init__(self, respx_mock, *, firmware="update", reboot_flag="1", version="26.7.5"):
         self.job, self.boot, self.version = "ready", "Mon Oct 5 10:00:00 UTC 2026", version
@@ -28,12 +28,12 @@ class FakeHost:
         respx_mock.get(f"{H}/api/core/snapshots/isSupported").respond(200, json={"supported": False})
         self.reboot = respx_mock.post(f"{H}/api/core/system/reboot").respond(200, json={"status": "ok"})
         respx_mock.get(f"{H}/api/core/backup/download/this").respond(200, content=b"<opnsense/>")
-        respx_mock.get(f"{H}/api/diagnostics/interface/getVipStatus").mock(side_effect=self._vip)
+        respx_mock.get(f"{H}/api/diagnostics/interface/get_vip_status").mock(side_effect=self._vip)
         respx_mock.get(f"{H}/api/core/firmware/info").mock(side_effect=lambda r: self._up(json={"product_version": self.version}))
         respx_mock.get(f"{H}/api/core/firmware/status").respond(
             200, json={"status": firmware, "all_packages": {}, "status_msg": "x", "status_reboot": reboot_flag})
         respx_mock.get(f"{H}/api/core/firmware/running").mock(side_effect=lambda r: self._up(json={"status": self.job}))
-        respx_mock.get(f"{H}/api/diagnostics/system/systemTime").mock(side_effect=lambda r: self._up(json={"boottime": self.boot}))
+        respx_mock.get(f"{H}/api/diagnostics/system/system_time").mock(side_effect=lambda r: self._up(json={"boottime": self.boot}))
 
     def _up(self, **kw):
         if self.job == "down":
@@ -224,7 +224,7 @@ async def test_handover_verifies_before_taking_the_traffic_back(client, respx_mo
         if cluster.job == "down":
             raise httpx.ConnectError("down")
         return httpx.Response(200, json={"boottime": cluster.boot})
-    respx_mock.get("https://fw-a.test/api/diagnostics/system/systemTime").mock(side_effect=system_time)
+    respx_mock.get("https://fw-a.test/api/diagnostics/system/system_time").mock(side_effect=system_time)
     a, _b = await _setup(client)
     async with SessionLocal() as db:
         s = ScheduledMaintenance(host_id=uuid.UUID(a["id"]), host_name="fw-a", action="update", carp_handover=True, auto_verify=True,

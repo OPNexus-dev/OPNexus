@@ -61,7 +61,7 @@ async def _make_user(client, username: str, role: str = "read_only") -> dict:
 
 
 async def _host(client, respx_mock, name="fw-sec", url="https://fw-sec.test") -> dict:
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": name, "base_url": url, "api_key": "key", "api_secret": "secret-value", "verify_tls": False},
@@ -429,7 +429,7 @@ async def test_unsafe_firewall_urls_are_rejected(client, url):
 
 @pytest.mark.asyncio
 async def test_https_ip_and_name_urls_are_accepted(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     for name, url in (("by-ip", "https://10.1.2.3"), ("by-name-port", "https://fw.example.test:8443")):
         resp = await client.post("/api/hosts", json={"name": name, "base_url": url, "api_key": "k", "api_secret": "s", "verify_tls": False})
         assert resp.status_code == 201, resp.text
@@ -573,7 +573,7 @@ async def test_reflected_secrets_do_not_reach_reader_status_or_deploy_message(cl
     dep = (await client.post(f"/api/rules/{rule_id}/deploy")).json()["deployments"][0]
     assert "PSK-MARKER" not in json.dumps(dep) and "secret-value" not in json.dumps(dep)
 
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(
         return_value=httpx.Response(500, text='{"error": "boom", "password": "PW-MARKER"} secret-value')
     )
     listing = await client.get("/api/hosts")

@@ -10,7 +10,7 @@ from tests.helpers import delete_host
 
 @pytest.mark.asyncio
 async def test_delete_host_with_active_rule_deployment_rejected(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = (await client.post("/api/hosts", json={"name": "fw-k", "base_url": "https://fw-k.test", "api_key": "k", "api_secret": "s"})).json()
 
     rule = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()
@@ -29,7 +29,7 @@ async def test_delete_host_with_active_rule_deployment_rejected(client, respx_mo
 
 @pytest.mark.asyncio
 async def test_delete_host_with_active_alias_deployment_rejected(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = (await client.post("/api/hosts", json={"name": "fw-l", "base_url": "https://fw-l.test", "api_key": "k", "api_secret": "s"})).json()
 
     alias = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()
@@ -47,7 +47,7 @@ async def test_delete_host_with_active_alias_deployment_rejected(client, respx_m
 
 @pytest.mark.asyncio
 async def test_create_list_delete_host(client, respx_mock):
-    respx_mock.get("https://fw1.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw1.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": [{"interface": "wan", "vhid": "1", "status": "MASTER"}]})
     )
 
@@ -83,7 +83,7 @@ async def test_create_list_delete_host(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_create_host_duplicate_name_rejected(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     payload = {
         "name": "dupe",
@@ -106,7 +106,7 @@ async def test_delete_unknown_host_404(client):
 
 @pytest.mark.asyncio
 async def test_update_host_cluster_name(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     resp = await client.post(
         "/api/hosts",
@@ -129,7 +129,7 @@ async def test_update_host_cluster_name(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_live_rules_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-b", "base_url": "https://fw-b.test", "api_key": "k", "api_secret": "s"},
@@ -183,7 +183,7 @@ async def test_live_rules_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_live_rules_host_unreachable_returns_502(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-c", "base_url": "https://fw-c.test", "api_key": "k", "api_secret": "s"},
@@ -200,7 +200,7 @@ async def test_live_rules_host_unreachable_returns_502(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_firmware_info_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-d", "base_url": "https://fw-d.test", "api_key": "k", "api_secret": "s"},
@@ -221,7 +221,7 @@ async def test_firmware_info_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_firmware_info_host_unreachable_returns_502(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-e", "base_url": "https://fw-e.test", "api_key": "k", "api_secret": "s"},
@@ -238,7 +238,7 @@ async def test_firmware_info_host_unreachable_returns_502(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_interfaces_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-f", "base_url": "https://fw-f.test", "api_key": "k", "api_secret": "s"},
@@ -271,7 +271,7 @@ async def test_interfaces_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_interfaces_host_unreachable_returns_502(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-g", "base_url": "https://fw-g.test", "api_key": "k", "api_secret": "s"},
@@ -288,7 +288,7 @@ async def test_interfaces_host_unreachable_returns_502(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_aliases_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-h", "base_url": "https://fw-h.test", "api_key": "k", "api_secret": "s"},
@@ -324,7 +324,7 @@ async def test_aliases_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_aliases_host_unreachable_returns_502(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-i", "base_url": "https://fw-i.test", "api_key": "k", "api_secret": "s"},
@@ -341,7 +341,7 @@ async def test_aliases_host_unreachable_returns_502(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_protocols_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-j", "base_url": "https://fw-j.test", "api_key": "k", "api_secret": "s"},
@@ -375,7 +375,7 @@ async def test_protocols_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_certificates_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-m", "base_url": "https://fw-m.test", "api_key": "k", "api_secret": "s"},
@@ -450,7 +450,7 @@ async def test_certificates_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_cas_parses_real_shape(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-ca", "base_url": "https://fw-ca.test", "api_key": "k", "api_secret": "s"},
@@ -492,7 +492,7 @@ async def test_cas_parses_real_shape(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_certificates_csr_pending_returns_unknown_status(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-n", "base_url": "https://fw-n.test", "api_key": "k", "api_secret": "s"},
@@ -535,7 +535,7 @@ async def test_certificates_csr_pending_returns_unknown_status(client, respx_moc
 
 @pytest.mark.asyncio
 async def test_certificates_host_unreachable_returns_502(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-o", "base_url": "https://fw-o.test", "api_key": "k", "api_secret": "s"},
@@ -555,7 +555,7 @@ async def test_firmware_info_broken_http_framing_gives_actionable_message(client
     """OPNsense 26.7 mit aktivem kTLS liefert Antworten > ~64 KiB beschädigt
     (httpx: RemoteProtocolError). OPNexus soll das als 502 melden und im Log
     den bekannten Workaround nennen statt nur „Verbindung fehlgeschlagen“."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post(
         "/api/hosts",
         json={"name": "fw-ktls", "base_url": "https://fw-ktls.test", "api_key": "k", "api_secret": "s"},
@@ -580,7 +580,7 @@ async def test_firmware_info_broken_http_framing_gives_actionable_message(client
 
 @pytest.mark.asyncio
 async def test_host_address_can_be_changed_after_the_firewall_moved(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = (await client.post("/api/hosts", json={"name": "fw-moved", "base_url": "https://10.9.9.1", "api_key": "k", "api_secret": "s"})).json()
     resp = await client.patch(f"/api/hosts/{host['id']}", json={"base_url": "https://10.9.9.2"})
     assert resp.status_code == 200, resp.text
@@ -593,7 +593,7 @@ async def test_host_address_can_be_changed_after_the_firewall_moved(client, resp
 @pytest.mark.asyncio
 async def test_a_second_host_with_the_same_address_is_refused(client, respx_mock):
     """T4: the same firewall twice would double every rollout, alert and backup."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     first = await client.post("/api/hosts", json={"name": "dup-a", "base_url": "https://dup.test", "api_key": "k", "api_secret": "s"})
     assert first.status_code == 201
     for url in ("https://dup.test", "https://DUP.test/", "https://dup.test//"):
@@ -614,7 +614,7 @@ async def test_a_second_host_with_the_same_address_is_refused(client, respx_mock
     (httpx.Response(200, json={"rows": []}), None),
 ])
 async def test_verify_connection_asks_the_firewall_once_and_keeps_nothing_on_failure(client, respx_mock, failure, reason):
-    route = respx_mock.get(url__regex=r".*/getVipStatus")
+    route = respx_mock.get(url__regex=r".*/get_vip_status")
     route.mock(side_effect=failure) if isinstance(failure, Exception) else route.mock(return_value=failure)
     body = {"name": f"vc-{reason}", "base_url": f"https://vc-{reason}.test", "api_key": "k", "api_secret": "s", "verify_connection": True}
     resp = await client.post("/api/hosts", json=body)
@@ -629,7 +629,7 @@ async def test_verify_connection_asks_the_firewall_once_and_keeps_nothing_on_fai
 
 @pytest.mark.asyncio
 async def test_deleting_a_host_needs_its_name_on_the_server_side_too(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = (await client.post("/api/hosts", json={"name": "del-me", "base_url": "https://del-me.test", "api_key": "k", "api_secret": "s"})).json()
     for params in ({}, {"confirm_name": ""}, {"confirm_name": "DEL-ME"}, {"confirm_name": "other"}):
         refused = await client.delete(f"/api/hosts/{host['id']}", params=params)

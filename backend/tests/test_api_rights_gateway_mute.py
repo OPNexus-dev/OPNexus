@@ -80,7 +80,7 @@ async def test_gateway_endpoint_reports_missing_rights_not_a_generic_502(client,
 
 def _mock_optional_reads(respx_mock, *, gateways=200, services=200, swap=200, cpu=200):
     base = "https://fw1.test/api"
-    respx_mock.get(f"{base}/diagnostics/system/systemSwap").respond(swap, json={"swap": []})
+    respx_mock.get(f"{base}/diagnostics/system/system_swap").respond(swap, json={"swap": []})
     respx_mock.get(f"{base}/diagnostics/cpu_usage/getCPUType").respond(cpu, json=["X (4 cores, 4 threads)"])
     respx_mock.get(f"{base}/routes/gateway/status").respond(gateways, json=STATUS_PAYLOAD)
     respx_mock.get(f"{base}/core/service/search").respond(services, json={"rows": []})
@@ -125,7 +125,8 @@ async def test_base_read_refusal_becomes_a_finding_instead_of_a_silent_failure(c
     _mock_vip(respx_mock)
     await _create_host(client, "fw1", "https://fw1.test")
     _mock_resource_endpoints(respx_mock)
-    respx_mock.get("https://fw1.test/api/diagnostics/system/systemResources").respond(403)
+    respx_mock.get("https://fw1.test/api/diagnostics/system/system_resources").respond(403)
+    respx_mock.get("https://fw1.test/api/diagnostics/system/systemResources").respond(403)  # the older ACL spelling is tried too
     async with SessionLocal() as db:
         result = await resource_monitor_service.poll_all_hosts(db)
     assert result["hosts_failed"] == 0 and result["sampled"] == 1
@@ -140,7 +141,7 @@ async def test_base_read_timeout_is_still_a_failed_sample_not_a_rights_finding(c
     _mock_vip(respx_mock)
     await _create_host(client, "fw1", "https://fw1.test")
     _mock_resource_endpoints(respx_mock)
-    respx_mock.get("https://fw1.test/api/diagnostics/system/systemResources").respond(500)
+    respx_mock.get("https://fw1.test/api/diagnostics/system/system_resources").respond(500)
     async with SessionLocal() as db:
         result = await resource_monitor_service.poll_all_hosts(db)
     assert result["hosts_failed"] == 1 and result["sampled"] == 0
@@ -155,7 +156,7 @@ async def test_base_rights_alert_opens_and_closes_again(client):
     await _add_samples(hid, [{"denied": ["base"], "ok": []}] * 3)
     problems = await _rights_problems()
     assert list(problems) == [key]
-    assert problems[key]["fehlendes_recht"] == "Lobby: Dashboard" and problems[key]["endpunkt"].endswith("systemResources")
+    assert problems[key]["fehlendes_recht"] == "Lobby: Dashboard" and problems[key]["endpunkt"].endswith("system_resources")
     async with SessionLocal() as db:
         await run_notification_checks(db)
     await _clear_samples()

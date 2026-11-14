@@ -68,7 +68,7 @@ async def test_operator_tokens_are_capped_at_deploy_and_inherit_the_limits(clien
 async def test_operator_cannot_download_raw_backups(client, respx_mock):
     import httpx
     from tests.test_rules import _create_host
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     op = await _operator(client, "nobackup")
     try:

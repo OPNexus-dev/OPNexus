@@ -63,7 +63,7 @@ async def _setup(client, respx_mock, fw1=("lan", "opt3"), fw2=("lan",)):
     for base, names in (("fw1", fw1), ("fw2", fw2)):
         respx_mock.get(f"https://{base}.test/api/firewall/filter/getRule").mock(return_value=_options(*names))
         respx_mock.get(f"https://{base}.test/api/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json={"rows": []}))
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     h1 = await _create_host(client, "fw1", "https://fw1.test")
     h2 = await _create_host(client, "fw2", "https://fw2.test")
     return h1, h2
@@ -240,7 +240,7 @@ async def test_hierarchy_rule_with_a_role_deploys_each_firewall_its_own_interfac
         respx_mock.get(f"https://{base}.test/api/firewall/filter/getRule").mock(return_value=_options(*names))
         respx_mock.get(f"https://{base}.test/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
         respx_mock.get(f"https://{base}.test/api/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json={"rows": []}))
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     group = await _create_group(client, "Root")
     hosts = {n: await _create_host_in_group(client, n, f"https://{n}.test", group["id"]) for n in ("fw1", "fw2", "fw3")}
     await _set(client, hosts["fw1"], IF_GUEST="opt3")

@@ -92,10 +92,10 @@ def test_fingerprint_matches_frontend_field_order():
 
 @pytest.mark.asyncio
 async def test_check_host_offline(client, respx_mock):
-    respx_mock.get("https://fw-up.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-up.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
-    respx_mock.get("https://fw-down.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-down.test/api/diagnostics/interface/get_vip_status").mock(
         side_effect=httpx.ConnectError("no route to host")
     )
     await _create_host(client, "fw-up", "https://fw-up.test")
@@ -112,7 +112,7 @@ async def test_check_host_offline(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_certificates_only_reports_expiring_or_expired(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     now = int(_now().timestamp())
@@ -138,7 +138,7 @@ async def test_check_certificates_only_reports_expiring_or_expired(client, respx
 
 @pytest.mark.asyncio
 async def test_check_rule_drift_reports_missing_rule(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw-a", "https://fw-a.test", cluster_name="ha")
     await _create_host(client, "fw-b", "https://fw-b.test", cluster_name="ha")
 
@@ -163,7 +163,7 @@ async def test_check_rule_drift_reports_missing_rule(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_rule_drift_no_drift_when_identical(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw-a", "https://fw-a.test", cluster_name="ha")
     await _create_host(client, "fw-b", "https://fw-b.test", cluster_name="ha")
 
@@ -182,7 +182,7 @@ async def test_drift_stays_open_while_a_cluster_member_is_unreachable(client, re
     """Live 26.7.5: rebooting one firewall made every open drift problem
     resolve (only one host reachable => nothing to compare) and re-open
     afterwards, sending a resolved+opened pair per problem."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw-a", "https://fw-a.test", cluster_name="ha")
     await _create_host(client, "fw-b", "https://fw-b.test", cluster_name="ha")
     respx_mock.get("https://fw-a.test/api/firewall/filter/searchRule").mock(
@@ -216,7 +216,7 @@ async def test_drift_stays_open_while_a_cluster_member_is_unreachable(client, re
 
 @pytest.mark.asyncio
 async def test_check_revert_failed(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json={
         "description": "Allow SSH", "interface": "lan", "direction": "in", "protocol": "tcp",
@@ -310,7 +310,7 @@ async def test_send_email_uses_starttls_and_login():
 
 @pytest.mark.asyncio
 async def test_run_notification_checks_delivers_and_resolves(client, respx_mock):
-    route = respx_mock.get("https://fw-down.test/api/diagnostics/interface/getVipStatus")
+    route = respx_mock.get("https://fw-down.test/api/diagnostics/interface/get_vip_status")
     route.mock(side_effect=httpx.ConnectError("no route to host"))
     host = await _create_host(client, "fw-down", "https://fw-down.test")
 
@@ -335,7 +335,7 @@ async def test_run_notification_checks_delivers_and_resolves(client, respx_mock)
 
     # Host comes back online — the problem should resolve and fire a
     # resolution notification, without re-opening.
-    respx_mock.get("https://fw-down.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-down.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
     async with SessionLocal() as db:

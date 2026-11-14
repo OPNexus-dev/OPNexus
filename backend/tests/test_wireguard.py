@@ -46,7 +46,7 @@ def _tunnel_payload(target_host_ids: list[str], **overrides) -> dict:
 
 @pytest.mark.asyncio
 async def test_create_tunnel(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
@@ -78,7 +78,7 @@ async def test_endpoint_address_requires_port(client):
 
 @pytest.mark.asyncio
 async def test_endpoint_address_with_port_accepted(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     payload = _tunnel_payload([], peer_endpoint_address="peer.example.com", peer_endpoint_port="51820")
     resp = await client.post("/api/wireguard/tunnels", json=payload)
     assert resp.status_code == 201, resp.text
@@ -86,7 +86,7 @@ async def test_endpoint_address_with_port_accepted(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_preview_shows_rollback_warning_and_create_action(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -110,7 +110,7 @@ async def test_deploy_without_targets_rejected(client):
 
 @pytest.mark.asyncio
 async def test_deploy_blocked_when_psk_enabled_without_material(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]], peer_psk_enabled=True))
     tunnel_id = resp.json()["id"]
@@ -121,7 +121,7 @@ async def test_deploy_blocked_when_psk_enabled_without_material(client, respx_mo
 
 @pytest.mark.asyncio
 async def test_delete_tunnel(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -136,7 +136,7 @@ async def test_delete_tunnel(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_edit_can_leave_secrets_unchanged(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/wireguard/tunnels",

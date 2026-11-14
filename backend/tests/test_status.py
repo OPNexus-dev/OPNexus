@@ -4,10 +4,10 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_status_mixed_online_offline(client, respx_mock):
-    respx_mock.get("https://fw-up.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-up.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": [{"interface": "wan", "vhid": "1", "status": "BACKUP"}]})
     )
-    respx_mock.get("https://fw-down.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-down.test/api/diagnostics/interface/get_vip_status").mock(
         side_effect=httpx.ConnectError("no route to host")
     )
 

@@ -21,7 +21,7 @@ async def _create_host(client: AsyncClient, name: str, base_url: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_search_too_short_returns_empty(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.get("/api/search", params={"q": "f"})
@@ -31,7 +31,7 @@ async def test_search_too_short_returns_empty(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_host_by_name(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "edge-fw1", "https://fw1.test")
     await _create_host(client, "core-fw2", "https://fw2.test")
 
@@ -43,7 +43,7 @@ async def test_search_matches_host_by_name(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_rule_by_description_and_net(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post(
@@ -73,7 +73,7 @@ async def test_search_matches_rule_by_description_and_net(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_alias_by_name_and_content(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post(
@@ -99,7 +99,7 @@ async def test_search_matches_alias_by_name_and_content(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_port_forward_as_nat_category(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post(
@@ -127,7 +127,7 @@ async def test_search_matches_port_forward_as_nat_category(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_group_by_name(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/groups", json={"name": "Branch-Offices", "host_ids": [host["id"]]})
@@ -142,7 +142,7 @@ async def test_search_matches_group_by_name(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_ipsec_tunnel_with_deep_link(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     resp = await client.post(
         "/api/ipsec/tunnels",
@@ -174,7 +174,7 @@ async def test_search_matches_ipsec_tunnel_with_deep_link(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_search_matches_openvpn_instance_with_deep_link(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     resp = await client.post(
         "/api/openvpn/instances",
@@ -206,7 +206,7 @@ async def test_search_matches_openvpn_instance_with_deep_link(client, respx_mock
 
 @pytest.mark.asyncio
 async def test_search_matches_wireguard_tunnel_with_deep_link(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     resp = await client.post(
         "/api/wireguard/tunnels",
@@ -241,7 +241,7 @@ async def test_search_matches_wireguard_tunnel_with_deep_link(client, respx_mock
 
 @pytest.mark.asyncio
 async def test_search_matches_managed_certificate_with_deep_link(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post(
@@ -277,7 +277,7 @@ async def test_search_matches_managed_certificate_with_deep_link(client, respx_m
 
 @pytest.mark.asyncio
 async def test_search_policy_hierarchy_rule_links_to_its_group(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
     group_resp = await client.post("/api/policy-hierarchy/groups", json={"name": "Root", "description": "", "parent_id": None})
     assert group_resp.status_code == 201, group_resp.text
@@ -308,7 +308,7 @@ async def test_search_policy_hierarchy_rule_links_to_its_group(client, respx_moc
 
 @pytest.mark.asyncio
 async def test_search_ranks_tighter_match_above_looser_one_within_a_category(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     # "server" only appears deep inside this rule's destination net...
@@ -350,7 +350,7 @@ async def test_search_ranks_tighter_match_above_looser_one_within_a_category(cli
 
 @pytest.mark.asyncio
 async def test_search_finds_nothing_for_unrelated_query(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.get("/api/search", params={"q": "zzz-nomatch"})

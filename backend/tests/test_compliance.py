@@ -202,12 +202,12 @@ def test_findings_carry_no_config_secrets():
 # ── API ──────────────────────────────────────────────────────────────────
 
 def _mock_host(respx_mock, xml, firmware_status="none"):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(200, content=xml))
     respx_mock.get(url__regex=r".*/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": firmware_status}))
     # An older release without ruleStats: the usage sampling falls back to the pf ruleset text.
-    respx_mock.get(url__regex=r".*/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(404, json={"message": "not found"}))
-    respx_mock.get(url__regex=r".*/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
+    respx_mock.get(url__regex=r".*/firewall/filter_util/rule_stats").mock(return_value=httpx.Response(404, json={"message": "not found"}))
+    respx_mock.get(url__regex=r".*/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
     respx_mock.get(url__regex=r".*/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
@@ -231,7 +231,7 @@ async def test_check_stores_and_lists_the_result(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_unreachable_host_is_reported_not_scored(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(500))
     result = (await client.post(f"/api/hosts/{host['id']}/compliance/check")).json()
@@ -276,7 +276,7 @@ U1, U2, U3 = "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-22
 
 
 def _pf(**packets):
-    """pfStatistics/rules shaped like the real answer: one entry per pf line, label = rule uuid."""
+    """pf_statistics/rules shaped like the real answer: one entry per pf line, label = rule uuid."""
     lines = {f'@{i} pass in quick on vtnet0 inet all flags S/SA keep state label "{u}"': {"evaluations": 10, "packets": p, "bytes": p * 100}
              for i, (u, p) in enumerate(packets.items())}
     lines['@99 pass out log quick on vtnet0 inet6 proto udp from fe80::/10 to any keep state label "2f2c37025cd02b5cd29fd330f8e48954"'] = {"evaluations": 5, "packets": 9, "bytes": 9}
@@ -323,7 +323,7 @@ async def _rows(host_id):
 
 @pytest.mark.asyncio
 async def test_last_hit_tracking_survives_counter_resets(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     day0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
     day = lambda n: day0 + timedelta(days=n)  # noqa: E731
@@ -344,7 +344,7 @@ async def test_last_hit_tracking_survives_counter_resets(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_unused_only_after_the_observation_window(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     now = datetime.now(timezone.utc)
     await _sample(host["id"], _pf(**{U1: 0, U2: 5}), _search(U1, U2, U3, disabled=(U3,)), now - timedelta(days=10))
@@ -409,7 +409,7 @@ async def test_alerts_are_off_by_default_and_unreachable_hosts_raise_none(client
     from app.services import notification_checks
     assert (await client.get("/api/notifications/settings")).json()["compliance_alerts_enabled"] is False
     assert (await client.put("/api/notifications/settings", json={"compliance_alerts_enabled": True})).json()["compliance_alerts_enabled"] is True
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     respx_mock.get(url__regex=r".*/core/backup/download/this").mock(return_value=httpx.Response(500))
     await client.post(f"/api/hosts/{host['id']}/compliance/check")
@@ -419,14 +419,14 @@ async def test_alerts_are_off_by_default_and_unreachable_hosts_raise_none(client
 
 @pytest.mark.asyncio
 async def test_one_truncated_config_does_not_stop_the_others(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     bad = await _create_host(client, "a-bad", "https://bad.test")
     good = await _create_host(client, "b-good", "https://good.test")
     for base, body in (("bad", b"<opnsense><system><webgui>"), ("good", _config())):
         respx_mock.get(f"https://{base}.test/api/core/backup/download/this").mock(return_value=httpx.Response(200, content=body))
         respx_mock.get(f"https://{base}.test/api/core/firmware/status").mock(return_value=httpx.Response(200, json={"status": "none"}))
-        respx_mock.get(f"https://{base}.test/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(404, json={}))
-        respx_mock.get(f"https://{base}.test/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
+        respx_mock.get(f"https://{base}.test/api/firewall/filter_util/rule_stats").mock(return_value=httpx.Response(404, json={}))
+        respx_mock.get(f"https://{base}.test/api/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(200, json={"rules": {"filter rules": {}}}))
         respx_mock.get(f"https://{base}.test/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post("/api/compliance/check")
     assert resp.status_code == 200, resp.text

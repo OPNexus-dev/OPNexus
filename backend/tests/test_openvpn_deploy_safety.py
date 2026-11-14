@@ -44,7 +44,7 @@ def _mock_full_success(respx_mock, base_url: str, with_statickey: bool = False):
 
 @pytest.mark.asyncio
 async def test_deploy_success_persists_instance_uuid(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
@@ -67,7 +67,7 @@ async def test_deploy_success_persists_instance_uuid(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_with_tls_key_writes_statickey_before_instance(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/openvpn/instances",
@@ -93,7 +93,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
     """The Instance add fails — status must be "error" with a concrete
     message, and reconfigure must never be reached (config write itself
     failed, no rollback exists for this entity)."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
@@ -124,7 +124,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     fails — the plan specifies the exact same non-generic message IPsec
     uses ("config written, reload unconfirmed" is a materially different
     failure mode from "config write itself failed")."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
@@ -160,7 +160,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
     reconfigure with the same exact message as a transport-level failure,
     proving this app checks the actual key/value OpenVPN's reconfigure
     reports through, not IPsec's "status" shape."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
@@ -182,7 +182,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/openvpn/instances", json=_instance_payload([host["id"]]))
     instance_id = resp.json()["id"]
@@ -202,7 +202,7 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_disabling_tls_key_after_enable_deletes_statickey(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/openvpn/instances",
@@ -244,7 +244,7 @@ async def test_multi_host_deploy_sends_each_host_its_own_cert_and_ca(client, res
     """Regression guard for the 2026-09-09 fix: cert_refs/ca_refs are
     per-host maps now, so a two-host instance must push a DIFFERENT
     cert/ca pair to each host, not the same string to both."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host1 = await _create_host(client, "fw1", "https://fw1.test")
     host2 = await _create_host(client, "fw2", "https://fw2.test")
     resp = await client.post(
@@ -281,7 +281,7 @@ async def test_multi_host_deploy_sends_each_host_its_own_cert_and_ca(client, res
 
 @pytest.mark.asyncio
 async def test_host_missing_cert_selection_fails_closed_without_any_call(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/openvpn/instances",
@@ -308,7 +308,7 @@ async def test_host_missing_cert_selection_fails_closed_without_any_call(client,
 
 @pytest.mark.asyncio
 async def test_undeploy_deletes_instance_before_statickey(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post(
         "/api/openvpn/instances",

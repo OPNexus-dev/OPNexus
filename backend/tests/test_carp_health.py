@@ -28,8 +28,8 @@ def _vip(status: str | None) -> dict:
 
 @pytest.mark.asyncio
 async def test_check_carp_health_detects_split_brain(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -44,8 +44,8 @@ async def test_check_carp_health_detects_split_brain(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_carp_health_detects_no_master(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -58,8 +58,8 @@ async def test_check_carp_health_detects_no_master(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_carp_health_healthy_reports_nothing(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -77,9 +77,9 @@ def _vips(**states: str) -> dict:
 @pytest.mark.asyncio
 async def test_check_carp_health_detects_a_vip_that_is_down_on_one_node(client, respx_mock):
     # 2026-10-20: VHID 130 was DISABLED on the primary and taken over by the secondary; per host it looked fine.
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json=_vips(**{"110": "MASTER", "130": "DISABLED"})))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json=_vips(**{"110": "BACKUP", "130": "BACKUP"})))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
@@ -93,9 +93,9 @@ async def test_check_carp_health_detects_a_vip_that_is_down_on_one_node(client, 
 
 @pytest.mark.asyncio
 async def test_check_carp_health_detects_a_partial_failover(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json=_vips(**{"110": "MASTER", "130": "BACKUP"})))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(
         return_value=httpx.Response(200, json=_vips(**{"110": "BACKUP", "130": "BACKUP"})))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
@@ -108,8 +108,8 @@ async def test_check_carp_health_detects_a_partial_failover(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_check_carp_health_ignores_single_reachable_host(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
-    respx_mock.get("https://fw-b.test/api/diagnostics/interface/getVipStatus").mock(side_effect=httpx.ConnectError("down"))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-b.test/api/diagnostics/interface/get_vip_status").mock(side_effect=httpx.ConnectError("down"))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-b", "https://fw-b.test", "ha")
 
@@ -123,7 +123,7 @@ async def test_check_carp_health_ignores_single_reachable_host(client, respx_moc
 
 @pytest.mark.asyncio
 async def test_detect_and_record_creates_event_on_first_observation(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
     host = await _create_host(client, "fw-a", "https://fw-a.test", "ha")
 
     async with SessionLocal() as db:
@@ -137,7 +137,7 @@ async def test_detect_and_record_creates_event_on_first_observation(client, resp
 
 @pytest.mark.asyncio
 async def test_detect_and_record_only_fires_on_transition(client, respx_mock):
-    route = respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus")
+    route = respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status")
     route.mock(return_value=httpx.Response(200, json=_vip("MASTER")))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
 
@@ -160,7 +160,7 @@ async def test_detect_and_record_only_fires_on_transition(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_detect_and_record_skips_unreachable_hosts(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(side_effect=httpx.ConnectError("down"))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(side_effect=httpx.ConnectError("down"))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
 
     async with SessionLocal() as db:
@@ -173,8 +173,8 @@ async def test_detect_and_record_skips_unreachable_hosts(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_carp_events_endpoint_filters_by_cluster(client, respx_mock):
-    respx_mock.get("https://fw-a.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
-    respx_mock.get("https://fw-c.test/api/diagnostics/interface/getVipStatus").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
+    respx_mock.get("https://fw-a.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("MASTER")))
+    respx_mock.get("https://fw-c.test/api/diagnostics/interface/get_vip_status").mock(return_value=httpx.Response(200, json=_vip("BACKUP")))
     await _create_host(client, "fw-a", "https://fw-a.test", "ha")
     await _create_host(client, "fw-c", "https://fw-c.test", "other")
 

@@ -40,7 +40,7 @@ def _mock_full_success(respx_mock, base_url: str, general_enabled: str = "1"):
 
 @pytest.mark.asyncio
 async def test_deploy_success_persists_server_and_peer_uuid(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -67,7 +67,7 @@ async def test_peer_payload_carries_injected_server_uuid(client, respx_mock):
     by this app sending `servers` = the Server's own UUID on the Peer's
     add/set call. Locks in that this app actually injects it, in the
     correct order (Server created before Peer references it)."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -99,7 +99,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
     message, the Peer must never be written, and reconfigure must never be
     reached (config write itself failed, no rollback exists for this
     entity)."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -134,7 +134,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     fails — the plan specifies the exact same non-generic message IPsec/
     OpenVPN use ("config written, reload unconfirmed" is a materially
     different failure mode from "config write itself failed")."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -174,7 +174,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
     transport-level failure, proving this app checks the actual key/value
     WireGuard's reconfigure reports through rather than assuming either
     sibling feature's shape."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -199,7 +199,7 @@ async def test_reconfigure_checks_result_key_explicitly(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -218,7 +218,7 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_undeploy_deletes_peer_before_server(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -252,7 +252,7 @@ async def test_secrets_never_persisted_and_rotation_is_not_a_no_op(client, respx
     silently skipped OPNsense entirely, leaving the OLD key live on the
     firewall while the UI kept showing "success". Fixed by storing a
     SHA-256 hash of each secret instead of the secret itself."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     original_key = "p" * 43 + "="
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]], server_private_key=original_key))
@@ -301,7 +301,7 @@ async def test_secrets_never_persisted_and_rotation_is_not_a_no_op(client, respx
 async def test_deploy_switches_on_the_global_wireguard_service_when_disabled(client, respx_mock):
     """Live 26.7.5: with General.enabled=0 the config is written but no wg
     interface exists, so the deploy must enable the switch first."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/wireguard/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]

@@ -85,7 +85,7 @@ async def test_sampler_stores_gateways_services_swap_and_cpu(client, respx_mock)
     _mock_vip(respx_mock)
     await _create_host(client, "fw1", "https://fw1.test")
     _mock_resource_endpoints(respx_mock)
-    respx_mock.get("https://fw1.test/api/diagnostics/system/systemSwap").respond(200, json={"swap": [{"device": "/dev/da0p3", "total": "8388608", "used": "2097152"}]})
+    respx_mock.get("https://fw1.test/api/diagnostics/system/system_swap").respond(200, json={"swap": [{"device": "/dev/da0p3", "total": "8388608", "used": "2097152"}]})
     respx_mock.get("https://fw1.test/api/diagnostics/cpu_usage/getCPUType").respond(200, json=["QEMU Virtual CPU version 2.5+ (6 cores, 6 threads)"])
     respx_mock.get("https://fw1.test/api/routes/gateway/status").respond(200, json=STATUS_PAYLOAD)
     respx_mock.get("https://fw1.test/api/core/service/search").respond(200, json={"rows": [

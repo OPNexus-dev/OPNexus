@@ -31,6 +31,11 @@ den Einstellungen.
 Nächste Codenamen (der Reihe nach, wenn die jeweils nächste MINOR-Version
 ansteht): wird beim nächsten MINOR-Release festgelegt (Griffon ist mit 1.34.0 vergeben).
 
+## [1.37.8] "Shikra" — 2026-11-14
+
+- **API-Benutzer mit eingeschränkten Rechten funktionieren (Issue #8, gemeldet von ccesario).** OPNsense prüft die Rechte eines API-Benutzers gegen die URL genau so, wie sie geschrieben ist, und die Rechte-Definitionen (ACL) verwenden `snake_case`. OPNexus rief mehrere Diagnose-Endpunkte aber in `camelCase` auf (z. B. `getVipStatus`); mit „All pages“ fiel das nicht auf, mit einem eingeschränkten Benutzer scheiterte schon das Anlegen der Firewall mit HTTP 403. Jetzt nutzt OPNexus die Schreibweise der ACL: `get_vip_status`, `system_swap`, `pf_statistics/rules`, `filter_util/rule_stats` und `pre_shared_keys`. Bei `system_resources`, `system_time`, `system_disk` und `get_interface_statistics` hat OPNsense die Schreibweise zwischen den Versionen gewechselt (bis 25.1 `camelCase`, ab 25.7 `snake_case`): dort wird die aktuelle zuerst versucht und bei 403/404 die ältere, die funktionierende wird je Firewall gemerkt. Ein fehlendes Recht bleibt ein 403 (der Rechte-Alarm bleibt aktiv). Dasselbe gilt für die Unbound-Host-Überschreibungen: Das schmale Recht „Services: Unbound DNS: Edit Host and Domain Override“ kennt nur `search_host_override` & Co. und (anders als das breite „Services: Unbound“) nur mit abschließendem Schrägstrich vor der Query-Zeichenkette. Gegen eine echte OPNsense 26.7 mit je einem Test-Benutzer pro Recht geprüft (57 Rechte, 16.815 Abfragen, alle wie von den Rechte-Definitionen vorhergesagt).
+- **Neu: [OPNsense-Rechte für den API-Benutzer](docs/API-RECHTE.md) (Issue #7, Anregung von ccesario).** Eine Tabelle, welche Funktion von OPNexus welche OPNsense-Rechte braucht, aus den geprüften Daten erzeugt; das Handbuch verweist darauf.
+
 ## [1.37.7] "Shikra" — 2026-11-11
 
 - **Updates per Klick funktionieren mit Rootless Docker.** Bisher hängte der Updater immer `/var/run/docker.sock` ein; unter Rootless Docker liegt der Socket aber unter `/run/user/<UID>/docker.sock`, und der Updater lief mit einem leeren Verzeichnis statt eines Sockets (gesund laut Gesundheitsprüfung, aber ohne Zugriff auf Docker).

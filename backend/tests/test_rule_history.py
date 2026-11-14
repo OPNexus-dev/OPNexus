@@ -48,7 +48,7 @@ def rule(uuid, **kw):
 
 
 async def host_of(client, respx_mock, name="fw1", url="https://fw1.test"):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     return uuid_lib.UUID((await _create_host(client, name, url))["id"])
 
 
@@ -298,7 +298,7 @@ def test_the_legacy_user_rule_is_a_configured_rule_but_automatic_ones_are_not():
 
 def _mock_observe(respx_mock, base, search, stats):
     respx_mock.get(f"{base}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=search))
-    respx_mock.get(f"{base}/api/firewall/filter_util/ruleStats").mock(return_value=stats)
+    respx_mock.get(f"{base}/api/firewall/filter_util/rule_stats").mock(return_value=stats)
 
 
 @pytest.mark.asyncio
@@ -313,7 +313,7 @@ async def test_observe_host_reads_two_endpoints_and_feeds_usage_and_history(clie
     assert set(hits) == {"db610dbc7c6467261cf08e8a72ade096", R1}
     assert hits["db610dbc7c6467261cf08e8a72ade096"].last_hit_at == T0 and hits[R1].last_hit_at is None
     gets = [c.request.url.path for c in respx_mock.calls if "/api/firewall" in c.request.url.path]
-    assert sorted(gets) == ["/api/firewall/filter/searchRule", "/api/firewall/filter_util/ruleStats"]
+    assert sorted(gets) == ["/api/firewall/filter/searchRule", "/api/firewall/filter_util/rule_stats"]
     assert len(await events(host)) == 0  # baseline
 
 
@@ -321,7 +321,7 @@ async def test_observe_host_reads_two_endpoints_and_feeds_usage_and_history(clie
 async def test_usage_falls_back_to_pf_statistics_when_rule_stats_is_missing(client, respx_mock):
     host = await host_of(client, respx_mock, url=FW)
     _mock_observe(respx_mock, FW, answer(rule(R1)), httpx.Response(404, json={"message": "not found"}))
-    respx_mock.get(f"{FW}/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json={
+    respx_mock.get(f"{FW}/api/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(200, json={
         "rules": {"filter rules": {f'@5 pass in quick on vtnet1 inet all label "{R1}"': {"packets": 7, "bytes": 70, "evaluations": 9}}}}))
     async with SessionLocal() as db:
         await rhs.observe_host(db, await db.get(OpnsenseHost, host), now=T0)
@@ -543,7 +543,7 @@ async def test_cleanup_endpoint_lists_candidates_with_confidence_and_removabilit
     pf = json.loads(json.dumps(FIXTURE["pf"]))
     for u, n in ((R1, 900), (R2, 901)):
         pf["rules"]["filter rules"][f'@{n} pass in quick on vtnet1_vlan10 inet proto tcp from any to any label "{u}"'] = {}
-    respx_mock.get(f"{FW}/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json=pf))
+    respx_mock.get(f"{FW}/api/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(200, json=pf))
     host = await host_of(client, respx_mock, url=FW)
     await _seed_hits(host, **{R2: (100, None)})
     async with SessionLocal() as db:
@@ -636,7 +636,7 @@ async def test_every_reloading_apply_samples_the_counters_first_and_a_failed_sam
     from app.services import opnsense_client
 
     host_id = await host_of(client, respx_mock, url=FW)
-    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(200, json={
+    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/rule_stats").mock(return_value=httpx.Response(200, json={
         "status": "ok", "stats": {R1: {"packets": 42, "bytes": 4200, "evaluations": 50, "pf_rules": 1}}}))
     respx_mock.get(f"{FW}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=answer(rule(R1))))
     reloads = {
@@ -654,13 +654,13 @@ async def test_every_reloading_apply_samples_the_counters_first_and_a_failed_sam
         await getattr(opnsense_client, name)(host)
         order = [c.request.url.path for c in list(respx_mock.calls)[before:]]
         assert order[-1] == f"/api{path}", name
-        assert "/api/firewall/filter_util/ruleStats" in order[:-1] and "/api/firewall/filter/searchRule" in order[:-1], (name, order)
+        assert "/api/firewall/filter_util/rule_stats" in order[:-1] and "/api/firewall/filter/searchRule" in order[:-1], (name, order)
     async with SessionLocal() as db:
         row = (await db.scalars(select(RuleHit).where(RuleHit.host_id == host_id))).one()
     assert row.rule_uuid == R1 and row.last_packets == 42 and row.last_hit_at is not None
 
     stats.mock(return_value=httpx.Response(500, json={}))  # the probe fails: the write goes on anyway
-    respx_mock.get(f"{FW}/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(500, json={}))
+    respx_mock.get(f"{FW}/api/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(500, json={}))
     assert (await opnsense_client.apply(host))["status"] == "ok"
 
 
@@ -669,7 +669,7 @@ async def test_a_writer_that_just_sampled_itself_does_not_probe_twice(client, re
     from app.services import opnsense_client
 
     host_id = await host_of(client, respx_mock, url=FW)
-    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/ruleStats").mock(return_value=httpx.Response(200, json={"status": "ok", "stats": {}}))
+    stats = respx_mock.get(f"{FW}/api/firewall/filter_util/rule_stats").mock(return_value=httpx.Response(200, json={"status": "ok", "stats": {}}))
     respx_mock.get(f"{FW}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=answer()))
     respx_mock.post(f"{FW}/api/firewall/filter/apply").mock(return_value=httpx.Response(200, json={"status": "ok"}))
     async with SessionLocal() as db:

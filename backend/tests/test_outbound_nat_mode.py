@@ -14,7 +14,7 @@ def test_mode_release_shapes(shape):
 @pytest.mark.parametrize("mode", ["automatic", "disabled", "unknown", None, {"hybrid": {"selected": 1}, "advanced": {"selected": 1}}])
 @pytest.mark.asyncio
 async def test_block_entire_fleet_before_writing(client, respx_mock, mode):
-    respx_mock.get(url__regex=r".*/getVipStatus").respond(200, json={"rows": []})
+    respx_mock.get(url__regex=r".*/get_vip_status").respond(200, json={"rows": []})
     a = await _create_host(client, "a", "https://a.test")
     b = await _create_host(client, "b", "https://b.test")
     for host, value in [(a, "hybrid"), (b, mode)]:
@@ -26,7 +26,7 @@ async def test_block_entire_fleet_before_writing(client, respx_mock, mode):
 
 @pytest.mark.asyncio
 async def test_unreachable_mode_blocks_before_mutation(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").respond(200,json={"rows": []})
+    respx_mock.get(url__regex=r".*/get_vip_status").respond(200,json={"rows": []})
     h=await _create_host(client,'a','https://a.test')
     respx_mock.get('https://a.test/api/firewall/source_nat/get').mock(side_effect=httpx.ConnectError('offline'))
     r=(await client.post('/api/outbound-nat',json=_nat_payload([h['id']]))).json()
@@ -35,7 +35,7 @@ async def test_unreachable_mode_blocks_before_mutation(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_mode_change_mid_fleet_preserves_earlier_rollback_deadline(client,respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").respond(200,json={"rows":[]})
+    respx_mock.get(url__regex=r".*/get_vip_status").respond(200,json={"rows":[]})
     hosts=[await _create_host(client,n,f'https://{n}.test') for n in ('a','b')]
     hosts.sort(key=lambda h:(h['name'],h['id']))
     first,last=hosts

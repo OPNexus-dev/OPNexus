@@ -28,7 +28,7 @@ def _mock_nat_push(respx_mock, base_url: str, uuid_: str = "pf-uuid-1"):
 
 @pytest.mark.asyncio
 async def test_create_one_to_one_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
@@ -42,7 +42,7 @@ async def test_create_one_to_one_rule(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_one_to_one_success_and_confirm(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -62,7 +62,7 @@ async def test_deploy_one_to_one_success_and_confirm(client: AsyncClient, respx_
 @pytest.mark.asyncio
 async def test_payload_fields(client, respx_mock):
     import json
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     h = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/one-to-one", json=_nat_payload([h["id"]], enabled=False, source_not=True))).json()
     _mock_nat_push(respx_mock, "https://fw1.test")
@@ -77,7 +77,7 @@ async def test_payload_fields(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_one_to_one_mixed_host_failure(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/firewall/filter/getRule").mock(return_value=httpx.Response(200, json={"rule": {"interface": {"wan": {"value": "WAN"}}}}))
     respx_mock.get(url__regex=r".*/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_ok = await _create_host(client, "fw-ok", "https://fw-ok.test")
@@ -99,7 +99,7 @@ async def test_deploy_one_to_one_mixed_host_failure(client: AsyncClient, respx_m
 
 @pytest.mark.asyncio
 async def test_one_to_one_edit_creates_revision_history(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))).json()
 
@@ -117,7 +117,7 @@ async def test_one_to_one_edit_creates_revision_history(client: AsyncClient, res
 
 @pytest.mark.asyncio
 async def test_stale_one_to_one_editor_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))).json()
     stale = await client.put(f"/api/one-to-one/{r['id']}", json=_nat_payload([host["id"]], expected_updated_at=r["updated_at"]))
@@ -128,7 +128,7 @@ async def test_stale_one_to_one_editor_rejected(client: AsyncClient, respx_mock)
 
 @pytest.mark.asyncio
 async def test_delete_one_to_one_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))).json()
 
@@ -146,7 +146,7 @@ async def test_deploy_one_to_one_without_targets_rejected(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_one_to_one_stale_preview_token_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/one-to-one", json=_nat_payload([host["id"]]))).json()
 

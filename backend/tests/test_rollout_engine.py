@@ -35,11 +35,11 @@ class Fw:
         self.check = r.post(f"{b}/api/core/firmware/check").mock(side_effect=lambda q: self._ok({"status": "ok"}))
         self.toggles = r.post(f"{b}/api/diagnostics/interface/carp_status/maintenance").mock(side_effect=self._toggle)
         r.get(f"{b}/api/core/backup/download/this").mock(side_effect=lambda q: self._raw(b"<opnsense/>"))
-        r.get(f"{b}/api/diagnostics/interface/getVipStatus").mock(side_effect=self._vip)
+        r.get(f"{b}/api/diagnostics/interface/get_vip_status").mock(side_effect=self._vip)
         r.get(f"{b}/api/core/firmware/running").mock(side_effect=lambda q: self._ok({"status": self.job}))
         r.get(f"{b}/api/core/firmware/info").mock(side_effect=lambda q: self._ok({"product_version": self.version}))
         r.get(f"{b}/api/core/firmware/status").mock(side_effect=self._status)
-        r.get(f"{b}/api/diagnostics/system/systemTime").mock(side_effect=lambda q: self._ok({"boottime": self.boot}))
+        r.get(f"{b}/api/diagnostics/system/system_time").mock(side_effect=lambda q: self._ok({"boottime": self.boot}))
         r.get(f"{b}/api/routes/gateway/status").mock(side_effect=lambda q: self._ok({"items": self.gateways, "status": "ok"}))
         r.get(f"{b}/api/core/service/search").mock(side_effect=lambda q: self._ok({"rows": self.services}))
 

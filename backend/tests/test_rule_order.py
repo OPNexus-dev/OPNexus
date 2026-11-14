@@ -27,7 +27,7 @@ class Fw:
         self.down = False
         self.calls = []
         base = f"https://{host}.test/api/firewall/filter"
-        respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+        respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
         respx_mock.get(f"{base}/searchRule").mock(side_effect=self._search)
         respx_mock.post(url__regex=rf"{base}/moveRuleBefore/.*").mock(side_effect=self._move)
         respx_mock.post(url__regex=rf"{base}/setRule/.*").mock(side_effect=self._set)

@@ -40,7 +40,7 @@ def _mock_full_success(respx_mock, base_url: str, enabled: bool = True):
     respx_mock.post(f"{base_url}/api/ipsec/connections/addChild").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "child-1"})
     )
-    respx_mock.post(f"{base_url}/api/ipsec/preSharedKeys/addItem").mock(
+    respx_mock.post(f"{base_url}/api/ipsec/pre_shared_keys/addItem").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "psk-1"})
     )
     respx_mock.post(f"{base_url}/api/ipsec/service/reconfigure").mock(
@@ -50,7 +50,7 @@ def _mock_full_success(respx_mock, base_url: str, enabled: bool = True):
 
 @pytest.mark.asyncio
 async def test_deploy_success_persists_all_five_uuids(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -79,7 +79,7 @@ async def test_deploy_config_write_failure_surfaces_as_error_without_rollback(cl
     status must be "error" with a concrete message, and the 3 UUIDs that
     DID get written must still be persisted (no rollback exists for this
     entity, and a retry should update those 3 rather than duplicate them)."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -123,7 +123,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     fails — the plan specifies an exact, non-generic message here because
     "config written, reload unconfirmed" is a materially different failure
     mode from "config write itself failed"."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -140,7 +140,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
     respx_mock.post("https://fw1.test/api/ipsec/connections/addChild").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "child-1"})
     )
-    respx_mock.post("https://fw1.test/api/ipsec/preSharedKeys/addItem").mock(
+    respx_mock.post("https://fw1.test/api/ipsec/pre_shared_keys/addItem").mock(
         return_value=httpx.Response(200, json={"result": "saved", "uuid": "psk-1"})
     )
     _mock_ipsec_enabled(respx_mock, "https://fw1.test")
@@ -167,7 +167,7 @@ async def test_deploy_reconfigure_failure_uses_exact_specified_message(client, r
 
 @pytest.mark.asyncio
 async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -186,7 +186,7 @@ async def test_redeploy_unchanged_skips_opnsense_entirely(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_undeploy_deletes_child_local_remote_connection_then_psk(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -206,7 +206,7 @@ async def test_undeploy_deletes_child_local_remote_connection_then_psk(client, r
     del_conn = respx_mock.post("https://fw1.test/api/ipsec/connections/delConnection/conn-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})
     )
-    del_psk = respx_mock.post("https://fw1.test/api/ipsec/preSharedKeys/delItem/psk-1").mock(
+    del_psk = respx_mock.post("https://fw1.test/api/ipsec/pre_shared_keys/delItem/psk-1").mock(
         return_value=httpx.Response(200, json={"result": "deleted"})
     )
 
@@ -217,7 +217,7 @@ async def test_undeploy_deletes_child_local_remote_connection_then_psk(client, r
 
 @pytest.mark.asyncio
 async def test_deploy_switches_on_the_global_ipsec_service_when_disabled(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]

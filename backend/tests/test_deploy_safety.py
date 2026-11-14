@@ -45,7 +45,7 @@ def _mock_deploy_success(respx_mock, base_url: str, uuid_: str = "abc-123"):
 
 @pytest.mark.asyncio
 async def test_deploy_starts_in_pending_state(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -61,7 +61,7 @@ async def test_deploy_starts_in_pending_state(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_confirm_makes_deployment_permanent(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -78,7 +78,7 @@ async def test_confirm_makes_deployment_permanent(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_redeploy_unchanged_payload_skips_pending(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -104,7 +104,7 @@ async def test_redeploy_unchanged_payload_skips_pending(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_sweep_reverts_fresh_deploy_by_deleting_it(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -131,7 +131,7 @@ async def test_sweep_reverts_fresh_deploy_by_deleting_it(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_sweep_reverts_redeploy_by_restoring_previous_payload(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -169,7 +169,7 @@ async def test_sweep_reverts_redeploy_by_restoring_previous_payload(client, resp
 
 @pytest.mark.asyncio
 async def test_sweep_marks_revert_failed_when_host_unreachable(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -219,7 +219,7 @@ def _patch_rule_calls(monkeypatch, *, apply_results):
 @pytest.mark.asyncio
 async def test_retry_after_failed_apply_still_removes_a_first_installation(client, respx_mock, monkeypatch):
     from app.services.opnsense_client import OpnsenseAPIError
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
     calls = _patch_rule_calls(monkeypatch, apply_results=[OpnsenseAPIError("apply failed"), {}, {}])
@@ -246,7 +246,7 @@ async def test_retry_after_failed_apply_still_removes_a_first_installation(clien
 @pytest.mark.asyncio
 async def test_retry_after_failed_apply_restores_the_confirmed_payload_of_an_existing_rule(client, respx_mock, monkeypatch):
     from app.services.opnsense_client import OpnsenseAPIError
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
     confirmed = {"description": "confirmed before", "action": "pass"}
@@ -282,7 +282,7 @@ async def test_an_armed_error_row_blocks_cleanup_and_maintenance_like_a_pending_
     assert not is_unsettled(Dep(status="error", revert_deadline=None))
     assert not is_unsettled(Dep(status="success", revert_deadline=None))
     assert is_unsettled(Dep(status="revert_failed", revert_deadline=None))
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     rule_id = (await client.post("/api/rules", json=_rule_payload([host["id"]]))).json()["id"]
     async with SessionLocal() as db:
@@ -300,7 +300,7 @@ async def test_alias_retry_after_failed_reconfigure_still_removes_a_first_instal
     from app.services.alias_deploy_service import sweep_expired_alias_deployments
     from app.services.opnsense_client import OpnsenseAPIError
     from tests.test_aliases import _alias_payload
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     alias_id = (await client.post("/api/aliases", json=_alias_payload([host["id"]]))).json()["id"]
     delete = AsyncMock(return_value={})

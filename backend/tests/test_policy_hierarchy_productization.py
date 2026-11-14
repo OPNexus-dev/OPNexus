@@ -160,7 +160,7 @@ async def test_normal_rule_deploy_reasserts_inherited_hierarchy_order(client, re
 async def test_reassert_brackets_existing_mvc_rules_with_pre_and_post(client, respx_mock):
     # This test supplies the live searchRule ordering instead of using
     # mock_status's empty compatibility response.
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(
         return_value=httpx.Response(200, json={"rows": []})
     )
     group = await _create_group(client, "Root")

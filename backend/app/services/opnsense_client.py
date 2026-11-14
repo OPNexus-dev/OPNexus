@@ -117,9 +117,11 @@ async def _do_request(host: OpnsenseHost, method: str, path: str, **kwargs) -> h
             secret = opnsense_secret_store.read_secret(host.id)
             status = exc.response.status_code
             error = OpnsenseAmbiguousError if status >= 500 else OpnsenseForbiddenError if status == 403 else OpnsenseAPIError
-            raise error(
+            refusal = error(
                 f"{exc.response.status_code} {path}: {redact_text(exc.response.text, host.api_key, secret)}"
-            ) from exc
+            )
+            refusal.status = status
+            raise refusal from exc
         except httpx.HTTPError as exc:
             if host.tls_ca_pem and "CERTIFICATE_VERIFY_FAILED" in str(exc):
                 raise OpnsenseAPIError(
@@ -159,8 +161,40 @@ async def _request_raw(host: OpnsenseHost, method: str, path: str, **kwargs) -> 
     return resp.content
 
 
+# OPNsense checks the privilege (ACL) of an API user against the URL exactly as it was written, and its ACL patterns
+# changed their spelling between releases: `getInterfaceStatistics`, `systemDisk`, `systemResources` and `systemTime`
+# were camelCase up to 25.1 and are snake_case from 25.7 on (the other endpoints, e.g. `get_vip_status`, `system_swap`,
+# `pf_statistics`, `rule_stats`, `pre_shared_keys`, have only ever had the snake_case ACL and are called that way).
+# Both spellings reach
+# the same action, so a user with "All pages" never notices; a restricted user gets a 403 for the wrong one
+# (issue #8). The first spelling is the current one; the other is tried when the firewall refuses (403) or does not
+# know (404) it, and the one that worked is remembered per firewall.
+_acl_variant: dict[tuple[str, str], int] = {}
+
+
+async def _request_acl(host: OpnsenseHost, method: str, paths: tuple[str, ...], *, remember_as: str | None = None,
+                       **kwargs) -> Any:
+    # remember_as: the key for the remembered spelling when the paths carry an id (one entry per action, not per object)
+    key = (str(host.id), remember_as or paths[0])
+    start = _acl_variant.get(key, 0)
+    order = [(i, paths[i]) for i in list(range(start, len(paths))) + list(range(start))]
+    errors: list[OpnsenseAPIError] = []
+    for index, path in order:
+        try:
+            result = await _request(host, method, path, **kwargs)
+        except OpnsenseAPIError as exc:
+            if getattr(exc, "status", None) not in (403, 404):
+                raise
+            errors.append(exc)
+            continue
+        _acl_variant[key] = index
+        return result
+    # A refusal says more than "not found": the user lacks the right, whichever spelling the firewall knows.
+    raise next((e for e in errors if isinstance(e, OpnsenseForbiddenError)), errors[0])
+
+
 async def get_vip_status(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/interface/getVipStatus")
+    return await _request(host, "GET", "/diagnostics/interface/get_vip_status")
 
 
 # ── Resource monitoring (read-only) ─────────────────────────────────────
@@ -175,19 +209,19 @@ async def get_vip_status(host: OpnsenseHost) -> dict:
 #   systemDisk      -> {"devices": [{"mountpoint": "/", "used_pct": 2, ...}, ...]}
 #   getInterfaceStatistics -> {"statistics": {"<label>": {"name": "igb0", "received-bytes": ..., "sent-bytes": ..., ...}, ...}}
 async def get_system_resources(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/system/systemResources")
+    return await _request_acl(host, "GET", ("/diagnostics/system/system_resources", "/diagnostics/system/systemResources"))
 
 
 async def get_system_time(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/system/systemTime")
+    return await _request_acl(host, "GET", ("/diagnostics/system/system_time", "/diagnostics/system/systemTime"))
 
 
 async def get_system_disk(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/system/systemDisk")
+    return await _request_acl(host, "GET", ("/diagnostics/system/system_disk", "/diagnostics/system/systemDisk"))
 
 
 async def get_interface_statistics(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/interface/getInterfaceStatistics")
+    return await _request_acl(host, "GET", ("/diagnostics/interface/get_interface_statistics", "/diagnostics/interface/getInterfaceStatistics"))
 
 
 # Swap and CPU count, for the resource-threshold alert (1.24). Verified against core source
@@ -197,7 +231,7 @@ async def get_interface_statistics(host: OpnsenseHost) -> dict:
 #                  an empty list when the firewall has no swap)
 #   cpu_usage/getCPUType -> ["QEMU Virtual CPU version 2.5+ (6 cores, 6 threads)"]
 async def get_system_swap(host: OpnsenseHost) -> dict:
-    return await _request(host, "GET", "/diagnostics/system/systemSwap")
+    return await _request(host, "GET", "/diagnostics/system/system_swap")
 
 
 async def get_cpu_type(host: OpnsenseHost) -> Any:
@@ -594,7 +628,7 @@ async def get_pf_rule_statistics(host: OpnsenseHost) -> dict:
     bytes, states, ...}}}}. Verified live on OPNsense 26.7: the pf label of a rule created in
     the rule editor/API is its UUID, so counters can be tied to rules; automatic rules carry
     an md5 label instead."""
-    return await _request(host, "GET", "/diagnostics/firewall/pfStatistics/rules")
+    return await _request(host, "GET", "/diagnostics/firewall/pf_statistics/rules")
 
 
 # ── Rule analysis (read-only) ─────────────────────────────────────────────
@@ -671,7 +705,7 @@ async def get_rule_stats(host: OpnsenseHost) -> dict:
     rules): HTTP 200, ``stats`` has exactly one key per label of ``pfStatistics/rules`` (30/30/25 labels,
     including the 32-hex label of the legacy user rule on the third), and each ``packets`` equals the sum over
     that label's pf lines (differences only by traffic between the two reads)."""
-    return await _request(host, "GET", "/firewall/filter_util/ruleStats")
+    return await _request(host, "GET", "/firewall/filter_util/rule_stats")
 
 
 async def find_alias_references(host: OpnsenseHost, ip: str) -> list[str] | None:
@@ -868,15 +902,15 @@ async def del_ipsec_child(host: OpnsenseHost, uuid_: str) -> dict:
 
 
 async def add_ipsec_psk(host: OpnsenseHost, payload: dict) -> dict:
-    return _ipsec_result(await _request(host, "POST", "/ipsec/preSharedKeys/addItem", json={"preSharedKey": payload}), "IPsec Pre-Shared-Key anlegen")
+    return _ipsec_result(await _request(host, "POST", "/ipsec/pre_shared_keys/addItem", json={"preSharedKey": payload}), "IPsec Pre-Shared-Key anlegen")
 
 
 async def set_ipsec_psk(host: OpnsenseHost, uuid_: str, payload: dict) -> dict:
-    return _ipsec_result(await _request(host, "POST", f"/ipsec/preSharedKeys/setItem/{uuid_}", json={"preSharedKey": payload}), "IPsec Pre-Shared-Key ändern")
+    return _ipsec_result(await _request(host, "POST", f"/ipsec/pre_shared_keys/setItem/{uuid_}", json={"preSharedKey": payload}), "IPsec Pre-Shared-Key ändern")
 
 
 async def del_ipsec_psk(host: OpnsenseHost, uuid_: str) -> dict:
-    return _mutation_result(await _request(host, "POST", f"/ipsec/preSharedKeys/delItem/{uuid_}"), "IPsec Pre-Shared-Key entfernen", {"deleted", "not found"})
+    return _mutation_result(await _request(host, "POST", f"/ipsec/pre_shared_keys/delItem/{uuid_}"), "IPsec Pre-Shared-Key entfernen", {"deleted", "not found"})
 
 
 async def ensure_ipsec_enabled(host: OpnsenseHost) -> bool:
@@ -1419,7 +1453,11 @@ NETWORK_ITEM_APIS = {
     # reconfigure is the service controller's inherited action). Read 2026-10-09.
     "dns_host": {"body_key": "host", "base": "/unbound/settings", "add": "addHostOverride", "set": "setHostOverride",
                  "del": "delHostOverride", "get": "getHostOverride", "search": "searchHostOverride",
-                 "reconfigure": "/unbound/service/reconfigure"},
+                 "reconfigure": "/unbound/service/reconfigure",
+                 # The narrow privilege "Services: Unbound DNS: Edit Host and Domain Override" only lists the snake_case
+                 # actions (issue #7/#8); the broad "Services: Unbound" covers both. Current spelling first, see _request_acl.
+                 "acl_names": {"add": "add_host_override", "set": "set_host_override", "del": "del_host_override",
+                               "get": "get_host_override", "search": "search_host_override"}},
     "dhcp_host": {"body_key": "host", "base": "/dnsmasq/settings", "add": "addHost", "set": "setHost",
                   "del": "delHost", "get": "getHost", "search": "searchHost",
                   "reconfigure": "/dnsmasq/service/reconfigure"},
@@ -1472,10 +1510,26 @@ def _nest(fields: dict) -> dict:
     return out
 
 
+def _item_key(api: dict, action: str) -> str:
+    return f"{api['base']}/{(api.get('acl_names') or api)[action]}"
+
+
+def _item_paths(api: dict, action: str, uuid: str | None = None) -> tuple[str, ...]:  # noqa: E501
+    """The URL of one table action, in every spelling the firewall's ACL may know (see _request_acl)."""
+    names = [api["acl_names"][action]] if api.get("acl_names") else []
+    names.append(api[action])
+    paths = [f"{api['base']}/{name}" + (f"/{uuid}" if uuid else "") for name in names]
+    if api.get("acl_names") and action == "search":
+        # The ACL patterns of the narrow privilege end in "/*", which OPNsense matches against the URL INCLUDING the
+        # query string: ".../search_host_override?rowCount=-1" is refused (403), ".../search_host_override/?rowCount=-1"
+        # is allowed. The slash costs nothing for the broad privilege.
+        paths[0] += "/"
+    return tuple(paths)
+
+
 async def get_network_item(host: OpnsenseHost, kind: str, uuid: str | None) -> dict:
     api = NETWORK_ITEM_APIS[kind]
-    path = f"{api['base']}/{api['get']}" + (f"/{uuid}" if uuid else "")
-    data = await _request(host, "GET", path)
+    data = await _request_acl(host, "GET", _item_paths(api, "get", uuid), remember_as=_item_key(api, "get"))
     item = data.get(api["body_key"]) if isinstance(data, dict) else None
     return item if isinstance(item, dict) else {}
 
@@ -1484,14 +1538,15 @@ async def write_network_item(host: OpnsenseHost, kind: str, action: str, uuid: s
     api = NETWORK_ITEM_APIS[kind]
     if action == "add":
         return _mutation_result(
-            await _request(host, "POST", f"{api['base']}/{api['add']}", json={api["body_key"]: _nest(fields)}),
+            await _request_acl(host, "POST", _item_paths(api, "add"), remember_as=_item_key(api, "add"), json={api["body_key"]: _nest(fields)}),
             "Objekt anlegen", {"saved"})
     if action == "set":
         return _mutation_result(
-            await _request(host, "POST", f"{api['base']}/{api['set']}/{uuid}", json={api["body_key"]: _nest(fields)}),
+            await _request_acl(host, "POST", _item_paths(api, "set", uuid), remember_as=_item_key(api, "set"), json={api["body_key"]: _nest(fields)}),
             "Objekt ändern", {"saved"})
     return _mutation_result(
-        await _request(host, "POST", f"{api['base']}/{api['del']}/{uuid}"), "Objekt entfernen", {"deleted"})
+        await _request_acl(host, "POST", _item_paths(api, "del", uuid), remember_as=_item_key(api, "del")),
+        "Objekt entfernen", {"deleted"})
 
 
 async def reconfigure_network(host: OpnsenseHost, kind: str) -> dict:
@@ -1502,7 +1557,7 @@ async def reconfigure_network(host: OpnsenseHost, kind: str) -> dict:
 
 async def list_network_item_uuids(host: OpnsenseHost, kind: str) -> list[str]:
     api = NETWORK_ITEM_APIS[kind]
-    data = await _request(host, "GET", f"{api['base']}/{api['search']}", params={"rowCount": -1})
+    data = await _request_acl(host, "GET", _item_paths(api, "search"), params={"rowCount": -1})
     rows = data.get("rows", []) if isinstance(data, dict) else []
     return [str(r.get("uuid")) for r in rows if isinstance(r, dict) and r.get("uuid")]
 
@@ -1514,12 +1569,12 @@ async def interface_changes_pending(host: OpnsenseHost) -> bool:
     return isinstance(data, dict) and data.get("status") == "pending"
 
 
-async def _search_all(host: OpnsenseHost, path: str) -> dict:
-    return await _request(host, "GET", path, params={"rowCount": -1})
+async def _search_all(host: OpnsenseHost, *paths: str) -> dict:
+    return await _request_acl(host, "GET", paths, params={"rowCount": -1})
 
 
 async def search_dns_hosts(host: OpnsenseHost) -> dict:
-    return await _search_all(host, "/unbound/settings/searchHostOverride")
+    return await _search_all(host, "/unbound/settings/search_host_override/", "/unbound/settings/searchHostOverride")
 
 
 async def search_dhcp_hosts(host: OpnsenseHost) -> dict:
@@ -1536,7 +1591,7 @@ async def search_kea_reservations(host: OpnsenseHost) -> dict:
 
 async def search_network_objects(host: OpnsenseHost, kind: str) -> list[dict]:
     api = NETWORK_ITEM_APIS[kind]
-    data = await _request(host, "GET", f"{api['base']}/{api['search']}", params={"rowCount": -1})
+    data = await _request_acl(host, "GET", _item_paths(api, "search"), params={"rowCount": -1})
     rows = data.get("rows", []) if isinstance(data, dict) else []
     return [r for r in rows if isinstance(r, dict)]
 

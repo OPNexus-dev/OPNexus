@@ -24,7 +24,7 @@ class Fw:
                          {"id": "ntpd", "name": "ntpd", "locked": 0, "running": 1}]
         self.gw_error = False
         r = respx_mock
-        r.get(f"{base}/api/diagnostics/interface/getVipStatus").mock(side_effect=self._vip)
+        r.get(f"{base}/api/diagnostics/interface/get_vip_status").mock(side_effect=self._vip)
         r.get(f"{base}/api/core/firmware/running").mock(side_effect=lambda q: self._ok({"status": self.job}))
         r.get(f"{base}/api/core/firmware/info").mock(side_effect=lambda q: self._ok({"product_version": self.version}))
         r.get(f"{base}/api/routes/gateway/status").mock(side_effect=self._gw)

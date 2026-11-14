@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.37.7` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.37.8` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -46,8 +46,8 @@ Alle Screenshots zeigen fiktive Beispieldaten.
 Voraussetzung: Docker mit Compose-Plugin (unter Debian 13: `apt install docker.io docker-compose`). Der empfohlene Weg ist das **Release-Bundle** mit fertigen, signierten Images – auf deinem Rechner wird nichts gebaut:
 
 ```bash
-curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.7/opnexus-1.37.7.tar.gz
-tar xzf opnexus-1.37.7.tar.gz && cd opnexus-1.37.7
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.8/opnexus-1.37.8.tar.gz
+tar xzf opnexus-1.37.8.tar.gz && cd opnexus-1.37.8
 install -m 600 .env.example .env     # nur für dich lesbar
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # eigenes Datenbank-Passwort erzeugen
 docker compose up -d

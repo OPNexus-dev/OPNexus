@@ -302,7 +302,7 @@ async def test_deploy_switches_off_samples_before_apply_and_waits_for_confirmati
     assert writes[2:] == [("POST", "/firewall/filter/apply")]  # one apply per node, after the toggles
     apply_at = env.fw.calls.index(("POST", "/firewall/filter/apply"))
     last_toggle = max(i for i, c in enumerate(env.fw.calls) if "toggleRule" in c[1])
-    assert ("GET", "/firewall/filter_util/ruleStats") in env.fw.calls[last_toggle:apply_at]  # sampled before the apply
+    assert ("GET", "/firewall/filter_util/rule_stats") in env.fw.calls[last_toggle:apply_at]  # sampled before the apply
     assert env.fw.get(R_UNUSED)["enabled"] == "0" and env.fw.get(R_DUP)["enabled"] == "0"
     op = await _op(p["preview_id"])
     window = timedelta(seconds=settings.deploy_confirm_window_seconds)

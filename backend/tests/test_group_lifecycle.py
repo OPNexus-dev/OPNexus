@@ -224,7 +224,7 @@ async def test_a_group_that_targets_a_vpn_object_cannot_be_deleted(client, respx
     """B15: the VPN link tables cascade, so the delete used to succeed and the VPN silently lost its targets."""
     from tests.test_ipsec import _tunnel_payload
 
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-vpn", "https://fw-vpn.test")
     target = await group(client, [host["id"]], name="VPN-Ziel")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([], target_group_ids=[target["id"]]))

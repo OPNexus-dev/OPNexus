@@ -27,7 +27,7 @@ class Snapshots:
         self.rows = [{"uuid": "be-default", "name": "default", "active": "NR", "created_str": "2026-10-01 10:00"}]
         self.fail_add, self.hide_new, self.fail_reboot, self.mark_on_activate = fail_add, hide_new, fail_reboot, mark_on_activate
         self.activated: list[str] = []
-        mock.get(f"{BASE}/api/diagnostics/interface/getVipStatus").respond(200, json={"rows": []})
+        mock.get(f"{BASE}/api/diagnostics/interface/get_vip_status").respond(200, json={"rows": []})
         mock.get(f"{BASE}/api/core/firmware/info").respond(200, json={"product_version": version})
         mock.get(f"{BASE}/api/core/firmware/status").respond(200, json={"status": status, "all_packages": {}, "status_msg": "ok"})
         mock.get(f"{BASE}/api/core/firmware/running").respond(200, json={"status": "ready"})

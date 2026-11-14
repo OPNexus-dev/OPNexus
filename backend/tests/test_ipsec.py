@@ -43,7 +43,7 @@ def _tunnel_payload(target_host_ids: list[str], **overrides) -> dict:
 
 @pytest.mark.asyncio
 async def test_create_tunnel(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
@@ -67,7 +67,7 @@ async def test_create_tunnel_requires_pre_shared_key(client):
 
 @pytest.mark.asyncio
 async def test_preview_shows_rollback_warning_and_create_action(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -91,7 +91,7 @@ async def test_deploy_without_targets_rejected(client):
 
 @pytest.mark.asyncio
 async def test_delete_tunnel(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel_id = resp.json()["id"]
@@ -106,7 +106,7 @@ async def test_delete_tunnel(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_edit_can_leave_pre_shared_key_unchanged(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/ipsec/tunnels", json=_tunnel_payload([host["id"]]))
     tunnel = resp.json()

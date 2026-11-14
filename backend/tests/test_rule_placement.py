@@ -11,7 +11,7 @@ import pytest
 
 async def _host(client, respx_mock=None, name="fw1"):
     if respx_mock is not None:
-        respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+        respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     resp = await client.post("/api/hosts", json={"name": name, "base_url": f"https://{name}.test", "api_key": "k",
                                                  "api_secret": "s", "verify_tls": False})
     assert resp.status_code == 201, resp.text

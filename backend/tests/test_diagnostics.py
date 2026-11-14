@@ -13,7 +13,7 @@ BASE = "https://10.20.30.85"
 
 
 async def _host(client, respx_mock, name="fw-diag"):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     return (await client.post("/api/hosts", json={"name": name, "base_url": BASE, "api_key": "k", "api_secret": "s"})).json()["id"]
 
 

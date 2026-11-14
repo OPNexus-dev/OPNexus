@@ -20,9 +20,9 @@ def _fresh_cache():
 
 
 def _mock_fw(respx_mock, base=FW):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(f"{base}/api/firewall/filter/searchRule").mock(return_value=httpx.Response(200, json=FIXTURE["rules"]))
-    respx_mock.get(f"{base}/api/diagnostics/firewall/pfStatistics/rules").mock(return_value=httpx.Response(200, json=FIXTURE["pf"]))
+    respx_mock.get(f"{base}/api/diagnostics/firewall/pf_statistics/rules").mock(return_value=httpx.Response(200, json=FIXTURE["pf"]))
     respx_mock.get(f"{base}/api/interfaces/overview/interfacesInfo").mock(return_value=httpx.Response(200, json=FIXTURE["interfaces"]))
     respx_mock.get(f"{base}/api/firewall/group/searchItem").mock(return_value=httpx.Response(200, json=FIXTURE["groups"]))
     respx_mock.get(f"{base}/api/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json=FIXTURE["aliases"]))

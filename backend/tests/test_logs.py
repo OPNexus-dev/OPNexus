@@ -13,10 +13,10 @@ def _now() -> datetime:
 
 
 async def _create_host(client, respx_mock, name: str, base_url: str, cluster_name: str | None = None) -> dict:
-    # Host creation synchronously checks live status (getVipStatus) — mock
+    # Host creation synchronously checks live status (get_vip_status) — mock
     # it so no real network call is attempted, matching this project's
     # existing test convention (see test_rules.py/test_notifications.py).
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     payload = {"name": name, "base_url": base_url, "api_key": "key", "api_secret": "secret", "verify_tls": False}
     if cluster_name:
         payload["cluster_name"] = cluster_name

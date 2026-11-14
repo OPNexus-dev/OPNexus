@@ -165,7 +165,7 @@ async def test_check_cycle_with_a_hanging_webhook_still_finishes_and_records(cli
     from app.services import notification_settings_service
 
     monkeypatch.setattr(notification_service, "DELIVERY_TIMEOUT_SECONDS", 0.3)
-    respx_mock.get("https://fw-hang.test/api/diagnostics/interface/getVipStatus").mock(side_effect=httpx.ConnectError("no route"))
+    respx_mock.get("https://fw-hang.test/api/diagnostics/interface/get_vip_status").mock(side_effect=httpx.ConnectError("no route"))
     await _create_host(client, "fw-hang", "https://fw-hang.test")
 
     async def hang(row, problem, transition):

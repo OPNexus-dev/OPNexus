@@ -168,9 +168,9 @@ async def test_fire_due_blocked_by_active_operation_on_cluster_peer(client, resp
 def _cluster_roles(respx_mock, roles):
     for base, role in roles.items():
         if role is None:
-            respx_mock.get(f"{base}/api/diagnostics/interface/getVipStatus").mock(side_effect=httpx.ConnectError("down"))
+            respx_mock.get(f"{base}/api/diagnostics/interface/get_vip_status").mock(side_effect=httpx.ConnectError("down"))
         else:
-            respx_mock.get(f"{base}/api/diagnostics/interface/getVipStatus").respond(
+            respx_mock.get(f"{base}/api/diagnostics/interface/get_vip_status").respond(
                 200, json={"rows": [{"vhid": "1", "status": role}], "carp": {"allow": "1", "maintenancemode": "0", "demotion": "0"}}
             )
         respx_mock.get(f"{base}/api/core/firmware/running").respond(200, json={"status": "ready"})

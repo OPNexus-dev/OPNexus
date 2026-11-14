@@ -11,7 +11,7 @@ from tests.helpers import delete_host
 
 @pytest.mark.asyncio
 async def test_audit_retains_payload_actor_after_rule_and_host_deletion(client,respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").respond(200,json={"rows":[]})
+    respx_mock.get(url__regex=r".*/get_vip_status").respond(200,json={"rows":[]})
     h=await _create_host(client,'fw1','https://fw1.test')
     r=(await client.post('/api/port-forward',json=_pf_payload([h['id']]))).json()
     _mock_pf_push(respx_mock,'https://fw1.test')
@@ -60,7 +60,7 @@ async def test_background_rollback_has_attempt_actor_and_correlation(client,resp
     from datetime import datetime,timedelta,timezone
     from app.models import PortForwardDeployment
     from app.services.port_forward_deploy_service import sweep_expired_port_forward_deployments
-    respx_mock.get(url__regex=r'.*/getVipStatus').respond(200,json={'rows':[]})
+    respx_mock.get(url__regex=r'.*/get_vip_status').respond(200,json={'rows':[]})
     h=await _create_host(client,'fw1','https://fw1.test')
     r=(await client.post('/api/port-forward',json=_pf_payload([h['id']]))).json()
     _mock_pf_push(respx_mock,'https://fw1.test')

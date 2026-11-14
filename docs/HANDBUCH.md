@@ -388,7 +388,8 @@ Codes zählen für die Anmeldesperre.
    `apikey.txt` herunter. Dort steht der Schlüssel hinter `key=` und das Secret
    hinter `secret=`. Das Secret gibt es nur in dieser Datei.
 4. Dem Benutzer ausreichende Rechte geben, am einfachsten über die Gruppe `admin`.
-   Mit eingeschränkten Rechten schlagen einzelne Funktionen fehl.
+   Mit eingeschränkten Rechten geht es auch: Welche Rechte welche Funktion braucht, steht in
+   [OPNsense-Rechte für den API-Benutzer](API-RECHTE.md). Ohne ein nötiges Recht schlägt genau diese Funktion fehl.
 
 ### Host eintragen
 

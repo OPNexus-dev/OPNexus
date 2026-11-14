@@ -13,7 +13,7 @@ from tests.test_rules import _create_host, _rule_payload
 
 
 def mock_status(respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
 def mock_push(respx_mock, name="fw1"):

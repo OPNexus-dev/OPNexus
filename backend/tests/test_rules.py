@@ -37,7 +37,7 @@ def _rule_payload(target_host_ids: list[str], **overrides) -> dict:
 
 @pytest.mark.asyncio
 async def test_create_rule(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
@@ -50,7 +50,7 @@ async def test_create_rule(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_rule_success(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))
@@ -77,7 +77,7 @@ async def test_deploy_rule_success(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_rule_mixed_host_failure(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_ok = await _create_host(client, "fw-ok", "https://fw-ok.test")
     host_down = await _create_host(client, "fw-down", "https://fw-down.test")
 
@@ -127,7 +127,7 @@ async def test_deploy_rule_mixed_host_failure(client, respx_mock):
 async def test_deploy_rejects_interface_meaning_different_networks_across_hosts(client, respx_mock):
     # Same identifier ("opt6"), genuinely different underlying networks on
     # each host — exactly the fw-primary/fw-secondary case found live.
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_a = await _create_host(client, "fw-a", "https://fw-a.test")
     host_b = await _create_host(client, "fw-b", "https://fw-b.test")
 
@@ -160,7 +160,7 @@ async def test_deploy_rejects_interface_meaning_different_networks_across_hosts(
 async def test_deploy_rejects_alias_with_different_content_across_hosts(client, respx_mock):
     # Same alias name ("Web_Backends") used as source, but it resolves to
     # different IPs on each host — the alias equivalent of the opt6 case.
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_a = await _create_host(client, "fw-c", "https://fw-c.test")
     host_b = await _create_host(client, "fw-d", "https://fw-d.test")
 
@@ -191,7 +191,7 @@ async def test_deploy_rejects_alias_with_different_content_across_hosts(client, 
 
 @pytest.mark.asyncio
 async def test_delete_rule(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/rules", json=_rule_payload([host["id"]]))

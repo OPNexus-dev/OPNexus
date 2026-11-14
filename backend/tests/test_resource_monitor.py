@@ -9,20 +9,20 @@ from tests.test_rules import _create_host
 
 
 def _mock_vip(respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
 
 
 def _mock_resource_endpoints(respx_mock, base="https://fw1.test"):
-    respx_mock.get(f"{base}/api/diagnostics/system/systemResources").respond(
+    respx_mock.get(f"{base}/api/diagnostics/system/system_resources").respond(
         200, json={"memory": {"total": "1000000000", "used": 250000000}}
     )
-    respx_mock.get(f"{base}/api/diagnostics/system/systemTime").respond(
+    respx_mock.get(f"{base}/api/diagnostics/system/system_time").respond(
         200, json={"uptime": "1 day", "loadavg": "0.42, 0.30, 0.20"}
     )
-    respx_mock.get(f"{base}/api/diagnostics/system/systemDisk").respond(
+    respx_mock.get(f"{base}/api/diagnostics/system/system_disk").respond(
         200, json={"devices": [{"mountpoint": "/", "used_pct": 12}, {"mountpoint": "/boot", "used_pct": 5}]}
     )
-    respx_mock.get(f"{base}/api/diagnostics/interface/getInterfaceStatistics").respond(
+    respx_mock.get(f"{base}/api/diagnostics/interface/get_interface_statistics").respond(
         200, json={"statistics": {"[igb0]": {"name": "igb0", "received-bytes": 100, "sent-bytes": 200}}}
     )
 
@@ -51,7 +51,7 @@ async def test_poll_all_hosts_isolates_per_host_failure(client, respx_mock):
     h1 = await _create_host(client, "fw1", "https://fw1.test")
     h2 = await _create_host(client, "fw2", "https://fw2.test")
     _mock_resource_endpoints(respx_mock, "https://fw1.test")
-    respx_mock.get("https://fw2.test/api/diagnostics/system/systemResources").respond(500)
+    respx_mock.get("https://fw2.test/api/diagnostics/system/system_resources").respond(500)
 
     async with SessionLocal() as db:
         result = await resource_monitor_service.poll_all_hosts(db)

@@ -152,7 +152,7 @@ async def test_peer_key_validation_and_host_link(client, respx_mock):
     good = svc.public_from_private(svc.generate_private_key())
     assert (await client.patch(f"/api/overlay/peers/{peer['id']}", json={"public_key": good})).status_code == 200
     assert (await client.patch(f"/api/overlay/peers/{other['id']}", json={"public_key": good})).status_code == 409  # one key, one peer
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     assert (await client.patch(f"/api/overlay/peers/{peer['id']}", json={"host_id": host["id"]})).status_code == 200
     listing = (await client.get("/api/overlay")).json()["peers"]

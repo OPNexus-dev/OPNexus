@@ -18,7 +18,7 @@ API = f"{BASE}/api/firewall"
 
 
 async def _host(client, respx_mock, name="fw-obj"):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     r = await client.post("/api/hosts", json={"name": name, "base_url": BASE, "api_key": "k", "api_secret": "s"})
     assert r.status_code == 201, r.text
     return r.json()["id"]

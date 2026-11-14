@@ -31,7 +31,7 @@ def _mock_pf_push(respx_mock, base_url: str, uuid_: str = "pf-uuid-1"):
 
 @pytest.mark.asyncio
 async def test_create_port_forward_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
 
     resp = await client.post("/api/port-forward", json=_pf_payload([host["id"]]))
@@ -46,7 +46,7 @@ async def test_create_port_forward_rule(client: AsyncClient, respx_mock):
 
 @pytest.mark.asyncio
 async def test_deploy_port_forward_success_and_confirm(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/port-forward", json=_pf_payload([host["id"]]))
     rule_id = resp.json()["id"]
@@ -68,7 +68,7 @@ async def test_deploy_port_forward_payload_shape_is_nested_and_uses_disabled(cli
     """Pins the two easy-to-miss wire-format gotchas verified against
     OPNsense's DNat model: nested source/destination objects, and a
     "disabled" field (inverse of our own "enabled") instead of "enabled"."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     resp = await client.post("/api/port-forward", json=_pf_payload([host["id"]], source_port="1234"))
     rule_id = resp.json()["id"]
@@ -92,7 +92,7 @@ async def test_deploy_port_forward_payload_shape_is_nested_and_uses_disabled(cli
 
 @pytest.mark.asyncio
 async def test_deploy_port_forward_mixed_host_failure(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     respx_mock.get(url__regex=r".*/firewall/filter/getRule").mock(return_value=httpx.Response(200, json={"rule": {"interface": {"wan": {"value": "WAN"}}}}))
     respx_mock.get(url__regex=r".*/firewall/alias/searchItem").mock(return_value=httpx.Response(200, json={"rows": []}))
     host_ok = await _create_host(client, "fw-ok", "https://fw-ok.test")
@@ -114,7 +114,7 @@ async def test_deploy_port_forward_mixed_host_failure(client: AsyncClient, respx
 
 @pytest.mark.asyncio
 async def test_port_forward_edit_creates_revision_history(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/port-forward", json=_pf_payload([host["id"]]))).json()
 
@@ -132,7 +132,7 @@ async def test_port_forward_edit_creates_revision_history(client: AsyncClient, r
 
 @pytest.mark.asyncio
 async def test_stale_port_forward_editor_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/port-forward", json=_pf_payload([host["id"]]))).json()
     stale = await client.put(f"/api/port-forward/{r['id']}", json=_pf_payload([host["id"]], expected_updated_at=r["updated_at"]))
@@ -143,7 +143,7 @@ async def test_stale_port_forward_editor_rejected(client: AsyncClient, respx_moc
 
 @pytest.mark.asyncio
 async def test_delete_port_forward_rule(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/port-forward", json=_pf_payload([host["id"]]))).json()
 
@@ -161,7 +161,7 @@ async def test_deploy_port_forward_without_targets_rejected(client: AsyncClient)
 
 @pytest.mark.asyncio
 async def test_port_forward_stale_preview_token_rejected(client: AsyncClient, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     r = (await client.post("/api/port-forward", json=_pf_payload([host["id"]]))).json()
 

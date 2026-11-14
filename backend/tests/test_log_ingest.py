@@ -45,7 +45,7 @@ async def _create_host(client, name: str, base_url: str) -> dict:
 
 @pytest.mark.asyncio
 async def test_poll_host_first_fetch_has_no_digest_param(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw1", "https://fw1.test")
     host_id = uuid.UUID(host["id"])
     ts = _now()
@@ -72,7 +72,7 @@ async def test_poll_host_first_fetch_has_no_digest_param(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_poll_host_uses_cursor_digest_and_advances(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw2", "https://fw2.test")
     host_id = uuid.UUID(host["id"])
     ts = _now()
@@ -114,7 +114,7 @@ async def test_poll_host_dedupes_overlapping_digest(client, respx_mock):
     cursor got reset, or the boundary line is re-sent) must not create a
     duplicate row — this is what the (host_id, digest) unique constraint
     plus ON CONFLICT DO NOTHING is for."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw3", "https://fw3.test")
     host_id = uuid.UUID(host["id"])
     ts = _now()
@@ -148,7 +148,7 @@ async def test_poll_host_dedupes_overlapping_digest(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_poll_host_no_new_rows_still_updates_polled_at(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw4", "https://fw4.test")
     host_id = uuid.UUID(host["id"])
     respx_mock.get(url__regex=r".*/diagnostics/firewall/log").mock(return_value=httpx.Response(200, json={"rows": []}))
@@ -168,7 +168,7 @@ async def test_poll_host_no_new_rows_still_updates_polled_at(client, respx_mock)
 
 @pytest.mark.asyncio
 async def test_poll_host_skips_row_without_digest(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw5", "https://fw5.test")
     host_id = uuid.UUID(host["id"])
     ts = _now()
@@ -195,7 +195,7 @@ async def test_poll_host_skips_row_without_digest(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_poll_all_hosts_continues_past_unreachable_host(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     up = await _create_host(client, "fw-up", "https://fw-up.test")
     down = await _create_host(client, "fw-down", "https://fw-down.test")
 
@@ -222,7 +222,7 @@ async def test_poll_all_hosts_continues_past_unreachable_host(client, respx_mock
 
 @pytest.mark.asyncio
 async def test_poll_all_hosts_skips_disabled_hosts(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-disabled", "https://fw-disabled.test")
     resp = await client.patch(f"/api/hosts/{host['id']}", json={"enabled": False})
     assert resp.status_code == 200, resp.text
@@ -242,7 +242,7 @@ async def test_poll_all_hosts_skips_disabled_hosts(client, respx_mock):
 
 @pytest.mark.asyncio
 async def test_prune_old_entries_deletes_only_past_retention(client, respx_mock):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-prune", "https://fw-prune.test")
     host_id = uuid.UUID(host["id"])
     now = _now()
@@ -282,7 +282,7 @@ async def _seed_entries(host_id, count):
 
 @pytest.mark.asyncio
 async def test_enforce_size_limit_deletes_oldest_until_under_target(client, respx_mock, monkeypatch):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-size", "https://fw-size.test")
     host_id = uuid.UUID(host["id"])
     await _seed_entries(host_id, 100)
@@ -308,7 +308,7 @@ async def test_enforce_size_limit_deletes_oldest_until_under_target(client, resp
 
 @pytest.mark.asyncio
 async def test_enforce_size_limit_noop_when_under_limit_or_unlimited(client, respx_mock, monkeypatch):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     host = await _create_host(client, "fw-size2", "https://fw-size2.test")
     host_id = uuid.UUID(host["id"])
     await _seed_entries(host_id, 10)
@@ -337,7 +337,7 @@ async def test_poll_all_hosts_warning_names_the_real_reason(client, respx_mock, 
     """Die Warnung darf nicht pauschal „nicht erreichbar“ sagen: eine Firewall,
     die antwortet, aber kaputtes HTTP liefert, ist erreichbar — der Grund muss
     im Log stehen."""
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     await _create_host(client, "fw-broken", "https://fw-broken.test")
     respx_mock.get(url__regex=r"https://fw-broken\.test/api/diagnostics/firewall/log").mock(
         side_effect=httpx.RemoteProtocolError("malformed chunk footer")

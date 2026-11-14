@@ -57,7 +57,7 @@ def test_value_and_name_validation():
 # ── API ──────────────────────────────────────────────────────────────────
 
 async def _mock_hosts(respx_mock, *bases):
-    respx_mock.get(url__regex=r".*/getVipStatus").mock(return_value=httpx.Response(200, json={"rows": []}))
+    respx_mock.get(url__regex=r".*/get_vip_status").mock(return_value=httpx.Response(200, json={"rows": []}))
     # multi-host deploys compare what the interface name means on every target
     respx_mock.get(url__regex=r".*/firewall/filter/getRule").mock(
         return_value=httpx.Response(200, json={"rule": {"interface": {"lan": {"value": "LAN", "selected": 0}}}}))

@@ -10,7 +10,7 @@ from tests.test_rules import _create_host
 
 
 def mock_reads(mock,base='https://fw1.test',carp=None,status='none',running='ready',version='26.7.3'):
-    mock.get(f'{base}/api/diagnostics/interface/getVipStatus').respond(200,json={'rows':[{'status':carp}] if carp else []})
+    mock.get(f'{base}/api/diagnostics/interface/get_vip_status').respond(200,json={'rows':[{'status':carp}] if carp else []})
     mock.get(f'{base}/api/core/firmware/info').respond(200,json={'product_version':version})
     mock.get(f'{base}/api/core/firmware/status').respond(200,json={'status':status,'all_packages':{},'status_msg':'cached result'})
     mock.get(f'{base}/api/core/firmware/running').respond(200,json={'status':running})
@@ -152,7 +152,7 @@ async def test_carp_handover_and_return_are_preview_bound_and_verified(client,re
                 # the other carp.* flags below which are "1"/"0" strings — keep this a
                 # real bool so a regression to the old str(x)=="1" bug fails the test.
                 'carp':{'allow':'1','maintenancemode':current['maintenance'],'demotion':'240' if current['maintenance'] else '0','status_msg':''}})
-        respx_mock.get(f'{base}/api/diagnostics/interface/getVipStatus').mock(side_effect=vip_response)
+        respx_mock.get(f'{base}/api/diagnostics/interface/get_vip_status').mock(side_effect=vip_response)
         respx_mock.get(f'{base}/api/core/firmware/running').respond(200,json={'status':'ready'})
     primary=await _create_host(client,'fw-primary','https://fw-primary.test')
     secondary=await _create_host(client,'fw-secondary','https://fw-secondary.test')
@@ -202,7 +202,7 @@ async def test_carp_handover_and_return_are_preview_bound_and_verified(client,re
 @pytest.mark.asyncio
 async def test_carp_timeout_is_unknown_and_toggle_is_not_replayed(client,respx_mock):
     for base,role in [('https://fw-a.test','MASTER'),('https://fw-b.test','BACKUP')]:
-        respx_mock.get(f'{base}/api/diagnostics/interface/getVipStatus').respond(200,json={'rows':[{'vhid':'1','status':role}],'carp':{'allow':'1','maintenancemode':'0','demotion':'0'}})
+        respx_mock.get(f'{base}/api/diagnostics/interface/get_vip_status').respond(200,json={'rows':[{'vhid':'1','status':role}],'carp':{'allow':'1','maintenancemode':'0','demotion':'0'}})
         respx_mock.get(f'{base}/api/core/firmware/running').respond(200,json={'status':'ready'})
     a=await _create_host(client,'fw-a','https://fw-a.test');b=await _create_host(client,'fw-b','https://fw-b.test')
     await client.patch(f"/api/hosts/{a['id']}",json={'cluster_name':'ha'});await client.patch(f"/api/hosts/{b['id']}",json={'cluster_name':'ha'})
