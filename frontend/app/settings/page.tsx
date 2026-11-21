@@ -545,7 +545,7 @@ export default function SettingsPage(){
     window.scrollTo({top:0});
   }
 
-  async function saveTheme(value:Theme){setSaving(true);setError('');setNotice('');const old=theme;setTheme(value);try{setSettings(await api.saveSettings({theme:value,language}));setNotice(t('settings.appearanceSaved'));}catch(e){setTheme(old);setError(errorMessage(e));}finally{setSaving(false);}}
+  async function saveTheme(value:Theme){setSaving(true);setError('');setNotice('');const old=theme;setTheme(value);try{setSettings(await api.saveSettings({theme:value}));setNotice(t('settings.appearanceSaved'));}catch(e){setTheme(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function saveLanguage(value:"de"|"en"){setSaving(true);setError('');setNotice('');const old=language;setLanguage(value);try{setSettings(await api.saveSettings({theme,language:value}));setNotice(translate(value,'settings.language.saved'));}catch(e){setLanguage(old);setError(errorMessage(e));}finally{setSaving(false);}}
   async function changePassword(e:React.FormEvent){e.preventDefault();setError('');setNotice('');if(password!==repeat){setError(t('settings.passwordMismatch'));return;}setSaving(true);try{await api.changePassword(current,password);setCurrent('');setPassword('');setRepeat('');setNotice(t('settings.passwordChanged'));}catch(e){setError(errorMessage(e,'settings.passwordFailed'));}finally{setSaving(false);}}
 

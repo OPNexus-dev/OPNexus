@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { api } from "@/lib/api";
-import { Language, translate, translateReasonParams, translateServerParams, translateServerText, TranslationParams } from "@/lib/i18n";
+import { detectLanguage, isLanguage, Language, translate, translateReasonParams, translateServerParams, translateServerText, TranslationParams } from "@/lib/i18n";
 
 interface LanguageContextValue {
   language: Language;
@@ -24,7 +24,7 @@ const LanguageContext = createContext<LanguageContextValue>({
 });
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setValue] = useState<Language>("de");
+  const [language, setValue] = useState<Language>("en");
   const login = usePathname() === "/login";
 
   const setLanguage = useCallback((value: Language) => {
@@ -33,25 +33,26 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem("opnexus-language", value); } catch {}
   }, []);
 
+  // Saved choice of this browser, otherwise the browser language. Nothing is stored here: only an
+  // explicit choice (settings page, setup assistant) or the account setting writes the language down.
   useEffect(() => {
-    try {
-      const value = localStorage.getItem("opnexus-language");
-      if (value === "de" || value === "en") setLanguage(value);
-    } catch {}
-  }, [setLanguage]);
+    const value = detectLanguage();
+    setValue(value);
+    document.documentElement.lang = value;
+  }, []);
 
   useEffect(() => {
     if (login) return;
     let active = true;
     api.me().then((user) => user.authenticated ? api.settings() : null)
-      .then((data) => { if (active && data) setLanguage(data.language); })
+      .then((data) => { if (active && data && isLanguage(data.language)) setLanguage(data.language); })
       .catch(() => {});
     return () => { active = false; };
   }, [login, setLanguage]);
 
   useEffect(() => {
     const sync = (event: StorageEvent) => {
-      if (event.key === "opnexus-language" && (event.newValue === "de" || event.newValue === "en")) {
+      if (event.key === "opnexus-language" && isLanguage(event.newValue)) {
         setValue(event.newValue);
         document.documentElement.lang = event.newValue;
       }

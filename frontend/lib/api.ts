@@ -4,7 +4,7 @@
 // runs client-side in the viewer's own browser, deriving the backend URL
 // from window.location at runtime instead adapts automatically — the
 // backend is reached on this same origin (proxy) or, in direct dev mode, on port 8100.
-import { translate, translateServerParams, translateServerText, type Language } from "@/lib/i18n";
+import { detectLanguage, translate, translateServerParams, translateServerText, type Language } from "@/lib/i18n";
 export type { Language } from "@/lib/i18n";
 
 function resolveApiUrl(): string {
@@ -33,7 +33,7 @@ export class ApiError extends Error {
 }
 
 function currentLanguage(): Language {
-  return typeof window !== "undefined" && localStorage.getItem("opnexus-language") === "en" ? "en" : "de";
+  return detectLanguage();
 }
 
 function makeApiError(status: number, detail: string, code?: string, params?: Record<string, string>): ApiError {
@@ -2101,7 +2101,7 @@ export interface CarpSwitchState {
 export interface CarpSwitchPreview {preview_id:string;expires_at:string;action:"carp_enter"|"carp_leave";state:CarpSwitchState;}
 
 export type Theme="light"|"dark"|"system";
-export interface AppSettings {username:string;theme:Theme;language:Language;setup_done:boolean;deploy_confirm_window_seconds:number;session_lifetime_seconds:number;}
+export interface AppSettings {username:string;theme:Theme;language:Language|null;setup_done:boolean;deploy_confirm_window_seconds:number;session_lifetime_seconds:number;}
 
 export type SmtpSecurity = "none" | "starttls" | "ssl";
 

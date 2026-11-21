@@ -3,11 +3,11 @@
 **Alle OPNsense-Firewalls. Eine Konsole.**
 Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln, Aliase, NAT, VPN, Zertifikate, Logs und Updates — per OPNsense-API ausgerollt, mit Vorschau, Bestätigung und automatischem Rollback.
 
-[Website](https://opnexus.dev/) · [Changelog](CHANGELOG.md) · [Handbuch](docs/HANDBUCH.md) · [English](README.md)
+[Website](https://opnexus.dev/) · [Changelog](CHANGELOG.md) · [Handbuch](docs/HANDBUCH.md) · [Handbook (English)](docs/HANDBOOK.md) · [English](README.md)
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.37.8` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.38.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -46,8 +46,8 @@ Alle Screenshots zeigen fiktive Beispieldaten.
 Voraussetzung: Docker mit Compose-Plugin (unter Debian 13: `apt install docker.io docker-compose`). Der empfohlene Weg ist das **Release-Bundle** mit fertigen, signierten Images – auf deinem Rechner wird nichts gebaut:
 
 ```bash
-curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.37.8/opnexus-1.37.8.tar.gz
-tar xzf opnexus-1.37.8.tar.gz && cd opnexus-1.37.8
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.38.0/opnexus-1.38.0.tar.gz
+tar xzf opnexus-1.38.0.tar.gz && cd opnexus-1.38.0
 install -m 600 .env.example .env     # nur für dich lesbar
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # eigenes Datenbank-Passwort erzeugen
 docker compose up -d

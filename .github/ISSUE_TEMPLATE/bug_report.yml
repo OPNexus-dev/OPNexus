@@ -1,0 +1,43 @@
+name: Bug report
+description: Something does not work as described
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do **not** paste real credentials, API keys or firewall data. Security problems: see [SECURITY.md](../blob/main/SECURITY.md), not a public issue.
+  - type: input
+    id: version
+    attributes:
+      label: OPNexus version
+      description: Shown in the footer, in Settings, or by `./opnexus status`.
+      placeholder: "1.37.8"
+    validations:
+      required: true
+  - type: input
+    id: opnsense
+    attributes:
+      label: OPNsense version(s)
+      placeholder: "25.7.x / 26.7"
+  - type: dropdown
+    id: install
+    attributes:
+      label: How is OPNexus installed?
+      options:
+        - Release bundle (Linux)
+        - Docker Desktop (Windows / macOS)
+        - Built from source
+        - Other
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error message
+      description: "Backend log (`docker compose logs backend`) or the message shown in the UI. Remove secrets."
+      render: text

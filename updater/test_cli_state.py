@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the CLI speaks English by default; these tests check the German texts (English: test_cli_lang.py)
 SCRIPT = Path(__file__).with_name("opnexus").resolve()
 GOOD = "started=20261023T120000Z\nprev_version=1.32.1\nprev_setting=latest\nprev_db_revision=0031\ntarget=1.33.0\n"
 

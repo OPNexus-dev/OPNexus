@@ -37,28 +37,28 @@ cp cosign.pub "$out/"
 cat > "$out/INSTALL.txt" <<TXT
 OPNexus $version
 
-1. install -m 600 .env.example .env      (Datei nur für dich lesbar)
+1. install -m 600 .env.example .env      (file readable only by you)
    sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=\$(openssl rand -hex 24)|" .env
-                                         (eigenes Datenbank-Passwort erzeugen; unter macOS/Windows die .env im Editor
-                                          öffnen und POSTGRES_PASSWORD von Hand eintragen)
-2. docker compose up -d                  (lädt die Images beim ersten Mal selbst)
-3. Anmelden:  ./opnexus password          (zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war)
-              dann https://<server-ip> im Browser öffnen (lokal https://localhost) — der Einrichtungsassistent führt durch den Rest
-4. Updates:   ./opnexus update            (neueste Version der in .env gewählten Spur)
-              ./opnexus update 1.10.1     (feste Version)
-   Zurück:    ./opnexus rollback
-   Sichern:   ./opnexus backup
+                                         (generates your own database password; on macOS/Windows open the .env in an
+                                          editor and enter POSTGRES_PASSWORD by hand)
+2. docker compose up -d                  (pulls the images itself the first time)
+3. Log in:    ./opnexus password          (shows the admin password if ADMIN_PASSWORD was empty)
+              then open https://<server-ip> in the browser (locally https://localhost) — the setup assistant guides you through the rest
+4. Updates:   ./opnexus update            (newest version of the track chosen in .env)
+              ./opnexus update 1.10.1     (fixed version)
+   Back:      ./opnexus rollback
+   Backup:    ./opnexus backup
 
-Wichtig: POSTGRES_PASSWORD gilt nur beim allerersten Start mit leerem Datenbank-Volume. Startet das Backend danach in einer
-Schleife neu ("password authentication failed"), stammt das Volume aus einem früheren Versuch: das ursprüngliche Passwort
-wieder eintragen oder ohne Daten "docker compose down -v" (löscht die Datenbank). Der Compose-Projektname ist immer
-"opnexus", egal in welchem Ordner; für eine zweite Instanz COMPOSE_PROJECT_NAME in der .env setzen.
+Important: POSTGRES_PASSWORD applies only on the very first start with an empty database volume. If the backend then restarts in a
+loop ("password authentication failed"), the volume comes from an earlier attempt: put the original password back or, without data,
+run "docker compose down -v" (deletes the database). The Compose project name is always "opnexus", no matter which folder; for a
+second instance set COMPOSE_PROJECT_NAME in the .env.
 
-Optional: Updates per Klick im Webinterface (Einstellungen › "OPNexus aktualisieren"):
-   in .env  COMPOSE_PROFILES=updater  und UPDATE_CHECK_URL setzen, dann
-   docker compose up -d     (Hinweise zur Sicherheit: Handbuch)
+Optional: one-click updates in the web interface (Settings › "Update OPNexus"):
+   set COMPOSE_PROFILES=updater and UPDATE_CHECK_URL in .env, then
+   docker compose up -d     (security notes: handbook)
 
-Vollständige Anleitung: Handbuch (docs/HANDBUCH.md), Abschnitt "Erste Schritte", und https://opnexus.dev.
+Full guide: handbook (docs/HANDBOOK.md, German: docs/HANDBUCH.md), section "Getting started", and https://opnexus.dev.
 TXT
 
 # Reproduzierbar: gleiche Eingaben ergeben dasselbe Archiv (feste Reihenfolge, Besitzer und Zeit = Commit des Tags, gzip ohne Zeitstempel), damit die

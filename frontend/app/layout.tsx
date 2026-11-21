@@ -19,8 +19,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" suppressHydrationWarning className={inter.variable}>
-      <head><script dangerouslySetInnerHTML={{__html: `(function(){try{var t=localStorage.getItem('opnexus-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.style.colorScheme=d?'dark':'light';var l=localStorage.getItem('opnexus-language');document.documentElement.lang=l==='en'?'en':'de';}catch(e){}})();`}} /></head>
+    <html lang="en" suppressHydrationWarning className={inter.variable}>
+      <head><script dangerouslySetInnerHTML={{__html: `(function(){try{var t=localStorage.getItem('opnexus-theme')||'system';var d=t==='dark'||(t==='system'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.dataset.theme=d?'dark':'light';document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}try{var l=localStorage.getItem('opnexus-language');if(l!=='de'&&l!=='en'){var n=(navigator.languages&&navigator.languages[0])||navigator.language||'';l=n.toLowerCase().indexOf('de')===0?'de':'en';}document.documentElement.lang=l;}catch(e){}})();`}} /></head>
       <body className="min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
         <ThemeProvider><LanguageProvider><ToastProvider><AuthGate>{children}</AuthGate></ToastProvider></LanguageProvider></ThemeProvider>
       </body>

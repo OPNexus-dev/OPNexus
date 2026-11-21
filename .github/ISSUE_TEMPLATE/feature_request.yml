@@ -1,0 +1,21 @@
+name: Feature request
+description: Suggest an improvement or a new feature
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the situation and what is hard or impossible today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: Your idea, if you have one. If it needs a specific OPNsense API endpoint, mention it.
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: "Number of firewalls, HA pairs or single, OPNsense version. Helps judge how common the need is."

@@ -4,6 +4,22 @@ import en from "./en.json";
 export type Language = "de" | "en";
 export type TranslationParams = Record<string, string | number>;
 
+export function isLanguage(value: unknown): value is Language {
+  return value === "de" || value === "en";
+}
+
+/** Language when nobody chose one: German only for a German browser, English for everyone else.
+ *  A language saved in this browser (or on the account) always wins over this. */
+export function detectLanguage(): Language {
+  if (typeof window === "undefined") return "en";
+  try {
+    const stored = localStorage.getItem("opnexus-language");
+    if (isLanguage(stored)) return stored;
+  } catch {}
+  const preferred = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+  return preferred.toLowerCase().startsWith("de") ? "de" : "en";
+}
+
 import { serverMessagesEn, serverWordsEn } from "./serverMessages";
 
 const dictionaries: Record<Language, unknown> = { de, en };

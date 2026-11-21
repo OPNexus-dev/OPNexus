@@ -16,6 +16,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the CLI speaks English by default; these tests check the German texts (English: test_cli_lang.py)
 SCRIPT = Path(__file__).with_name("opnexus").resolve()
 ROOT = Path(__file__).resolve().parent.parent
 D1 = "sha256:944f773cfce79b16e35cebc448eb607fbf88013d5892df38a1cbb5a2c0543611"   # der Digest aus dem gemeldeten Fall

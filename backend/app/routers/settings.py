@@ -23,7 +23,7 @@ class Preferences(BaseModel):
 async def read(user: AdminUser=Depends(current_user),db:AsyncSession=Depends(get_db)):
     preferences=await db.get(UserPreferences,user.id)
     return {'username':user.username,'theme':preferences.theme if preferences else 'system',
-            'language':preferences.language if preferences else 'de',
+            'language':preferences.language if preferences else None,
             'setup_done':preferences.setup_done if preferences else False,
             'deploy_confirm_window_seconds':runtime_settings.value("deploy_confirm_window_seconds"),
             'session_lifetime_seconds':runtime_settings.value("session_lifetime_days")}
@@ -33,7 +33,7 @@ async def update(payload:Preferences,user:AdminUser=Depends(current_user),db:Asy
     username = user.username
     current = await db.get(UserPreferences, user.id)
     theme = payload.theme or (current.theme if current else 'system')
-    language = payload.language or (current.language if current else 'de')
+    language = payload.language or (current.language if current else None)
     setup_done = payload.setup_done if payload.setup_done is not None else bool(current.setup_done if current else False)
     await db.execute(insert(UserPreferences).values(user_id=user.id,theme=theme,language=language,setup_done=setup_done).on_conflict_do_update(index_elements=['user_id'],set_={'theme':theme,'language':language,'setup_done':setup_done}))
     await db.commit()

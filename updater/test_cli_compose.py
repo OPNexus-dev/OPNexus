@@ -11,6 +11,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the CLI speaks English by default; these tests check the German texts (English: test_cli_lang.py)
 SCRIPT = Path(__file__).with_name("opnexus").resolve()
 
 
