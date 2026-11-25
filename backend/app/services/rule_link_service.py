@@ -13,6 +13,9 @@ This module finds such links and puts them right. It only ever changes OPNexus's
 * it is **strong** when the candidate also carries the UUID of the same central rule's deployment on another node (that
   is exactly what a config sync produces). Strong repairs are made automatically by the observe loop; content-only
   candidates are offered in the interface and applied on request;
+* a live rule that carries the partner's UUID but whose content differs from what OPNexus deployed (someone changed it by
+  hand on the primary, the sync copied that) is a **drift** candidate: the assignment is certain, the rule differs from the
+  central one. It is only offered in the interface, with the differing fields, never repaired automatically;
 * more than one candidate for a deployment, or one candidate for several deployments, is ambiguous and left alone.
 """
 import hashlib
@@ -30,7 +33,7 @@ from app.services import audit_service, rule_order_service
 
 logger = logging.getLogger(__name__)
 
-STRONG, CONTENT = "partner_uuid", "content"
+STRONG, CONTENT, DRIFT = "partner_uuid", "content", "partner_uuid_drift"
 # deployments in flight (or whose rollback is open) are never touched
 SETTLED = ("success", "reverted")
 
@@ -51,6 +54,13 @@ def fingerprint_payload(payload: dict) -> tuple:
     return (_flat(payload.get("description")), _flat(payload.get("action")), _flat(payload.get("interface")),
             _flat(payload.get("direction")) or "in", _proto(payload.get("protocol")), _net(payload.get("source_net")),
             _flat(payload.get("source_port")), _net(payload.get("destination_net")), _flat(payload.get("destination_port")))
+
+
+FIELDS = ("description", "action", "interface", "direction", "protocol", "source_net", "source_port", "destination_net", "destination_port")
+
+
+def differences(recorded: tuple, live: tuple) -> list[dict]:
+    return [{"field": name, "recorded": a, "live": b} for name, a, b in zip(FIELDS, recorded, live) if a != b]
 
 
 def fingerprint_row(row: dict) -> tuple:
@@ -77,13 +87,19 @@ async def proposals(db: AsyncSession, host: OpnsenseHost, search: dict) -> dict:
             RuleDeployment.opnsense_rule_uuid.is_not(None)))).all()}
         strong = [u for u in candidates if u in partners]
         pick = strong[0] if len(strong) == 1 else candidates[0] if len(candidates) == 1 and not strong else None
+        diff: list[dict] = []
+        if pick is None and not candidates:
+            drifted = [u for u in partners if u in live and u not in claimed]   # the partner's rule is here, with other content
+            if len(drifted) == 1:
+                pick = drifted[0]
+                diff = differences(want, fingerprint_row(live[pick]))
         if pick is None:
             ambiguous += 1
             continue
         used.setdefault(pick, []).append(dep.id)
         items.append({"deployment_id": str(dep.id), "rule_id": str(dep.rule_id), "stored_uuid": dep.opnsense_rule_uuid,
-                      "live_uuid": pick, "strength": STRONG if pick in partners else CONTENT,
-                      "live_description": live[pick].get("description") or ""})
+                      "live_uuid": pick, "strength": DRIFT if diff else STRONG if pick in partners else CONTENT,
+                      "differences": diff, "live_description": live[pick].get("description") or ""})
     clash = {u for u, ids in used.items() if len(ids) > 1}   # one live rule claimed by two deployments: ambiguous
     kept = [i for i in items if i["live_uuid"] not in clash]
     ambiguous += len(items) - len(kept)

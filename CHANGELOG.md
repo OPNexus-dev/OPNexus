@@ -26,6 +26,11 @@ in the footer of every page, on `/about` and in the settings.
 
 Next codenames (in order, when the next MINOR version is due): Berlin, Copenhagen, Dublin, Edinburgh, Florence.
 
+## [1.39.2] "Amsterdam" — 2026-11-25
+
+- **Uses the whole screen.** The page column was limited to about 1100 px, so on a large monitor more than half of the screen stayed empty and wide tables (the live rules view with its columns for both firewalls, for example) needed horizontal scrolling. The content now grows with the window up to about 1900 px; on a phone and a laptop nothing changes. In the live rules view the edit and history buttons are icons with a tooltip and the cells are tighter.
+- **Repairing rule links also works when the rule was changed by hand.** If the secondary holds the partner's rule ID but the rule differs from the central one (someone edited it on the primary, the config sync copied it), "Check and repair" now offers it as "same rule ID as on the partner, but the content differs" and lists the differing fields. It is never repaired automatically; deploying the central rule later overwrites the live changes.
+
 ## [1.39.1] "Amsterdam" — 2026-11-25
 
 - **Rule links are repaired after an OPNsense config sync.** When the primary of an HA pair pushes its rules to the secondary (System › High Availability, item "Firewall rules"), the secondary holds the primary's rule IDs instead of the ones OPNexus recorded when it deployed there. The rules were all in place, but the live view called them "local" on that node and editing them for that firewall failed. OPNexus now notices this: the observe loop re-links a deployment by itself when the live rule carries the partner's rule ID and has the same content, and for everything less certain the live view shows a notice with "Check and repair" (a preview of what changes; only OPNexus's own records are changed, never a firewall; every link repaired is an audit entry). New API: `GET /api/rule-order/hosts/{id}/links` and `POST …/links/repair`.

@@ -347,13 +347,13 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="w-8 px-2 py-3"><span className="sr-only">{t("rules.order.colMove")}</span></th>
-                      <th className="px-3 py-3 font-medium">{t("drift.colDescription")}</th>
-                      <th className="px-3 py-3 font-medium">{t("rules.order.colOwner")}</th>
-                      <th className="px-3 py-3 font-medium">{t("drift.colInterface")}</th>
-                      <th className="px-3 py-3 font-medium">{t("drift.colSourceDest")}</th>
-                      <th className="px-3 py-3 font-medium">{t("drift.colAction")}</th>
-                      {unit.hosts.length > 1 && unit.hosts.map((h) => <th key={h.id} className="px-3 py-3 font-medium">{h.name}</th>)}
-                      <th className="px-3 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
+                      <th className="px-2 py-3 font-medium">{t("drift.colDescription")}</th>
+                      <th className="px-2 py-3 font-medium">{t("rules.order.colOwner")}</th>
+                      <th className="px-2 py-3 font-medium">{t("drift.colInterface")}</th>
+                      <th className="px-2 py-3 font-medium">{t("drift.colSourceDest")}</th>
+                      <th className="px-2 py-3 font-medium">{t("drift.colAction")}</th>
+                      {unit.hosts.length > 1 && unit.hosts.map((h) => <th key={h.id} className="px-2 py-3 font-medium">{h.name}</th>)}
+                      <th className="px-2 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -386,13 +386,13 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                             <td className="px-2 py-2 text-slate-400">
                               {row.movable && !readOnly && <GripVertical size={14} aria-hidden="true" className="cursor-grab" />}
                             </td>
-                            <td className="px-3 py-2 text-slate-900">
+                            <td className="px-2 py-2 text-slate-900">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 <span className={clsx((row.origin === "system" || !row.sample.enabled) && "text-slate-400")}>{row.sample.description}</span>
                                 {!row.sample.enabled && <Tooltip content={t("rules.order.offTip")}><span><Badge tone="neutral">{t("rules.order.off")}</Badge></span></Tooltip>}
                               </div>
                             </td>
-                            <td className="whitespace-nowrap px-3 py-2">
+                            <td className="whitespace-nowrap px-2 py-2">
                               <div className="flex items-center gap-1.5">
                                 <Tooltip content={t(`rules.order.originTip.${row.origin}`)}>
                                   <span><Badge tone={row.origin === "central" ? "info" : row.origin === "hierarchy" ? "accent" : "neutral"}>{t(`rules.order.origin.${row.origin}`)}</Badge></span>
@@ -408,17 +408,17 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-slate-500">{row.sample.interface_label ?? "—"}</td>
-                            <td className="px-3 py-2 text-slate-500">
+                            <td className="px-2 py-2 text-slate-500">{row.sample.interface_label ?? "—"}</td>
+                            <td className="px-2 py-2 text-slate-500">
                               {row.sample.protocol_label ? `${row.sample.protocol_label} ` : ""}{row.sample.source_net}{row.sample.source_port ? `:${row.sample.source_port}` : ""} → {row.sample.destination_net}{row.sample.destination_port ? `:${row.sample.destination_port}` : ""}
                             </td>
-                            <td className="px-3 py-2 text-slate-500">{row.sample.action_label}</td>
+                            <td className="px-2 py-2 text-slate-500">{row.sample.action_label}</td>
                             {unit.hosts.length > 1 && unit.hosts.map((h) => (
-                              <td key={h.id} className="px-3 py-2">
+                              <td key={h.id} className="px-2 py-2">
                                 {row.presentOn.has(h.id) ? <Check size={16} className="text-emerald-500" aria-label={t("rules.order.present")} /> : <X size={16} className="text-red-400" aria-label={t("rules.order.absent")} />}
                               </td>
                             ))}
-                            <td className="whitespace-nowrap px-3 py-2 text-right">
+                            <td className="whitespace-nowrap px-2 py-2 text-right">
                               <div className="inline-flex items-center gap-0.5">
                                 {row.movable && !readOnly && (
                                   <>
@@ -433,11 +433,11 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                                     type="button"
                                     onClick={() => edit(unit, row)}
                                     disabled={busy !== null}
-                                    title={row.origin === "local" ? t("rules.order.editLocalHint") : undefined}
+                                    title={row.origin === "local" ? t("rules.order.editLocalHint") : t("rules.order.edit", { rule: row.sample.description })}
                                     aria-label={t("rules.order.edit", { rule: row.sample.description })}
                                     className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-40"
                                   >
-                                    <Pencil size={14} aria-hidden="true" />{t("rules.order.editShort")}
+                                    <Pencil size={14} aria-hidden="true" />
                                   </button>
                                 )}
                                 {row.origin !== "system" && (
@@ -446,8 +446,9 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                                     onClick={() => setHistoryOf({ title: row.sample.description, targets: unit.hosts.filter((h) => row.uuids.has(h.id)).map((h) => ({ hostId: h.id, hostName: h.name, uuid: row.uuids.get(h.id) as string })) })}
                                     className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500"
                                     aria-label={t("ruleHistory.open", { rule: row.sample.description })}
+                                    title={t("ruleHistory.open", { rule: row.sample.description })}
                                   >
-                                    <History size={14} aria-hidden="true" />{t("ruleHistory.action")}
+                                    <History size={14} aria-hidden="true" />
                                   </button>
                                 )}
                               </div>

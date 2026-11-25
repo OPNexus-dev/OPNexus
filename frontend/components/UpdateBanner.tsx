@@ -59,7 +59,7 @@ export function UpdateBanner() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+    <div className="mx-auto max-w-[120rem] px-4 pt-4 sm:px-6">
       <div role="status" className="flex items-start gap-3 rounded-lg border border-sky-100 bg-sky-50 p-3 text-sm text-sky-800">
         <ArrowUpCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
         <div className="flex-1">

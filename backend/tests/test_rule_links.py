@@ -108,10 +108,13 @@ async def test_ambiguous_and_unsettled_links_are_left_alone(client, respx_mock):
         dep.status = "pending"                                                      # an open deployment is never touched
         await db.commit()
         assert (await rule_link_service.proposals(db, host, {"rows": [_row("uuid-a")]}))["items"] == []
-        # a rule that does not match the recorded content is no candidate either
+        # a live rule with another content and not the partner's UUID is no candidate at all
         dep.status = "success"
         await db.commit()
-        assert (await rule_link_service.proposals(db, host, {"rows": [_row("uuid-a", destination_port="23")]}))["items"] == []
+        assert (await rule_link_service.proposals(db, host, {"rows": [_row("uuid-z", destination_port="23")]}))["items"] == []
+        # with the partner's UUID it is a drift candidate (offered, with the differing field, never automatic)
+        found = await rule_link_service.proposals(db, host, {"rows": [_row("uuid-a", destination_port="23")]})
+        assert [(i["strength"], [d["field"] for d in i["differences"]]) for i in found["items"]] == [("partner_uuid_drift", ["destination_port"])]
 
 
 @pytest.mark.asyncio
@@ -121,3 +124,36 @@ async def test_an_unreachable_host_is_a_clear_error(client, respx_mock):
     a = await _create_host(client, "fw-a", A)
     resp = await client.get(f"/api/rule-order/hosts/{a['id']}/links")
     assert resp.status_code == 502 and resp.json()["detail"]["code"] == "ORDER_HOST_UNREACHABLE"
+
+
+@pytest.mark.asyncio
+async def test_a_partner_rule_that_was_changed_by_hand_is_offered_as_drift_and_never_automatic(client, respx_mock):
+    a, b, rule = await _setup(client, respx_mock)
+    drifted = _row("uuid-a", protocol="TCP/UDP", source_net="heimnetz")   # the primary's rule was edited by hand, the sync copied it
+    _live(respx_mock, A, [drifted])
+    _live(respx_mock, B, [drifted])
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, uuid.UUID(b["id"]))
+        assert await rule_link_service.reconcile(db, host, {"rows": [drifted]}) == 0       # not on its own
+    found = (await client.get(f"/api/rule-order/hosts/{b['id']}/links")).json()
+    assert [(i["strength"], i["live_uuid"]) for i in found["items"]] == [("partner_uuid_drift", "uuid-a")]
+    assert {(d["field"], d["recorded"], d["live"]) for d in found["items"][0]["differences"]} == {
+        ("protocol", "tcp", "tcp/udp"), ("source_net", "any", "heimnetz")}
+    done = await client.post(f"/api/rule-order/hosts/{b['id']}/links/repair", json={"token": found["token"]})
+    assert done.json() == {"repaired": 1}
+    async with SessionLocal() as db:
+        dep = (await db.scalars(select(RuleDeployment).where(RuleDeployment.host_id == uuid.UUID(b["id"])))).one()
+        assert dep.opnsense_rule_uuid == "uuid-a"
+        event = (await db.scalars(select(AuditEvent).where(AuditEvent.action == "relink"))).one()
+        assert event.details["strength"] == "partner_uuid_drift"
+
+
+@pytest.mark.asyncio
+async def test_no_drift_offer_when_the_partner_rule_is_not_there_or_other_candidates_exist(client, respx_mock):
+    a, b, rule = await _setup(client, respx_mock)
+    async with SessionLocal() as db:
+        host = await db.get(OpnsenseHost, uuid.UUID(b["id"]))
+        assert (await rule_link_service.proposals(db, host, {"rows": [_row("uuid-x", protocol="UDP")]}))["items"] == []
+        both = {"rows": [_row("uuid-a", protocol="UDP"), _row("uuid-y")]}   # a content match exists: that one is the candidate
+        found = await rule_link_service.proposals(db, host, both)
+        assert [(i["strength"], i["live_uuid"]) for i in found["items"]] == [("content", "uuid-y")]

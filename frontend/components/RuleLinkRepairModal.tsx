@@ -7,6 +7,7 @@ import { Loading } from "@/components/ui/Loading";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
+import { labelFor } from "@/lib/i18n";
 import { useEffect, useState } from "react";
 
 type Loaded = { host: Host; found: RuleLinkProposals | null };
@@ -67,9 +68,19 @@ export function RuleLinkRepairModal({ hosts, onClose, onRepaired }: { hosts: Hos
                     <li key={i.deployment_id} className="text-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <span className="font-medium text-slate-900">{i.rule_description}</span>
-                        <Badge tone={i.strength === "partner_uuid" ? "success" : "warning"}>{t(i.strength === "partner_uuid" ? "rules.order.linkRepair.strong" : "rules.order.linkRepair.content")}</Badge>
+                        <Badge tone={i.strength === "partner_uuid" ? "success" : "warning"}>{t(`rules.order.linkRepair.${i.strength === "partner_uuid" ? "strong" : i.strength === "content" ? "content" : "drift"}`)}</Badge>
                       </div>
                       <p className="font-mono text-xs text-slate-500">{t("rules.order.linkRepair.from")} {i.stored_uuid} → {t("rules.order.linkRepair.to")} {i.live_uuid}</p>
+                      {i.differences.length > 0 && (
+                        <div className="mt-1 rounded-lg bg-flame-50 p-2 text-xs text-flame-800">
+                          <p className="font-medium">{t("rules.order.linkRepair.driftNote")}</p>
+                          <ul className="mt-1 space-y-0.5">
+                            {i.differences.map((d) => (
+                              <li key={d.field}>{labelFor(t, "fields", d.field)}: <span className="font-mono">{d.recorded || "—"}</span> → <span className="font-mono">{d.live || "—"}</span></li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

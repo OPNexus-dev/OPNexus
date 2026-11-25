@@ -929,7 +929,9 @@
         "loading": "Checking the firewalls…",
         "failed": "Could not check {host}.",
         "from": "stored",
-        "to": "on the firewall"
+        "to": "on the firewall",
+        "drift": "same rule ID as on the partner, but the content differs",
+        "driftNote": "On the firewall this rule differs from the central one (probably changed by hand and copied by the sync). Repairing links it as it is; deploying the central rule later overwrites the live changes. Central → live:"
       }
     },
     "placementDeployed": "This rule is already rolled out and sits wherever it is on the firewall now. You change its position in the Live across all hosts view (arrows or drag and drop).",

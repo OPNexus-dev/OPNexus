@@ -233,7 +233,7 @@ export function Nav() {
 
   return (
     <header className="border-b border-slate-200 bg-white print:hidden">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6">
+      <div className="mx-auto flex max-w-[120rem] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6">
         <Link href="/about" title={t("nav.aboutTitle")} className="shrink-0">
           <Logo className="h-6 w-auto sm:h-7" />
         </Link>
@@ -289,7 +289,7 @@ export function Nav() {
       </div>
       {activeGroup && activeGroup.items.length > 1 && (
         <div className="border-t border-slate-100 bg-slate-50">
-          <nav aria-label={t("nav.subNavigation")} className="mx-auto flex max-w-6xl items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:px-6 sm:gap-1">
+          <nav aria-label={t("nav.subNavigation")} className="mx-auto flex max-w-[120rem] items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:px-6 sm:gap-1">
             {activeGroup.items.map(({ href, icon: Icon }) => {
               const active = matchesNav(pathname, href);
               return (

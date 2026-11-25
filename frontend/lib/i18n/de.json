@@ -929,7 +929,9 @@
         "loading": "Die Firewalls werden geprüft …",
         "failed": "{host} konnte nicht geprüft werden.",
         "from": "gespeichert",
-        "to": "auf der Firewall"
+        "to": "auf der Firewall",
+        "drift": "gleiche Regel-ID wie auf dem Partner, aber der Inhalt weicht ab",
+        "driftNote": "Die Regel auf der Firewall weicht von der zentralen ab (vermutlich von Hand geändert und per Sync kopiert). Das Reparieren verknüpft sie so, wie sie ist; ein späteres Ausrollen der zentralen Regel überschreibt die Änderungen auf der Firewall. Zentral → live:"
       }
     },
     "placementDeployed": "Diese Regel ist schon ausgerollt und steht dort, wo sie jetzt auf der Firewall sitzt. Die Position änderst du in der Ansicht „Live über alle Hosts“ (Pfeile oder Ziehen).",

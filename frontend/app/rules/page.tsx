@@ -554,7 +554,7 @@ function RulesContent() {
           />
         )}
         {view === "table" && shownRules.length > 0 && (
-          <div className="xl:-mx-16">
+          <div>
           <RulesTable
             rules={shownRules} hostsById={hostsById} usage={usageById} selected={selected}
             onToggle={toggleSelected} onToggleAll={(checked) => setSelected(checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())}

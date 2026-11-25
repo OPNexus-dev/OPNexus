@@ -1893,7 +1893,8 @@ export interface GroupWrite { name: string; description: string; host_ids: strin
 export interface DeviceGroup extends GroupWrite { id: string; }
 export interface RuleLinkItem {
   deployment_id: string; rule_id: string; rule_description: string; stored_uuid: string; live_uuid: string;
-  strength: "partner_uuid" | "content"; live_description: string;
+  strength: "partner_uuid" | "content" | "partner_uuid_drift"; live_description: string;
+  differences: { field: string; recorded: string; live: string }[];
 }
 export interface RuleLinkProposals { host_id: string; host_name: string; items: RuleLinkItem[]; ambiguous: number; token: string }
 export interface RuleUsage {

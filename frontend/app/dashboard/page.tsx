@@ -202,7 +202,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+    <div className="mx-auto max-w-[120rem] px-4 py-6 sm:px-6">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">Dashboard<InfoTip text={t("dashboard.subtitle")} size={18} /></h1>
       </div>
