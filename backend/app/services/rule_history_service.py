@@ -33,7 +33,7 @@ from app.models.policy import RuleRevision
 from app.models.rule_deployment import RuleDeployment
 from app.models.rule_history import LiveRuleState, RuleChangeEvent
 from app.services import opnsense_client as client
-from app.services import rule_hit_service
+from app.services import rule_hit_service, rule_link_service
 from app.services.opnsense_client import OpnsenseAPIError
 
 logger = logging.getLogger(__name__)
@@ -246,6 +246,12 @@ async def observe_host(db: AsyncSession, host: OpnsenseHost, now: datetime | Non
         counters = None
         logger.info("Rule counters of %s not readable: %s", host.name, exc)
     result = await observe_rows(db, host, search, now)
+    if not result.get("skipped"):
+        try:   # links that a config sync made stale are put right here (strong evidence only, OPNexus's own records only)
+            await rule_link_service.reconcile(db, host, search)
+        except Exception:  # noqa: BLE001 - a repair hint must never break the observation
+            await db.rollback()
+            logger.exception("Rule link reconcile of %s failed", host.name)
     if not result.get("skipped"):  # a rejected or unconfirmed answer must not touch the usage data either
         if counters is not None:
             await rule_hit_service.apply_sample(db, host, counters, search, now)

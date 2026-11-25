@@ -904,7 +904,33 @@
       "revertFailed": "Reverting failed.",
       "moveFailed": "Moving failed.",
       "adopted": "\"{rule}\" is now managed centrally.",
-      "dropEnd": "Drop here: to the end of the group"
+      "dropEnd": "Drop here: to the end of the group",
+      "colOwner": "Managed by",
+      "off": "off",
+      "offTip": "The rule is switched off on the firewall.",
+      "originTip": {
+        "central": "Managed centrally by OPNexus: changes go through preview, confirmation and automatic rollback.",
+        "local": "Created by hand on the firewall. OPNexus only shows it; adopt it to manage it centrally.",
+        "hierarchy": "Set by the policy hierarchy.",
+        "system": "Built into OPNsense."
+      },
+      "linkWarnTip": "On {hosts} OPNexus does not recognise this rule as its own: the rule ID stored there is outdated (typical after a config sync between the firewalls). The rule itself is in place.",
+      "linkBanner": "{count} central rule(s) are not linked correctly on {hosts}. The rules are in place, but the rule ID OPNexus has stored for them there is outdated (typical after a config sync between the firewalls). Until this is repaired, editing them for that firewall fails.",
+      "linkRepair": {
+        "button": "Check and repair",
+        "title": "Repair rule links",
+        "intro": "OPNexus stores which rule on a firewall belongs to which central rule. For the rules below that record is outdated, but the firewall holds a matching rule. Repairing only changes OPNexus's own records; nothing is written to a firewall.",
+        "strong": "certain (same rule ID as on the partner)",
+        "content": "by content (same description and values)",
+        "none": "Nothing to repair on {host}.",
+        "ambiguous": "{count} rule(s) cannot be assigned unambiguously and are left as they are.",
+        "run": "Repair {count} link(s)",
+        "done": "{count} link(s) repaired.",
+        "loading": "Checking the firewalls…",
+        "failed": "Could not check {host}.",
+        "from": "stored",
+        "to": "on the firewall"
+      }
     },
     "placementDeployed": "This rule is already rolled out and sits wherever it is on the firewall now. You change its position in the Live across all hosts view (arrows or drag and drop).",
     "placementGoLive": "Go to the order"
@@ -1168,6 +1194,7 @@
     "OUTBOUND_MODE_UNREADABLE": "Outbound mode on {host} not readable: {reason}",
     "INVALID_CHARACTERS": "The input contains a character that cannot be stored (e.g. a NUL character)",
     "UPSTREAM_REJECTED": "The firewall rejected the request: {reason}",
+    "RULE_LINKS_CHANGED": "The assignment has changed since it was shown. Please check again.",
     "BULK_DEPLOY_UNEXPECTED": "Unexpected error during the bulk deploy; the remaining rules were not touched. Check this rule on the firewall.",
     "SERVICE_NOT_FOUND": "{service}: service not found on this firewall",
     "SERVICE_LOCKED": "{service}: service is locked and cannot be controlled via the API",
@@ -2687,7 +2714,8 @@
       "reset-2fa": "2FA reset",
       "ticket": "Ticket issued",
       "redeem": "Session started",
-      "end": "Session ended"
+      "end": "Session ended",
+      "relink": "Link repaired"
     },
     "status": {
       "requested": "Requested",

@@ -666,6 +666,7 @@ The **Live across all hosts** tab shows per firewall (an HA pair together, singl
 - **Editing:** a central rule opens the normal editor (preview, confirm, automatic rollback). A **local-only** rule is first adopted centrally for this (only an entry in OPNexus, nothing is written; for a pair it is linked on the second firewall)
   and then edited in the same way.
 - Identical rules on the firewalls of a pair are recognised by their content (description, interface, direction, protocol, source, destination, action), not by their ID.
+- **Tags:** the column **Managed by** shows who owns a rule: **Central** (OPNexus), **Local only** (created by hand, nothing wrong with that; adopt it to manage it centrally), **Hierarchy** or **System**. A small warning icon next to **Central** means that on a firewall of the pair OPNexus does not recognise the rule as its own: the rule ID it stored there is outdated. This typically happens when the primary pushes its rules to the secondary with OPNsense's own config sync (System › High Availability, item "Firewall rules"). The rule is in place; only the record is stale. A notice above the table offers **Check and repair**: the dialog lists what would change and whether it is certain (same rule ID as on the partner) or by content (same description and values); repairing changes OPNexus's own records only and never writes to a firewall. Certain cases are repaired automatically by the regular observation, each as an audit entry "Link repaired".
 
 ### Rules that exist only on individual firewalls
 

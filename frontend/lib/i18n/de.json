@@ -904,7 +904,33 @@
       "revertFailed": "Zurücknehmen fehlgeschlagen.",
       "moveFailed": "Verschieben fehlgeschlagen.",
       "adopted": "„{rule}“ ist jetzt zentral verwaltet.",
-      "dropEnd": "Hier ablegen: ans Ende der Gruppe"
+      "dropEnd": "Hier ablegen: ans Ende der Gruppe",
+      "colOwner": "Verwaltung",
+      "off": "aus",
+      "offTip": "Die Regel ist auf der Firewall ausgeschaltet.",
+      "originTip": {
+        "central": "Zentral von OPNexus verwaltet: Änderungen laufen über Vorschau, Bestätigung und automatisches Zurücksetzen.",
+        "local": "Von Hand auf der Firewall angelegt. OPNexus zeigt sie nur an; übernimm sie, um sie zentral zu verwalten.",
+        "hierarchy": "Von der Policy-Hierarchie gesetzt.",
+        "system": "In OPNsense eingebaut."
+      },
+      "linkWarnTip": "Auf {hosts} erkennt OPNexus diese Regel nicht als seine: Die dort gespeicherte Regel-ID ist veraltet (typisch nach einem Config-Sync zwischen den Firewalls). Die Regel selbst ist vorhanden.",
+      "linkBanner": "{count} zentrale Regel(n) sind auf {hosts} nicht richtig verknüpft. Die Regeln sind vorhanden, aber die Regel-ID, die OPNexus dort für sie gespeichert hat, ist veraltet (typisch nach einem Config-Sync zwischen den Firewalls). Bis das repariert ist, scheitert das Ändern für diese Firewall.",
+      "linkRepair": {
+        "button": "Prüfen und reparieren",
+        "title": "Verknüpfungen reparieren",
+        "intro": "OPNexus speichert, welche Regel auf einer Firewall zu welcher zentralen Regel gehört. Für die Regeln unten ist dieser Eintrag veraltet, die Firewall hat aber eine passende Regel. Das Reparieren ändert nur die Einträge von OPNexus; auf Firewalls wird nichts geschrieben.",
+        "strong": "sicher (gleiche Regel-ID wie auf dem Partner)",
+        "content": "nach Inhalt (gleiche Beschreibung und Werte)",
+        "none": "Auf {host} ist nichts zu reparieren.",
+        "ambiguous": "{count} Regel(n) lassen sich nicht eindeutig zuordnen und bleiben unverändert.",
+        "run": "{count} Verknüpfung(en) reparieren",
+        "done": "{count} Verknüpfung(en) repariert.",
+        "loading": "Die Firewalls werden geprüft …",
+        "failed": "{host} konnte nicht geprüft werden.",
+        "from": "gespeichert",
+        "to": "auf der Firewall"
+      }
     },
     "placementDeployed": "Diese Regel ist schon ausgerollt und steht dort, wo sie jetzt auf der Firewall sitzt. Die Position änderst du in der Ansicht „Live über alle Hosts“ (Pfeile oder Ziehen).",
     "placementGoLive": "Zur Reihenfolge"
@@ -1168,6 +1194,7 @@
     "OUTBOUND_MODE_UNREADABLE": "Outbound-Modus auf {host} nicht lesbar: {reason}",
     "INVALID_CHARACTERS": "Die Eingabe enthält ein nicht speicherbares Zeichen (z. B. ein NUL-Zeichen)",
     "UPSTREAM_REJECTED": "Die Firewall hat die Anfrage abgelehnt: {reason}",
+    "RULE_LINKS_CHANGED": "Die Zuordnung hat sich seit der Anzeige geändert. Bitte erneut prüfen.",
     "BULK_DEPLOY_UNEXPECTED": "Unerwarteter Fehler beim Sammel-Ausrollen; die übrigen Regeln wurden nicht angefasst. Stand dieser Regel auf der Firewall prüfen.",
     "SERVICE_NOT_FOUND": "{service}: Dienst auf dieser Firewall nicht gefunden",
     "SERVICE_LOCKED": "{service}: Dienst ist gesperrt und kann nicht per API gesteuert werden",
@@ -2687,7 +2714,8 @@
       "reset-2fa": "2FA zurücksetzen",
       "ticket": "Ticket ausgestellt",
       "redeem": "Sitzung gestartet",
-      "end": "Sitzung beendet"
+      "end": "Sitzung beendet",
+      "relink": "Verknüpfung repariert"
     },
     "status": {
       "requested": "Angefordert",

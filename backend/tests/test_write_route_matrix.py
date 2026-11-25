@@ -64,7 +64,8 @@ OPERATOR_ALLOWED_WRITES = {
     ("POST", "/api/policy-hierarchy/rules/x/confirm"),
     ("POST", "/api/port-forward/x/confirm"),
     ("POST", "/api/rules/x/confirm"),
-    ("POST", "/api/rules/bulk/confirm"),  # the same decision as the single confirm, for several rules
+    ("POST", "/api/rules/bulk/confirm"),
+    ("POST", "/api/rule-order/hosts/x/links/repair"),  # only OPNexus's own records of which live rule belongs to a central rule  # the same decision as the single confirm, for several rules
     # Own account, session and theme (self-service for every role)
     ("POST", "/api/auth/2fa/disable"),
     ("POST", "/api/auth/2fa/enable"),

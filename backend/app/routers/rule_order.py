@@ -2,6 +2,8 @@
 
     GET  /rule-order/hosts/{id}            everybody signed in   the rules in firewall order, with origin and movability
     GET  /rule-order/open                  everybody signed in   every open (unconfirmed / failed) move
+    GET  /rule-order/hosts/{id}/links      everybody signed in   central rules whose recorded UUID on this host is stale (reads the firewall)
+    POST /rule-order/hosts/{id}/links/repair  operator, admin    points those deployments at the live rules (OPNexus's records only)
     POST /rule-order/hosts/{id}/move       operator, admin       (governance: operators_may_deploy), no read token
     POST /rule-order/hosts/{id}/confirm    operator, admin       BROWSER SESSION ONLY, never a token
     POST /rule-order/hosts/{id}/revert     operator, admin       (governance: operators_may_deploy)
@@ -12,6 +14,7 @@ and here. MCP stays read-only.
 import uuid
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +28,8 @@ from app.models.user import AdminUser
 from app.routers import governance
 from app.routers.auth import resolve_user
 from app.schemas.rule_order import HostOrderRead, MoveRequest, OrderChangeRead
+from app.services import opnsense_client as client
+from app.services import rule_link_service
 from app.services import rule_order_service as service
 from app.services.opnsense_client import OpnsenseAPIError
 
@@ -106,6 +111,38 @@ async def open_list(db: AsyncSession = Depends(get_db)):
     changes = list((await db.scalars(select(RuleOrderChange).where(RuleOrderChange.status.in_(OPEN_STATUSES))
                                      .order_by(RuleOrderChange.created_at))).all())
     return await _reads(db, changes)
+
+
+async def _link_proposals(db: AsyncSession, host: OpnsenseHost) -> dict:
+    try:
+        search = await client.search_rules(host, all_rows=True)
+    except OpnsenseAPIError as exc:
+        raise api_error(502, ErrorCode.ORDER_HOST_UNREACHABLE, host=host.name, reason=str(exc)[:200]) from exc
+    return await rule_link_service.proposals(db, host, search)
+
+
+@router.get("/hosts/{host_id}/links")
+async def links(host_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Central rules whose recorded UUID on this host is stale although the rule is there (typically after an OPNsense
+    config sync): what repairing would change. Reads the firewall, writes nothing."""
+    host = await _host(db, host_id)
+    return {"host_id": str(host.id), "host_name": host.name, **await _link_proposals(db, host)}
+
+
+class LinkRepair(BaseModel):
+    token: str = Field(min_length=64, max_length=64)
+
+
+@router.post("/hosts/{host_id}/links/repair")
+async def repair_links(host_id: uuid.UUID, payload: LinkRepair, request: Request, db: AsyncSession = Depends(get_db)):
+    """Apply what ``GET .../links`` showed (the token says which state was shown). Changes only OPNexus's own records."""
+    user = await resolve_user(request, db)
+    _writer(user, request)
+    host = await _host(db, host_id)
+    found = await _link_proposals(db, host)
+    if found["token"] != payload.token:
+        raise api_error(409, ErrorCode.RULE_LINKS_CHANGED)
+    return {"repaired": await rule_link_service.apply(db, host, found["items"], actor=user.username)}
 
 
 @router.post("/hosts/{host_id}/move", response_model=OrderChangeRead | None)

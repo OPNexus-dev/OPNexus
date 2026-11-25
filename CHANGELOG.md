@@ -26,6 +26,12 @@ in the footer of every page, on `/about` and in the settings.
 
 Next codenames (in order, when the next MINOR version is due): Berlin, Copenhagen, Dublin, Edinburgh, Florence.
 
+## [1.39.1] "Amsterdam" — 2026-11-25
+
+- **Rule links are repaired after an OPNsense config sync.** When the primary of an HA pair pushes its rules to the secondary (System › High Availability, item "Firewall rules"), the secondary holds the primary's rule IDs instead of the ones OPNexus recorded when it deployed there. The rules were all in place, but the live view called them "local" on that node and editing them for that firewall failed. OPNexus now notices this: the observe loop re-links a deployment by itself when the live rule carries the partner's rule ID and has the same content, and for everything less certain the live view shows a notice with "Check and repair" (a preview of what changes; only OPNexus's own records are changed, never a firewall; every link repaired is an audit entry). New API: `GET /api/rule-order/hosts/{id}/links` and `POST …/links/repair`.
+- **Clearer tags in the live rules view.** One column "Managed by" with one calm tag per rule (Central blue, Local only neutral grey instead of warning orange, Hierarchy, System) and a tooltip that says what each means; the cryptic "not everywhere central" tag is replaced by a warning icon that names the firewall and offers the repair; a disabled rule is shown greyed with a small "off" tag instead of struck through plus a word. Rows are one line again.
+- **CI.** The language check of the release gate (`scripts/check_server_texts.py`) no longer needs `git` (it failed in the GitHub CI container with "dubious ownership").
+
 ## [1.39.0] "Amsterdam" — 2026-11-25
 
 - **Deploy several rules at once.** Tick rules in the list and use "Review and deploy": one dialog with the preview of every rule, then every rule is deployed one after the other exactly like a single deployment (its own approval, checks, confirmation window and automatic rollback). A refused rule does not stop the others, and "Confirm all deployed" confirms them together (at most 50 rules per run; operators need the right to deploy). New API: `POST /api/rules/bulk/deploy` and `/bulk/confirm`.

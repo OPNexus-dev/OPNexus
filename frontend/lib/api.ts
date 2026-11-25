@@ -1680,6 +1680,9 @@ export const api = {
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
   ruleRevisions: (id: string) => request<RuleRevision[]>(`/rules/${id}/revisions`),
   ruleUsage: () => request<RuleUsage[]>("/rules/usage"),
+  ruleLinks: (hostId: string) => request<RuleLinkProposals>(`/rule-order/hosts/${hostId}/links`),
+  repairRuleLinks: (hostId: string, token: string) =>
+    request<{ repaired: number }>(`/rule-order/hosts/${hostId}/links/repair`, { method: "POST", body: JSON.stringify({ token }) }),
   ruleOverlap: (id: string) => request<RuleOverlap>(`/rules/${id}/overlap`),
   deployRule: (id: string, previewToken: string) => request<Rule>(`/rules/${id}/deploy`, { method: "POST", body: JSON.stringify({ preview_token: previewToken }) }),
   listAliases: () => request<PolicyAlias[]>("/aliases"),
@@ -1888,6 +1891,11 @@ export const api = {
 
 export interface GroupWrite { name: string; description: string; host_ids: string[]; }
 export interface DeviceGroup extends GroupWrite { id: string; }
+export interface RuleLinkItem {
+  deployment_id: string; rule_id: string; rule_description: string; stored_uuid: string; live_uuid: string;
+  strength: "partner_uuid" | "content"; live_description: string;
+}
+export interface RuleLinkProposals { host_id: string; host_name: string; items: RuleLinkItem[]; ambiguous: number; token: string }
 export interface RuleUsage {
   rule_id: string;
   state: "used" | "unused" | "collecting" | "unknown" | "disabled";

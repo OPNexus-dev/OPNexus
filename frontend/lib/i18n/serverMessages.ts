@@ -46,6 +46,7 @@ const operationEntries: Array<[RegExp, string]> = [
 ];
 
 export const serverMessagesEn: Array<[string | RegExp, string]> = [
+  [/^Verknüpfung auf (?<p1>[\s\S]*?) neu gesetzt \((?<p2>[\s\S]*?)\)$/, "Link on {p1} set again ({p2})"],
   // Complete-language pass (1.39): server prose that was still German-only. First, so these exact entries win over
   // the generic patterns further down.
   ["SMTP-Passwort ist konfiguriert, aber nicht lesbar – bitte neu setzen", "SMTP password is configured but not readable – please set it again"],

@@ -62,8 +62,17 @@ def looks_german(text: str) -> bool:
 
 
 def files():
-    names = subprocess.check_output(["git", "-C", str(ROOT), "ls-files", "backend/app", "updater"], text=True).split()
-    return [n for n in names if n.endswith(".py") and "/tests/" not in n and "/test_" not in n and "migrations/" not in n and n not in SKIP_FILES]
+    """The Python sources the check reads. Plain directory walk, not `git ls-files`: it also works in a CI container where git
+    refuses the checkout ("dubious ownership"), and it sees a new file before it is committed."""
+    result = []
+    for base in ("backend/app", "updater"):
+        for path in sorted((ROOT / base).rglob("*.py")):
+            name = path.relative_to(ROOT).as_posix()
+            if any(part in name for part in ("/tests/", "/test_", "migrations/", "__pycache__", "node_modules")):
+                continue
+            if name not in SKIP_FILES:
+                result.append(name)
+    return result
 
 
 def collect():

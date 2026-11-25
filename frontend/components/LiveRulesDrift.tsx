@@ -1,5 +1,6 @@
 "use client";
 
+import { RuleLinkRepairModal } from "@/components/RuleLinkRepairModal";
 import { HistoryTarget, RuleHistoryModal } from "@/components/RuleHistoryModal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -13,7 +14,8 @@ import { useLanguage } from "@/components/LanguageProvider";
 import { groupHostsByCluster } from "@/lib/clusters";
 import { useReadOnly } from "@/lib/useReadOnly";
 import clsx from "clsx";
-import { Check, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, GripVertical, History, Network, Pencil, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, ChevronsDown, ChevronsUp, GripVertical, History, Network, Pencil, RefreshCw, X } from "lucide-react";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 
 // All rules of a firewall (or an HA pair) in the order the firewall evaluates them: the rules OPNexus manages, the ones
@@ -97,6 +99,12 @@ function buildRows(hosts: Host[], orders: Record<string, HostOrder | null>): Row
   return order.map((k) => rows.get(k)!);
 }
 
+/** Nodes on which a rule that OPNexus manages (central) is not recognised as such: its recorded rule ID there is stale. */
+function linkMismatch(row: Row, hosts: Host[]): Host[] {
+  if (row.origin !== "central") return [];
+  return hosts.filter((h) => row.presentOn.has(h.id) && row.origins.get(h.id) === "local");
+}
+
 function groupLabelKey(prio: string): string {
   if (prio.startsWith("2")) return "floating";
   if (prio.startsWith("3")) return "ifgroup";
@@ -127,6 +135,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
   const [onlyDrift, setOnlyDrift] = useState(false);
   const [showSystem, setShowSystem] = useState(false);
   const [historyOf, setHistoryOf] = useState<{ title: string; targets: HistoryTarget[] } | null>(null);
+  const [repairOf, setRepairOf] = useState<{ unit: Unit; hosts: Host[] } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [drag, setDrag] = useState<{ unit: string; row: string } | null>(null);
@@ -283,6 +292,8 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
         const failed = open.filter((c) => c.status === "revert_failed");
         const deadline = pending.map((c) => c.revert_deadline).filter(Boolean).sort()[0] ?? null;
         const unreachable = unit.hosts.filter((h) => !unit.loading && !unit.orders[h.id]);
+        const linkRows = unit.rows.filter((r) => linkMismatch(r, unit.hosts).length > 0);
+        const linkHosts = unit.hosts.filter((h) => linkRows.some((r) => linkMismatch(r, unit.hosts).some((m) => m.id === h.id)));
         let lastGroup = "";
         return (
           <div key={unit.key}>
@@ -319,6 +330,13 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
               </div>
             )}
 
+            {!unit.loading && linkRows.length > 0 && (
+              <div role="status" className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p>{t("rules.order.linkBanner", { count: linkRows.length, hosts: linkHosts.map((h) => h.name).join(", ") })}</p>
+                <Button disabled={readOnly} onClick={() => setRepairOf({ unit, hosts: linkHosts })}>{t("rules.order.linkRepair.button")}</Button>
+              </div>
+            )}
+
             {unit.loading ? (
               <Card className="p-5"><Skeleton className="mb-2 h-3 w-full" /><Skeleton className="mb-2 h-3 w-5/6" /><Skeleton className="h-3 w-3/4" /></Card>
             ) : visible.length === 0 ? (
@@ -330,6 +348,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                     <tr>
                       <th className="w-8 px-2 py-3"><span className="sr-only">{t("rules.order.colMove")}</span></th>
                       <th className="px-3 py-3 font-medium">{t("drift.colDescription")}</th>
+                      <th className="px-3 py-3 font-medium">{t("rules.order.colOwner")}</th>
                       <th className="px-3 py-3 font-medium">{t("drift.colInterface")}</th>
                       <th className="px-3 py-3 font-medium">{t("drift.colSourceDest")}</th>
                       <th className="px-3 py-3 font-medium">{t("drift.colAction")}</th>
@@ -344,7 +363,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                       const nb = neighbours(unit, row);
                       const canMove = row.movable && !readOnly && busy === null;
                       const dropOk = drag?.unit === unit.key && drag.row !== row.key && row.movable && unit.rows.find((r) => r.key === drag.row)?.group === row.group;
-                      const colSpan = 6 + (unit.hosts.length > 1 ? unit.hosts.length : 0);
+                      const colSpan = 7 + (unit.hosts.length > 1 ? unit.hosts.length : 0);
                       return (
                         <Fragment key={row.key}>
                           {header && (
@@ -369,10 +388,24 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                             </td>
                             <td className="px-3 py-2 text-slate-900">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                <span className={clsx(row.origin === "system" && "text-slate-400", !row.sample.enabled && "line-through")}>{row.sample.description}</span>
-                                <Badge tone={row.origin === "central" ? "info" : row.origin === "local" ? "warning" : "neutral"}>{t(`rules.order.origin.${row.origin}`)}</Badge>
-                                {row.mixedOrigin && <Badge tone="warning">{t("rules.order.mixed")}</Badge>}
-                                {!row.sample.enabled && <span className="text-xs text-slate-400">{t("common.statusDisabled")}</span>}
+                                <span className={clsx((row.origin === "system" || !row.sample.enabled) && "text-slate-400")}>{row.sample.description}</span>
+                                {!row.sample.enabled && <Tooltip content={t("rules.order.offTip")}><span><Badge tone="neutral">{t("rules.order.off")}</Badge></span></Tooltip>}
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-2">
+                              <div className="flex items-center gap-1.5">
+                                <Tooltip content={t(`rules.order.originTip.${row.origin}`)}>
+                                  <span><Badge tone={row.origin === "central" ? "info" : row.origin === "hierarchy" ? "accent" : "neutral"}>{t(`rules.order.origin.${row.origin}`)}</Badge></span>
+                                </Tooltip>
+                                {linkMismatch(row, unit.hosts).length > 0 && (
+                                  <Tooltip content={t("rules.order.linkWarnTip", { hosts: linkMismatch(row, unit.hosts).map((h) => h.name).join(", ") })}>
+                                    <button type="button" aria-label={t("rules.order.linkRepair.button")} disabled={readOnly}
+                                      onClick={() => setRepairOf({ unit, hosts: unit.hosts.filter((h) => linkMismatch(row, unit.hosts).some((m) => m.id === h.id)) })}
+                                      className="rounded p-0.5 text-flame-600 hover:bg-flame-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500 disabled:opacity-60">
+                                      <AlertTriangle size={15} aria-hidden="true" />
+                                    </button>
+                                  </Tooltip>
+                                )}
                               </div>
                             </td>
                             <td className="px-3 py-2 text-slate-500">{row.sample.interface_label ?? "—"}</td>
@@ -428,7 +461,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => { e.preventDefault(); const from = unit.rows.find((r) => r.key === drag.row); setDrag(null); if (from) moveRow(unit, from, null); }}
                       >
-                        <td colSpan={6 + (unit.hosts.length > 1 ? unit.hosts.length : 0)} className="px-3 py-3 text-center text-xs text-slate-500">{t("rules.order.dropEnd")}</td>
+                        <td colSpan={7 + (unit.hosts.length > 1 ? unit.hosts.length : 0)} className="px-3 py-3 text-center text-xs text-slate-500">{t("rules.order.dropEnd")}</td>
                       </tr>
                     )}
                   </tbody>
@@ -439,6 +472,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
         );
       })}
 
+      {repairOf && <RuleLinkRepairModal hosts={repairOf.hosts} onClose={() => setRepairOf(null)} onRepaired={() => { const u = repairOf.unit; setRepairOf(null); refreshUnit(u); }} />}
       {historyOf && <RuleHistoryModal title={historyOf.title} targets={historyOf.targets} onClose={() => setHistoryOf(null)} />}
     </div>
   );
