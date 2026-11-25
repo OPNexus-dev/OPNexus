@@ -13,6 +13,12 @@ from app.models.rule import FirewallRule
 from tests.config_code_seed import seed_everything
 
 
+@pytest.fixture(autouse=True)
+def _german_console(monkeypatch):
+    # The texts asserted here are the German ones (the console language follows OPNEXUS_LANG, see app/cli_lang.py).
+    monkeypatch.setenv("OPNEXUS_LANG", "de")
+
+
 async def cli(*argv, stdin: str | bytes | None = None):
     data = stdin.encode() if isinstance(stdin, str) else stdin
     return await run(list(argv), data)
@@ -102,5 +108,5 @@ async def test_kinds_schema_and_usage():
     assert code == 0 and list(yaml.safe_load(out)) == ["opnexus_config", "aliases"]
     assert (await cli("export", "--kinds", "nope"))[0] == 1
     code, out, _ = await cli("schema")
-    assert code == 0 and json.loads(out)["title"].startswith("OPNexus-Konfiguration")
+    assert code == 0 and json.loads(out)["title"].startswith("OPNexus configuration")
     assert (await cli("frobnicate"))[0] == 1

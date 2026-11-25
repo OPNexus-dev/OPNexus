@@ -80,7 +80,7 @@ async def start(request: Request, origin: str, db: AsyncSession = Depends(get_db
     try:
         url, state = await oidc_service.start(db, cfg, f"{parts.scheme}://{parts.netloc}{CALLBACK_PATH}")
     except oidc_service.OidcError as exc:
-        logger.warning("OIDC start fehlgeschlagen: %s", exc)
+        logger.warning("OIDC start failed: %s", exc)
         return _login_error(exc.code)
     response = RedirectResponse(url, status_code=302)
     # Binds the attempt to THIS browser: a callback URL handed to somebody else (login CSRF) or a captured
@@ -108,7 +108,7 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
         user = await oidc_service.complete(db, cfg, code, state)
     except oidc_service.OidcError as exc:
         auth_service.throttle.record_failure(ip, "oidc")
-        logger.warning("OIDC-Anmeldung abgelehnt (%s): %s", exc.code, exc)
+        logger.warning("OIDC sign-in refused (%s): %s", exc.code, exc)
         return _login_error(exc.code)
     auth_service.throttle.reset(ip, "oidc")
     await auth_service.finalize_login(db, user, ip)
@@ -118,7 +118,7 @@ async def callback(request: Request, code: str = "", state: str = "", error: str
     response = RedirectResponse("/dashboard", status_code=302)
     _set_session_cookie(response, token, max_age=SSO_SESSION_SECONDS)
     _clear_state_cookie(response)
-    logger.info("SSO-Anmeldung von '%s' (%s) aus %s", user.username, user.role, ip)
+    logger.info("SSO sign-in of '%s' (%s) from %s", user.username, user.role, ip)
     return response
 
 

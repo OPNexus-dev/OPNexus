@@ -202,7 +202,7 @@ VariableValue = Annotated[str, AfterValidator(_variable_value)]
 
 
 class ConfigDoc(_Doc):
-    """Eine Datei. Ein fehlender Abschnitt lässt die Art unberührt (None); ein leerer Abschnitt ist ein leerer Sollzustand."""
+    """One file. A missing section leaves the kind untouched (None); an empty section is an empty desired state."""
 
     opnexus_config: Literal[1]
     device_groups: list[DeviceGroupDoc] | None = None
@@ -239,5 +239,5 @@ def json_schema_text() -> str:
 
     schema = ConfigDoc.model_json_schema()
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
-    schema["title"] = "OPNexus-Konfiguration (Schema v1)"
+    schema["title"] = "OPNexus configuration (schema v1)"
     return json.dumps(schema, indent=2, ensure_ascii=False, sort_keys=False) + "\n"

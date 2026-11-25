@@ -262,7 +262,8 @@ async def test_gateway_alert_is_delivered_once_and_resolution_follows(client, re
     host = await _create_host(client, "fw1", "https://fw1.test")
     hid = uuid.UUID(host["id"])
     await _only("gateway_down_enabled")
-    await _set(webhook_enabled=True, webhook_url="https://hooks.test/n")
+    # The texts asserted below are German: pin the language (automatic would give English, see test_notification_i18n.py).
+    await _set(webhook_enabled=True, webhook_url="https://hooks.test/n", language="de")
     hook = respx_mock.post("https://hooks.test/n").mock(return_value=httpx.Response(200))
     bad, good = {"gateways": [_gw("offline", 100.0, None)]}, {"gateways": [_gw()]}
     await _add_samples(hid, [bad] * 3)
@@ -649,7 +650,8 @@ async def test_channel_crud_keeps_the_secret_out_of_database_and_responses(clien
     # test button
     route = respx_mock.post("https://api.telegram.org/bot111:TOKEN-VALUE/sendMessage").mock(return_value=httpx.Response(200, json={"ok": True}))
     assert (await client.post(f"/api/notifications/channels/{cid}/test")).json() == {"success": True}
-    assert b"Testbenachrichtigung" in route.calls.last.request.content
+    # Language setting "automatic" and nobody ever chose a language: English (the German text is pinned in test_notification_i18n.py).
+    assert b"Test notification" in route.calls.last.request.content
     route.mock(return_value=httpx.Response(500))
     failed = await client.post(f"/api/notifications/channels/{cid}/test")
     assert failed.status_code == 502 and failed.json()["detail"]["code"] == "NOTIFICATION_CHANNEL_TEST_FAILED"

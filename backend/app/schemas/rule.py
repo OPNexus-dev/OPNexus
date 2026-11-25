@@ -87,6 +87,23 @@ class DeployApproval(BaseModel):
     preview_token: str = Field(min_length=64, max_length=64)
 
 
+# Upper bound of one bulk request: every rule is a full deploy with its own firewall round trips.
+BULK_LIMIT = 50
+
+
+class BulkDeployItem(BaseModel):
+    rule_id: uuid.UUID
+    preview_token: str = Field(min_length=64, max_length=64)
+
+
+class BulkDeployRequest(BaseModel):
+    items: list[BulkDeployItem] = Field(min_length=1, max_length=BULK_LIMIT)
+
+
+class BulkConfirmRequest(BaseModel):
+    rule_ids: list[uuid.UUID] = Field(min_length=1, max_length=BULK_LIMIT)
+
+
 class AdoptRequest(BaseModel):
     host_id: uuid.UUID
     # Link to this existing central rule instead of creating a new one (services/adopt_link_service.py).
@@ -118,3 +135,27 @@ class UnmanagedRule(BaseModel):
     matches: list[LinkTarget] = Field(default_factory=list)
     similar: list[LinkTarget] = Field(default_factory=list)
     linkable: bool = False
+
+
+class BulkRuleResult(BaseModel):
+    rule_id: uuid.UUID
+    # deployed:  every target took the change (pending confirmation, or already in sync)
+    # attention: written, but at least one target reported an error / unknown outcome - see ``rule.deployments``
+    # failed:    refused before anything was written - see ``error``
+    # skipped:   deploy: not attempted because an unexpected error stopped the run; confirm: nothing was open to confirm
+    status: Literal["deployed", "attention", "failed", "skipped"]
+    error: dict | None = None
+    rule: RuleRead | None = None
+
+
+class BulkDeployResult(BaseModel):
+    results: list[BulkRuleResult]
+    deployed: int
+    attention: int
+    failed: int
+    skipped: int
+
+
+class BulkConfirmResult(BaseModel):
+    confirmed: int
+    results: list[BulkRuleResult]

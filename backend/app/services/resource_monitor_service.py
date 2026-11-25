@@ -102,10 +102,10 @@ async def _optional(operation, name: str, denied: list[str], ok: list[str]):
         return result
     except OpnsenseForbiddenError:
         denied.append(name)
-        logger.debug("Optionale Messung %s: API-Recht fehlt", name)
+        logger.debug("Optional measurement %s: API privilege missing", name)
         return None
     except Exception as exc:
-        logger.debug("Optionale Messung fehlgeschlagen: %s", type(exc).__name__)
+        logger.debug("Optional measurement failed: %s", type(exc).__name__)
         return None
 
 
@@ -124,7 +124,7 @@ async def sample_host(db: AsyncSession, host: OpnsenseHost) -> None:
         # Schwellenwert-Alarme sehen darin "unbekannt", nicht "in Ordnung".
         db.add(HostResourceSample(host_id=host.id, sampled_at=_now(), mem_used_pct=None, load_avg_1m=None,
                                   disk_used_pct=None, raw={"denied": ["base"], "ok": []}))
-        logger.warning("Resource-Sampling für Host %s: dem API-Schlüssel fehlen die Basis-Rechte (403)", host.name)
+        logger.warning("Resource sampling for host %s: the API key lacks the basic privileges (403)", host.name)
         return
     swap, cpu_type, gateways, services = await asyncio.gather(
         _optional(client.get_system_swap(host), "swap", denied, ok),
@@ -164,10 +164,10 @@ async def poll_all_hosts(db: AsyncSession) -> dict:
             sampled += 1
         except OpnsenseAPIError:
             failed += 1
-            logger.warning("Resource-Sampling für Host %s fehlgeschlagen (nicht erreichbar?)", host.name)
+            logger.warning("Resource sampling for host %s failed (not reachable?)", host.name)
         except Exception:
             failed += 1
-            logger.exception("Resource-Sampling für Host %s fehlgeschlagen", host.name)
+            logger.exception("Resource sampling for host %s failed", host.name)
     await db.commit()
     return {"hosts_polled": len(hosts), "hosts_failed": failed, "sampled": sampled}
 

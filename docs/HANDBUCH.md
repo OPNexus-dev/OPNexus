@@ -617,6 +617,34 @@ Weitere Regeln dazu:
 - Jede Regel hat einen **Verlauf**: jede Änderung ist ein unveränderlicher Stand,
   der sich ins Formular übernehmen und als neuen Entwurf speichern lässt.
 
+### Tabellenansicht, Nutzung und Überschneidungen
+
+Die Regelliste hat zwei Ansichten (Umschalter oben rechts, die Wahl bleibt im Browser gespeichert): **Karten** und die kompakte
+**Tabelle** (Standard). Die Tabelle zeigt eine Zeile je Regel: Aktion (grün erlauben, rot blockieren, gelb abweisen), Name mit
+Schnittstelle, Richtung, Protokoll und Zahl der Ziele, Quelle, Ziel, Status je Ziel und **Zuletzt getroffen**. Ein Klick auf eine Spaltenüberschrift sortiert;
+der Filter **Nutzung** zeigt nur Regeln in Benutzung, ungenutzte, noch Daten sammelnde oder unbekannte.
+
+- **Zuletzt getroffen** stammt aus den pf-Zählern, die OPNexus regelmäßig abfragt (siehe „Regelnutzung“). Gezeigt werden Zeitpunkte, keine Zähler: jedes Anwenden
+  setzt die Zähler von pf zurück. Eine Regel ohne Treffer **sammelt Daten**, bis sie 30 Tage beobachtet wurde, und gilt erst dann als **ungenutzt**.
+  Bei einer Regel auf beiden Firewalls eines Paars zählt der neueste Treffer eines Knotens, weil der CARP-Master den Verkehr sieht; fehlen für einen Knoten
+  Daten, gilt die Regel nie als ungenutzt. Noch nicht ausgerollte Regeln zeigen „—“.
+- **Überschneidungsprüfung:** Die Vorschau (und der Dialog für mehrere Regeln, siehe unten) fragt die Ziel-Firewalls, ob die Regel von einer früheren
+  **verdeckt** würde (sie würde nie wirken) oder eine andere **doppelt**, und welche späteren Regeln sie **wirkungslos macht** (z. B. ein Block-all ganz oben). Die
+  Prüfung ist ein Hinweis: Sie liest die Firewalls, schreibt nichts, blockiert das Ausrollen nie und ändert den Vorschau-Token nicht. Eine Regel, die noch nicht ausgerollt ist, wird nach der Position
+  beurteilt, auf der sie landen würde (Ende ihrer Prioritätsgruppe, bei „Ganz oben“ der Anfang), und gilt daher höchstens als „wahrscheinlich“; ist eine Firewall nicht lesbar, steht das in der Vorschau.
+
+### Mehrere Regeln gleichzeitig ausrollen
+
+Regeln in der Liste ankreuzen (oder **Alle angezeigten Regeln auswählen**) und **Prüfen und ausrollen (N)** klicken, höchstens 50 auf einmal. Der Dialog lädt
+die Vorschau jeder Regel; Regeln ohne Änderung oder mit offener Bestätigung stehen als nicht ausrollbar da. **N Regeln ausrollen** rollt sie dann
+**nacheinander aus, jede genau wie ein einzelnes Ausrollen**: mit der im Dialog gezeigten Freigabe (eine geänderte Regel wird abgelehnt),
+denselben Prüfungen, eigenem Bestätigungsfenster und eigenem automatischem Rollback. Eine abgelehnte Regel hält die anderen nicht auf; das Ergebnis nennt
+jede Regel als ausgerollt, braucht Aufmerksamkeit (geschrieben, aber ein Ziel meldete einen Fehler), nicht ausgerollt oder übersprungen.
+Danach bestätigt **Alle ausgerollten bestätigen** (oder **Alle offenen bestätigen** in der Leiste über der Liste) alle offenen Deployments auf einmal.
+
+Das Sammel-Ausrollen zählt bei der Aufgabentrennung als Ausrollen: Operatoren dürfen es nur, wenn sie überhaupt ausrollen dürfen. Jede Regel wird
+einzeln angewendet, die Firewall lädt ihren Filter also einmal je Regel neu.
+
 ### Position in der Regelliste
 
 Firewalls prüfen Regeln von oben nach unten, die erste passende gewinnt. OPNsense legt neue Regeln **am Ende** ab; eine Block-Regel hinter einer passenden Erlaubnis-Regel greift deshalb nie.
@@ -1418,7 +1446,9 @@ meldet sich einmal und löst sich selbst auf, sobald es behoben ist; die
 Dashboard-Karte „Warnungen“ zeigt die offenen. Ausnahme „geplante Wartung nicht
 ausgeführt“: Sie bleibt drei Tage nach dem geplanten Zeitpunkt offen und schließt dann
 ohne „behoben“-Meldung, weil sich ein verpasster Termin nicht von selbst behebt. Der
-Text der Benachrichtigungen ist nicht übersetzt.
+Sprache der Texte stellst du unter Einstellungen › Benachrichtigungen bei „Sprache der Nachrichten“ ein (Automatisch,
+Deutsch oder English; Automatisch folgt der Sprache des ältesten Administratorkontos, und Englisch, wenn nie eine gewählt
+wurde). Das JSON-Objekt `context` des Webhooks wird nie übersetzt, damit auswertende Empfänger weiter funktionieren.
 
 #### Gateway-, Ressourcen- und Dienst-Alarme
 
@@ -2322,8 +2352,9 @@ nach einem Neustart erhalten. Alternativ legt ihn OPNexus unter
 - **Übernommene Regeln** gelten je Firewall einzeln: wer eine übernommene Regel
   zusätzlich auf einen weiteren Host zielt, legt dort eine zweite, doppelte Regel an
   (die Vorschau zeigt „create“).
-- **Benachrichtigungstexte, Server-Logs und OPNsense-Antworten** sind nicht
-  übersetzt.
+- **Sprache:** Oberfläche, Meldungen, Benachrichtigungen (eigene Einstellung), das `opnexus`-Kommando mit den Konsolenwerkzeugen
+  dahinter (`OPNEXUS_LANG=de|en`, sonst die Locale) und der HA-Agent gibt es auf Deutsch und Englisch. Server-Logs sind englisch.
+  Nur Meldungen, die OPNsense selbst zurückgibt, bleiben so, wie die Firewall sie schreibt.
 
 ---
 

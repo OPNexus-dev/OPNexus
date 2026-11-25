@@ -1,7 +1,8 @@
 import json
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, Body
+from fastapi import APIRouter, Depends, Body, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,17 +14,19 @@ from app.models.policy import DeviceGroup, RuleRevision
 from app.services.policy_service import effective_hosts, snapshot, revision, preview, policy_lock, ensure_editable, RULE_FIELDS, workflow
 from app.models.rule import FirewallRule
 from app.models.rule_deployment import RuleDeployment
-from app.schemas.rule import DeploymentResult, RuleCreate, RuleRead, RuleEdit, DeployApproval
+from app.schemas.rule import (BulkConfirmRequest, BulkConfirmResult, BulkDeployRequest, BulkDeployResult, BulkRuleResult,
+                              DeploymentResult, RuleCreate, RuleRead, RuleEdit, DeployApproval)
 from app.services.alias_service import check_alias_consistency, describe_alias_contents, ensure_aliases_settled
 from app.services.interface_service import check_interface_consistency, role_targets
 from app.services.rule_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.rule_deploy_service import confirm_rule, deploy_rule, undeploy_rule, revert_deployment
-from app.services import rule_adopt_service
+from app.services import rule_adopt_service, rule_overlap_service, rule_usage_service, variables_service
 from app.services.adopt_common import LINK_ERRORS, link_api_error
 from app.schemas.rule import AdoptRequest, UnmanagedRule
 
 router = APIRouter(prefix="/rules", tags=["rules"])
+logger = logging.getLogger(__name__)
 
 
 def _load_options():
@@ -90,6 +93,14 @@ async def list_rules(db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FirewallRule).options(*_load_options()))
     rules = result.scalars().unique().all()
     return [_to_read(rule, rule.targets, rule.deployments) for rule in rules]
+
+
+@router.get("/usage")
+async def rule_usage(db: AsyncSession = Depends(get_db)):
+    """When each central rule last matched something (stored pf counter observations, merged over its deployments).
+    Declared before ``/{rule_id}/...`` so "usage" is never read as an id."""
+    rules = (await db.scalars(select(FirewallRule).options(selectinload(FirewallRule.deployments)))).all()
+    return await rule_usage_service.usage_for_rules(db, list(rules))
 
 
 @router.get("/unmanaged", response_model=list[UnmanagedRule])
@@ -167,11 +178,76 @@ async def create_rule(payload: RuleCreate, db: AsyncSession = Depends(get_db)):
     return _to_read(rule, hosts, [])
 
 
-@router.post("/{rule_id}/deploy", response_model=RuleRead)
-async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(default=None), db: AsyncSession = Depends(get_db)):
+def _bulk_status(rule: RuleRead) -> str:
+    bad = any(d.status in ("error", "revert_failed") for d in rule.deployments)
+    return "attention" if bad else "deployed"
+
+
+@router.post("/bulk/deploy", response_model=BulkDeployResult)
+async def bulk_deploy(body: BulkDeployRequest, db: AsyncSession = Depends(get_db)):
+    """Deploys several rules one after the other, each through exactly the single-rule path (its own preview approval,
+    consistency checks, pending window and auto-revert). One rule being refused does not stop the others; an unexpected
+    error does, and the rest is reported as skipped. Declared before ``/{rule_id}/...`` so "bulk" is never read as an id."""
+    results: list[BulkRuleResult] = []
+    seen: set[uuid.UUID] = set()
+    stopped = False
+    for item in body.items:
+        if item.rule_id in seen:
+            continue
+        seen.add(item.rule_id)
+        if stopped:
+            results.append(BulkRuleResult(rule_id=item.rule_id, status="skipped"))
+            continue
+        try:
+            rule = await _deploy_checked(db, item.rule_id, item.preview_token)
+            results.append(BulkRuleResult(rule_id=item.rule_id, status=_bulk_status(rule), rule=rule))
+        except HTTPException as exc:
+            await db.rollback()
+            detail = exc.detail if isinstance(exc.detail, dict) else {"code": ErrorCode.UPSTREAM_REJECTED.value, "params": {"reason": str(exc.detail)}}
+            results.append(BulkRuleResult(rule_id=item.rule_id, status="failed", error=detail))
+        except OpnsenseAPIError as exc:
+            await db.rollback()
+            results.append(BulkRuleResult(rule_id=item.rule_id, status="failed",
+                                          error={"code": ErrorCode.UPSTREAM_REJECTED.value, "params": {"reason": str(exc)}}))
+        except Exception:
+            logger.exception("bulk deploy: unexpected error on rule %s, stopping", item.rule_id)
+            await db.rollback()
+            stopped = True
+            results.append(BulkRuleResult(rule_id=item.rule_id, status="failed",
+                                          error={"code": ErrorCode.BULK_DEPLOY_UNEXPECTED.value, "params": {}}))
+        finally:
+            db.expunge_all()  # the next rule is read fresh, never from this one's identity map
+    count = lambda status: sum(1 for r in results if r.status == status)
+    return BulkDeployResult(results=results, deployed=count("deployed"), attention=count("attention"),
+                            failed=count("failed"), skipped=count("skipped"))
+
+
+@router.post("/bulk/confirm", response_model=BulkConfirmResult)
+async def bulk_confirm(body: BulkConfirmRequest, db: AsyncSession = Depends(get_db)):
+    """"I still have access" for several rules at once - the same confirm as the single endpoint, per rule."""
+    results: list[BulkRuleResult] = []
+    confirmed = 0
+    for rule_id in dict.fromkeys(body.rule_ids):
+        try:
+            rule = await _load_rule(db, rule_id)
+            done = await confirm_rule(db, rule)
+            confirmed += len(done)
+            # "skipped" = there was nothing open to confirm for this rule (already confirmed, expired or never deployed)
+            results.append(BulkRuleResult(rule_id=rule_id, status="deployed" if done else "skipped", rule=_to_read(rule, rule.targets, rule.deployments)))
+        except HTTPException as exc:
+            await db.rollback()
+            results.append(BulkRuleResult(rule_id=rule_id, status="failed", error=exc.detail if isinstance(exc.detail, dict) else None))
+        finally:
+            db.expunge_all()
+    return BulkConfirmResult(confirmed=confirmed, results=results)
+
+
+async def _deploy_checked(db: AsyncSession, rule_id: uuid.UUID, preview_token: str | None) -> RuleRead:
+    """The one write path of "deploy this rule": approval check, consistency checks, deploy. Shared by the single and
+    the bulk endpoint so a bulk deploy can never skip a check the single one makes."""
     rule = await _load_rule(db, rule_id)
     plan = preview(rule)
-    if approval and approval.preview_token != plan["token"]:
+    if preview_token is not None and preview_token != plan["token"]:
         raise api_error(409, ErrorCode.ENTWURF_ODER_ZIELE_WURDEN_GEAENDERT_VORSCHAU_ERNEUT_OEFFNEN)
     if any(d.status in ("pending", "revert_failed") for d in rule.deployments):
         raise api_error(409, ErrorCode.OFFENES_DEPLOYMENT_ZUERST_BESTAETIGEN_ODER_ROLLBACK_KLAEREN)
@@ -203,6 +279,11 @@ async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(defa
     for d in rule.deployments:
         await db.refresh(d, attribute_names=["host"])
     return _to_read(rule, hosts, rule.deployments)
+
+
+@router.post("/{rule_id}/deploy", response_model=RuleRead)
+async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(default=None), db: AsyncSession = Depends(get_db)):
+    return await _deploy_checked(db, rule_id, approval.preview_token if approval else None)
 
 
 @router.post("/{rule_id}/confirm", response_model=RuleRead)
@@ -263,6 +344,15 @@ async def edit_rule(rule_id: uuid.UUID, payload: RuleEdit, db: AsyncSession = De
 @router.get("/{rule_id}/preview")
 async def preview_rule(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     return preview(await _load_rule(db, rule_id))
+
+
+@router.get("/{rule_id}/overlap")
+async def rule_overlap(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Read-only hint next to the preview: would this rule be shadowed by (or duplicate) an earlier rule on its targets,
+    and which later rules would it make pointless? Reads the firewalls (cached 60 s), writes nothing, never blocks."""
+    rule = await _load_rule(db, rule_id)
+    hosts = variables_service.applicable_hosts(_payload_for, rule, [h for h in effective_hosts(rule) if h.enabled])
+    return await rule_overlap_service.check_rule(db, rule, hosts)
 
 
 @router.get("/{rule_id}/revisions")

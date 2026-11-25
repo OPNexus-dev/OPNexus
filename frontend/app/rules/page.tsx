@@ -6,7 +6,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WorkflowBadge, workflowStates } from "@/components/WorkflowBadge";
 import { RuleReview } from "@/components/RuleReview";
-import { Badge, BadgeTone } from "@/components/ui/Badge";
+import { ActionBadge, DeploymentIcon } from "@/components/RuleBits";
+import { RulesTable, SortKey, SortState } from "@/components/RulesTable";
+import { BulkDeployModal } from "@/components/BulkDeployModal";
+
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -20,6 +23,7 @@ import { HostLocalRules } from "@/components/HostLocalRules";
 import { useReadOnly } from "@/lib/useReadOnly";
 import {
   api,
+  BULK_RULE_LIMIT,
   AliasOption,
   ApiError,
   DeploymentResult,
@@ -27,26 +31,22 @@ import {
   Host,
   InterfaceOption,
   Rule,
+  RuleUsage,
   RuleAction,
   RuleCreate,
   RuleDirection,
 } from "@/lib/api";
 import { useInterfaceRoleOptions } from "@/lib/useInterfaceRoleOptions";
 import {
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
   Download,
   Plus,
   Pencil,
   History,
   Copy,
   Rocket,
-  RotateCcw,
   Shield,
   ShieldCheck,
   Trash2,
-  XCircle,
 } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
@@ -146,6 +146,13 @@ function RulesContent() {
   const [review, setReview] = useState<{ rule: Rule; mode: "preview" | "history" } | null>(null);
   const [search, setSearch] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [showBulk, setShowBulk] = useState(false);
+  const [view, setViewState] = useState<"table" | "cards">("table");
+  const [usageList, setUsageList] = useState<RuleUsage[]>([]);
+  const [usageFilter, setUsageFilter] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "description", dir: "asc" });
+  const [bulkConfirming, setBulkConfirming] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [activeTab, setActiveTab] = useState<"managed" | "live">("managed");
   const [interfaceOptions, setInterfaceOptions] = useState<InterfaceOption[]>([]);
@@ -190,11 +197,22 @@ function RulesContent() {
     } catch (e) {
       setError(errorMessage(e, "rules.loadFailed"));
     }
+    // Usage is a nice-to-have column: if it cannot be read the table simply shows no data.
+    api.ruleUsage().then(setUsageList).catch(() => setUsageList([]));
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  // The chosen view (table or cards) is remembered in this browser.
+  useEffect(() => {
+    try { const saved = localStorage.getItem("opnexus-rules-view"); if (saved === "table" || saved === "cards") setViewState(saved); } catch {}
+  }, []);
+  function setView(value: "table" | "cards") {
+    setViewState(value);
+    try { localStorage.setItem("opnexus-rules-view", value); } catch {}
+  }
 
   // Interface dropdown options, merged live across every enabled host so
   // rules that target more than one host still get a sensible list (in an
@@ -357,6 +375,23 @@ function RulesContent() {
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelected((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  }
+
+  async function handleBulkConfirm(ids: string[]) {
+    setBulkConfirming(true);
+    try {
+      const done = await api.bulkConfirmRules(ids);
+      await load();
+      toast.show(t("rules.bulk.confirmedAll", { count: done.confirmed }), "success");
+    } catch (err) {
+      setError(errorMessage(err, "rules.confirmFailed"));
+    } finally {
+      setBulkConfirming(false);
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm(t("rules.deleteConfirm"))) return;
     const description = rules?.find((r) => r.id === id)?.description;
@@ -406,6 +441,33 @@ function RulesContent() {
   const groupRules = (rules ?? []).filter(rule => !groupFilter || rule.target_group_ids.includes(groupFilter));
   const visibleRules = groupRules.filter(rule => (!ruleFilter || rule.id === ruleFilter) && (!stateFilter || rule.workflow_state === stateFilter) &&
     [rule.description, rule.source_net, rule.source_port, rule.destination_net, rule.destination_port, rule.interface, rule.protocol].join(" ").toLowerCase().includes(search.toLowerCase()));
+  const usageById = new Map(usageList.map((u) => [u.rule_id, u]));
+  const stateOf = (rule: Rule) => usageById.get(rule.id)?.state ?? "unknown";
+  const filteredByUsage = usageFilter ? visibleRules.filter((rule) => stateOf(rule) === usageFilter) : visibleRules;
+  const sortValue = (rule: Rule): string | number => {
+    switch (sort.key) {
+      case "action": return rule.action;
+      case "source": return `${rule.source_net}:${rule.source_port ?? ""}`;
+      case "destination": return `${rule.destination_net}:${rule.destination_port ?? ""}`;
+      case "state": return rule.workflow_state;
+      case "lastHit": return usageById.get(rule.id)?.last_hit_at ? new Date(usageById.get(rule.id)!.last_hit_at!).getTime() : -1;
+      default: return rule.description.toLowerCase();
+    }
+  };
+  const shownRules = view === "table"
+    ? [...filteredByUsage].sort((a, b) => {
+        const x = sortValue(a), y = sortValue(b);
+        const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
+        return sort.dir === "asc" ? order : -order;
+      })
+    : filteredByUsage;
+  function toggleSort(key: SortKey) {
+    setSort((current) => current.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "lastHit" ? "desc" : "asc" });
+  }
+  // Only what is on screen can be selected for a bulk deploy: nothing hidden by a filter is deployed by accident.
+  const selectedRules = shownRules.filter((rule) => selected.has(rule.id));
+  const allShownSelected = shownRules.length > 0 && selectedRules.length === shownRules.length;
+  const pendingRuleIds = shownRules.filter((rule) => rule.deployments.some((d) => d.status === "pending")).map((rule) => rule.id);
 
   return (
     <div>
@@ -441,32 +503,76 @@ function RulesContent() {
         <>
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Input aria-label={t("rules.searchLabel")} placeholder={t("rules.searchPlaceholder")} value={search} onChange={e => setSearch(e.target.value)} />
         <Select aria-label={t("rules.groupFilter")} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}><option value="">{t("rules.allGroups")}</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
         <Select aria-label={t("rules.stateFilter")} value={stateFilter} onChange={e => setStateFilter(e.target.value)}><option value="">{t("rules.allStates")}</option>{workflowStates.map((value) => <option key={value} value={value}>{t(`workflow.${value}`)}</option>)}</Select>
+        <Select aria-label={t("rules.usage.filter")} value={usageFilter} onChange={e => setUsageFilter(e.target.value)}><option value="">{t("rules.usage.all")}</option>{["used", "unused", "collecting", "unknown"].map((value) => <option key={value} value={value}>{t(`rules.usage.${value}`)}</option>)}</Select>
       </div>
       {selectedGroup && <p className="mb-3 text-sm text-slate-500">{t("rules.groupSummary", { members: selectedGroup.host_ids.length, rules: groupRules.length })}<Link href="/groups" className="text-sky-700 underline">{t("rules.manageMembers")}</Link></p>}
       {ruleFilter && <Button variant="ghost" onClick={() => setGroupFilter(groupFilter)}>{selectedGroup ? t("rules.showAllInGroup") : t("rules.showAll")}</Button>}
       {rules && <div className="mb-4 flex flex-wrap gap-4 text-sm text-slate-600"><span>{t("rules.countDraft", { count: groupRules.filter(r => r.workflow_state === "draft").length })}</span><span>{t("rules.countReview", { count: groupRules.filter(r => ["attention", "cleanup", "pending"].includes(r.workflow_state)).length })}</span><span>{t("rules.countSynced", { count: groupRules.filter(r => r.workflow_state === "synced").length })}</span></div>}
+      {shownRules.length > 0 && (
+        <div className="mb-2 flex justify-end" role="group" aria-label={t("rules.view.label")}>
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-sm">
+            {(["table", "cards"] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={view === value}
+                className={`px-3 py-1 ${view === value ? "bg-sky-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                onClick={() => setView(value)}>{t(`rules.view.${value}`)}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      {shownRules.length > 0 && !readOnly && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())} />
+            {t("rules.bulk.selectAll")}
+          </label>
+          {selectedRules.length > 0 && <>
+            <span className="text-slate-600">{t("rules.bulk.selected", { count: selectedRules.length })}</span>
+            <Button disabled={selectedRules.length > BULK_RULE_LIMIT} onClick={() => setShowBulk(true)}><Rocket size={14} />{t("rules.bulk.review", { count: selectedRules.length })}</Button>
+            <Button variant="ghost" onClick={() => setSelected(new Set())}>{t("rules.bulk.clear")}</Button>
+            {selectedRules.length > BULK_RULE_LIMIT && <span className="text-xs text-red-600">{t("rules.bulk.limit", { max: BULK_RULE_LIMIT })}</span>}
+          </>}
+          {pendingRuleIds.length > 0 && (
+            <Button className="ml-auto" variant="secondary" disabled={bulkConfirming} loading={bulkConfirming} onClick={() => handleBulkConfirm(pendingRuleIds.slice(0, BULK_RULE_LIMIT))}>
+              <ShieldCheck size={14} />{t("rules.bulk.confirmPending", { count: pendingRuleIds.length })}
+            </Button>
+          )}
+        </div>
+      )}
       <div className="flex flex-col gap-4">
         {rules === null && !error && <Card className="p-6"><Loading>{t("rules.loading")}</Loading></Card>}
-        {rules !== null && visibleRules.length === 0 && (
+        {rules !== null && shownRules.length === 0 && (
           <EmptyState
             icon={Shield}
             title={groupFilter && !selectedGroup ? t("rules.groupGone") : groupRules.length === 0 ? (selectedGroup ? t("rules.groupEmpty") : t("rules.none")) : t("rules.noMatch")}
             action={groupRules.length === 0 && (!groupFilter || selectedGroup)
               ? <Button disabled={readOnly} onClick={() => openEditor(null)}>{selectedGroup ? t("rules.createFirstForGroup") : t("rules.createFirst")}</Button>
-              : <Button variant="ghost" onClick={() => { setSearch(""); setStateFilter(""); setGroupFilter(selectedGroup ? groupFilter : ""); }}>{t("rules.resetSelection")}</Button>}
+              : <Button variant="ghost" onClick={() => { setSearch(""); setStateFilter(""); setUsageFilter(""); setGroupFilter(selectedGroup ? groupFilter : ""); }}>{t("rules.resetSelection")}</Button>}
           />
         )}
+        {view === "table" && shownRules.length > 0 && (
+          <div className="xl:-mx-16">
+          <RulesTable
+            rules={shownRules} hostsById={hostsById} usage={usageById} selected={selected}
+            onToggle={toggleSelected} onToggleAll={(checked) => setSelected(checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())}
+            sort={sort} onSort={toggleSort} secondsLeft={secondsLeft} confirmingId={confirmingId} readOnly={readOnly}
+            onEdit={(rule) => openEditor(rule)} onPreview={(rule) => setReview({ rule, mode: "preview" })} onHistory={(rule) => setReview({ rule, mode: "history" })}
+            onDuplicate={(rule) => openEditor(rule, true)} onDelete={handleDelete} onConfirm={handleConfirm}
+          />
+          </div>
+        )}
         <fieldset disabled={readOnly} className="contents">
-        {visibleRules.map((rule) => {
+        {view === "cards" && shownRules.map((rule) => {
           const hasPending = rule.deployments.some((d) => d.status === "pending");
           return (
             <Card key={rule.id} className="p-5">
               <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
-                <div className="min-w-0">
+                <div className="flex min-w-0 gap-3">
+                  {!readOnly && <input type="checkbox" className="mt-1 shrink-0" aria-label={t("rules.bulk.selectRule", { name: rule.description })} checked={selected.has(rule.id)} onChange={() => toggleSelected(rule.id)} />}
+                  <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="font-medium text-slate-900">{rule.description}</h2>
                     <ActionBadge action={rule.action} />
@@ -486,6 +592,7 @@ function RulesContent() {
                         {hostsById.get(id)?.name ?? id.slice(0, 8)}
                       </span>
                     ))}
+                  </div>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">
@@ -529,6 +636,7 @@ function RulesContent() {
 
       <fieldset disabled={readOnly} className="contents">
       {showAdopt && <AdoptRulesModal hosts={hosts} initialHostId={adoptHostId} onClose={() => { setShowAdopt(false); setAdoptHostId(undefined); }} onAdopted={() => { load(); setAdoptReload((n) => n + 1); }} />}
+      {showBulk && <BulkDeployModal rules={selectedRules} onClose={() => setShowBulk(false)} onDone={() => { setSelected(new Set()); load(); }} />}
       {review && <RuleReview rule={review.rule} mode={review.mode} onClose={() => setReview(null)} onDeployed={() => { setReview(null); load(); }} onChanged={load} onRestore={snapshot => openEditor(review.rule, false, snapshot)} />}
       {showModal && (
         <Modal title={editing ? t("rules.editDraft") : t("rules.new")} onClose={() => setShowModal(false)}>
@@ -768,29 +876,6 @@ function DeploymentRow({
       )}
     </li>
   );
-}
-
-function DeploymentIcon({ status }: { status: DeploymentResult["status"] }) {
-  switch (status) {
-    case "success":
-      return <CheckCircle2 size={15} className="text-emerald-500" />;
-    case "error":
-    case "revert_failed":
-      return <AlertTriangle size={15} className="text-red-500" />;
-    case "pending":
-      return <Clock size={15} className="text-flame-500" />;
-    case "reverted":
-      return <RotateCcw size={15} className="text-slate-400" />;
-    default:
-      return <XCircle size={15} className="text-red-500" />;
-  }
-}
-
-function ActionBadge({ action }: { action: RuleAction }) {
-  const { t } = useLanguage();
-  const tones: Record<RuleAction, BadgeTone> = { pass: "success", block: "danger", reject: "warning" };
-  const labels: Record<RuleAction, string> = { pass: t("rules.actionPass"), block: t("rules.actionBlock"), reject: t("rules.actionReject") };
-  return <Badge tone={tones[action]}>{labels[action]}</Badge>;
 }
 
 // Native <datalist> only filters by an option's `value`, so a lookup like

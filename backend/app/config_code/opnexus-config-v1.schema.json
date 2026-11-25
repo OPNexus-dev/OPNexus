@@ -783,7 +783,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "Eine Datei. Ein fehlender Abschnitt lässt die Art unberührt (None); ein leerer Abschnitt ist ein leerer Sollzustand.",
+  "description": "One file. A missing section leaves the kind untouched (None); an empty section is an empty desired state.",
   "properties": {
     "opnexus_config": {
       "const": 1,
@@ -936,7 +936,7 @@
   "required": [
     "opnexus_config"
   ],
-  "title": "OPNexus-Konfiguration (Schema v1)",
+  "title": "OPNexus configuration (schema v1)",
   "type": "object",
   "$schema": "https://json-schema.org/draft/2020-12/schema"
 }

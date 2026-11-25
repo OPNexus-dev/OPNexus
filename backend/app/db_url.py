@@ -8,6 +8,7 @@ endlos neu). `normalize_database_url` kodiert so ein Passwort nachträglich.
 from __future__ import annotations
 
 from urllib.parse import quote
+from app.cli_lang import t
 
 # Zeichen, die in einer URL nicht roh im Passwort stehen dürfen. Enthält das Passwort keines davon,
 # bleibt die URL unverändert (dann hat sie vorher funktioniert, auch mit %XX-Folgen).
@@ -28,7 +29,7 @@ def normalize_database_url(url: str) -> str:
 
 
 def explain_database_error(exc: BaseException) -> str | None:
-    """Erklärung (Deutsch) für die häufigen Fehler beim ersten Verbindungsaufbau, sonst None."""
+    """Explanation (German or English, see cli_lang) of the common errors on the first connection attempt, else None."""
     chain: list[BaseException] = []
     cur: BaseException | None = exc
     while cur is not None and cur not in chain:
@@ -38,23 +39,34 @@ def explain_database_error(exc: BaseException) -> str | None:
     text = " ".join(str(e) for e in chain).lower()
 
     if "InvalidPasswordError" in names or "password authentication failed" in text:
-        return (
+        return t(
             "Die Datenbank lehnt das Passwort aus der .env ab. POSTGRES_PASSWORD (und POSTGRES_USER/POSTGRES_DB) gelten "
             "nur beim allerersten Start mit einem leeren Datenbank-Volume. Liegt noch ein Volume eines früheren "
             "Versuchs vor (z. B. opnexus_postgres_data), hat es das alte Passwort behalten.\n"
             "  • Neue Installation ohne Daten: 'docker compose down -v' (löscht die Datenbank!), dann 'docker compose up -d'.\n"
-            "  • Vorhandene Daten behalten: in der .env das ursprüngliche Passwort eintragen."
+            "  • Vorhandene Daten behalten: in der .env das ursprüngliche Passwort eintragen.",
+            "The database rejects the password from the .env. POSTGRES_PASSWORD (and POSTGRES_USER/POSTGRES_DB) only apply "
+            "on the very first start with an empty database volume. If a volume from an earlier attempt is still there "
+            "(e.g. opnexus_postgres_data), it has kept the old password.\n"
+            "  • New installation without data: 'docker compose down -v' (deletes the database!), then 'docker compose up -d'.\n"
+            "  • Keep existing data: put the original password into the .env.",
         )
     if "InvalidCatalogNameError" in names or ("database" in text and "does not exist" in text):
-        return (
+        return t(
             "Die Datenbank aus POSTGRES_DB gibt es im vorhandenen Volume nicht. POSTGRES_DB gilt nur beim ersten "
             "Start mit leerem Volume. In der .env den ursprünglichen Namen eintragen oder bei einer neuen "
-            "Installation ohne Daten 'docker compose down -v' (löscht die Datenbank!) und neu starten."
+            "Installation ohne Daten 'docker compose down -v' (löscht die Datenbank!) und neu starten.",
+            "The database named in POSTGRES_DB does not exist in the existing volume. POSTGRES_DB only applies on the first "
+            "start with an empty volume. Put the original name into the .env or, for a new installation without data, "
+            "run 'docker compose down -v' (deletes the database!) and start again.",
         )
     if "gaierror" in {n.lower() for n in names} or "name or service not known" in text or "no address associated" in text:
-        return (
+        return t(
             "Der Datenbank-Host ist nicht auflösbar. Meist enthält POSTGRES_PASSWORD ein Zeichen, das die "
             "Verbindungsadresse zerlegt, oder DATABASE_URL ist falsch gesetzt. Am einfachsten ein Passwort aus "
-            "Buchstaben und Ziffern wählen, z. B. 'openssl rand -hex 24'."
+            "Buchstaben und Ziffern wählen, z. B. 'openssl rand -hex 24'.",
+            "The database host cannot be resolved. Usually POSTGRES_PASSWORD contains a character that breaks the "
+            "connection address, or DATABASE_URL is set wrongly. The simplest fix is a password made of letters and "
+            "digits, e.g. 'openssl rand -hex 24'.",
         )
     return None

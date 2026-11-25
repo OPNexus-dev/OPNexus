@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 import ha_agent as agent
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the updater speaks English by default; these tests check the German texts
 
 SECRET = bytes(range(16))
 PIN = bytes(range(32, 64))

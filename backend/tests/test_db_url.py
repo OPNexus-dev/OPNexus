@@ -4,6 +4,12 @@ from sqlalchemy.engine import make_url
 from app.db_url import explain_database_error, normalize_database_url
 
 
+@pytest.fixture(autouse=True)
+def _german_console(monkeypatch):
+    # The texts asserted here are the German ones (the console language follows OPNEXUS_LANG, see app/cli_lang.py).
+    monkeypatch.setenv("OPNEXUS_LANG", "de")
+
+
 def test_plain_url_unchanged():
     url = "postgresql+asyncpg://opnexus:abc123XYZ@postgres:5432/opnexus"
     assert normalize_database_url(url) == url

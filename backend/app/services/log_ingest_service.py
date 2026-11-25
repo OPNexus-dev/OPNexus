@@ -89,7 +89,7 @@ def _parse_timestamp(value: Any) -> datetime:
 def _map_row(host_id: uuid.UUID, row: dict) -> dict | None:
     digest = row.get("__digest__")
     if not digest:
-        logger.warning("Log-Zeile ohne __digest__ übersprungen (host_id=%s)", host_id)
+        logger.warning("Log line without __digest__ skipped (host_id=%s)", host_id)
         return None
     return {
         "id": uuid.uuid4(),
@@ -168,10 +168,10 @@ async def poll_all_hosts(db: AsyncSession) -> dict:
             inserted_total += await poll_host(db, host)
         except OpnsenseAPIError as exc:
             failed += 1
-            logger.warning("Log-Ingest für Host %s fehlgeschlagen: %s", host.name, exc)
+            logger.warning("Log ingest for host %s failed: %s", host.name, exc)
         except Exception:
             failed += 1
-            logger.exception("Log-Ingest für Host %s fehlgeschlagen", host.name)
+            logger.exception("Log ingest for host %s failed", host.name)
     await db.commit()
     return {"hosts_polled": len(hosts), "hosts_failed": failed, "inserted": inserted_total}
 

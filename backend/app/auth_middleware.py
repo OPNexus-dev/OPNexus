@@ -134,7 +134,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     if len(parts) > 2 and parts[1] == "settings":
                         kind = "settings"  # where OPNexus stores/sends things (own prefs at /api/settings stay unaudited)
                     action = ("delete" if request.method == "DELETE" else parts[-1] if len(parts) > 3 else "edit" if request.method in ("PUT", "PATCH") else "create")
-                    entity = parts[2] if len(parts) > 2 and kind != "config" else None
+                    entity = parts[2] if len(parts) > 2 and kind != "config" and parts[2] != "bulk" else None
                     event = {"kind": kind, "action": action, "entity_id": entity,
                              "host_id": parts[2] if kind == "host" and len(parts) > 2 else None,
                              "details": {"method": request.method, "path": request.url.path}}

@@ -20,6 +20,12 @@ from app import migrate
 from app.config import settings
 from app.database import Base
 
+
+@pytest.fixture(autouse=True)
+def _german_console(monkeypatch):
+    # The texts asserted here are the German ones (the console language follows OPNEXUS_LANG, see app/cli_lang.py).
+    monkeypatch.setenv("OPNEXUS_LANG", "de")
+
 migrate.load_models()
 
 

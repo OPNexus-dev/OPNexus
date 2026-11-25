@@ -609,6 +609,35 @@ Further rules:
 - Every rule has a **history**: every change is an immutable state
   that can be loaded into the form and saved as a new draft.
 
+### Table view, usage and overlaps
+
+The rule list has two views (switch at the top right, your choice is remembered in the browser): **Cards** and the compact
+**Table** (the default). The table shows one line per rule: action (green pass, red block, amber reject), name with
+interface, direction, protocol and number of targets, source, destination, status per target and **Last hit**. Click a column header to sort;
+the **Usage** filter limits the list to rules in use, unused, still collecting data or unknown.
+
+- **Last hit** comes from the pf counters that OPNexus samples regularly (see "Rule usage"). Times are shown, not counters: every apply
+  resets pf's counters. A rule that was never hit is **Collecting data** until it has been watched for 30 days, and only then **Unused**.
+  For a rule on both firewalls of a pair the newest hit of any node counts, because the CARP master sees the traffic; if one node has
+  no data, the rule is never called unused. Rules that are not deployed yet show "—".
+- **Overlap check:** the preview (and the dialog for several rules, see below) asks the target firewalls whether the rule would be
+  **shadowed** by an earlier rule (it would never take effect) or **duplicate** one, and which later rules it would **make pointless** (for example
+  a block-all on top). The check is a hint: it reads the firewalls, writes nothing, never blocks the push and does not change the
+  preview token. A rule that is not deployed yet is judged by the position it would land in (end of its priority group, or the front for
+  "Very top") and is therefore at most "probably"; if a firewall cannot be read the preview says so.
+
+### Deploying several rules at once
+
+Tick the rules in the list (or **Select all shown**) and click **Review and deploy (N)**, at most 50 at a time. The dialog loads
+the preview of every rule; rules with nothing to deploy or with an open confirmation are listed as not deployable. **Deploy N rules** then
+deploys them **one after the other, each exactly like a single deployment**: with the approval shown in the dialog (a changed rule is refused),
+with the same checks, its own confirmation window and its own automatic rollback. A refused rule does not stop the others; the result lists
+every rule as deployed, needs attention (written, but a target reported an error), not deployed or skipped.
+Afterwards **Confirm all deployed** (or **Confirm all pending** in the bar above the list) confirms every open deployment at once.
+
+Deploying in bulk is a deployment in the sense of the separation of duties: operators may only do it if they may deploy at all. Every rule is
+applied on its own, so a firewall reloads its filter once per rule.
+
 ### Position in the rule list
 
 Firewalls evaluate rules from top to bottom; the first match wins. OPNsense puts new rules **at the end**; a block rule behind a matching allow rule therefore never takes effect.
@@ -1405,7 +1434,9 @@ reports once and resolves itself as soon as it is fixed; the
 dashboard card "Warnings" shows the open ones. Exception "scheduled maintenance not
 executed": it stays open for three days after the scheduled time and then closes
 without a "resolved" message, because a missed appointment does not fix itself. The
-text of the notifications is not translated (it is currently sent in German).
+language of the texts is set under Settings › Notifications › "Language of the messages" (Automatic, Deutsch or
+English; Automatic follows the language of the oldest administrator account, and English if nobody ever chose one).
+The JSON object `context` of the webhook is never translated, so receivers that parse it keep working.
 
 #### Gateway, resource and service alarms
 
@@ -2324,7 +2355,11 @@ after a reboot. Alternatively OPNexus creates it under
 - **Appearance:** light, dark or system, saved per account.
 - **Language:** German or English, per account (Settings › Language). Without a saved choice OPNexus follows the
   browser language: German for a German browser, English otherwise. The choice
-  applies immediately and is adopted on all devices.
+  applies immediately and is adopted on all devices. Everything OPNexus says is available in both languages: pages,
+  messages and error texts (including the prose of deploy previews, maintenance and audit entries), notifications (own
+  setting, see Notifications), the `opnexus` command and the console tools behind it (set `OPNEXUS_LANG=de|en`; they
+  follow your locale otherwise), and the HA agent. Server logs are English. Only texts that OPNsense itself returns
+  (firewall error messages) stay as the firewall wrote them.
 - **Accessibility:** the goal is WCAG 2.2 AA: full keyboard operation with
   skip link, visible focus, dialogs with a focus trap, changing page titles and
   contrasts in both appearances. A test with a real screen reader is

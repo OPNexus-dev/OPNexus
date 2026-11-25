@@ -385,6 +385,19 @@ async def test_forcing_needs_the_sentence_typed_exactly(door, pair):
 
 
 @pytest.mark.asyncio
+async def test_the_english_sentence_confirms_a_forced_takeover_too(door, pair):
+    pair["agent"] = {"peer_reachable": False}
+    pair["health"] = None
+    await _signed_in(door)
+    status = (await door.get("/api/ha/standby/status")).json()
+    assert status["promote"]["force_sentence"] == "alter Primaer ist aus" and status["promote"]["force_sentence_en"] == "old primary is off"
+    resp = await door.post("/api/ha/standby/promote", json={"force": True, "confirm": "Old primary is off"})
+    assert resp.status_code == 400 and resp.json()["detail"]["params"]["sentence_en"] == "old primary is off"
+    resp = await door.post("/api/ha/standby/promote", json={"force": True, "confirm": " old primary is off "})
+    assert resp.status_code == 202 and pair["promoted"] == [(True, str(await _id_of(settings.admin_username)))]
+
+
+@pytest.mark.asyncio
 async def test_a_partner_that_still_answers_as_leader_cannot_be_overridden(door, pair):
     pair["agent"] = {"peer_reachable": False}
     pair["health"] = ("leader", 7)                       # only the agent path is broken, the partner lives

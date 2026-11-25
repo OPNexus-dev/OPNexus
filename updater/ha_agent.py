@@ -18,6 +18,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from lang import t
 
 CODE_PREFIX = "OPNX1-"
 CODE_VERSION = 1
@@ -45,7 +46,7 @@ def encode_code(ip: str, port: int, secret: bytes, pin: bytes) -> str:
     """OPNX1-<Base32 in Fünfergruppen>: Version, IPv4, Port, Geheimnis, Zertifikats-Prüfsumme und CRC16 gegen Tippfehler."""
     address = ipaddress.IPv4Address(ip)
     if not (0 < port < 65536) or len(secret) != SECRET_BYTES or len(pin) != PIN_BYTES:
-        raise ValueError("ungültige Bestandteile")
+        raise ValueError(t("ungültige Bestandteile", "invalid components"))
     body = bytes([CODE_VERSION]) + address.packed + port.to_bytes(2, "big") + secret + pin
     raw = body + binascii.crc_hqx(body, 0xFFFF).to_bytes(2, "big")
     text = base64.b32encode(raw).decode("ascii").rstrip("=")
@@ -56,20 +57,20 @@ def decode_code(code: str) -> dict:
     """Gegenstück zu encode_code. Groß/Klein, Leerraum und Bindestriche sind egal. Wirft CodeError."""
     text = (code or "").strip()
     if text[: len(CODE_PREFIX) - 1].upper() != CODE_PREFIX[:-1]:
-        raise CodeError("Das ist kein OPNexus-Kopplungscode (er beginnt mit OPNX1-).")
+        raise CodeError(t("Das ist kein OPNexus-Kopplungscode (er beginnt mit OPNX1-).", "This is not an OPNexus pairing code (it starts with OPNX1-)."))
     payload = re.sub(r"[\s-]", "", text[len(CODE_PREFIX) - 1:]).upper()
     try:
         raw = base64.b32decode(payload + "=" * (-len(payload) % 8))
     except (binascii.Error, ValueError):
-        raise CodeError("Der Code enthält ungültige Zeichen.") from None
+        raise CodeError(t("Der Code enthält ungültige Zeichen.", "The code contains invalid characters.")) from None
     expected = 1 + 4 + 2 + SECRET_BYTES + PIN_BYTES + 2
     if len(raw) != expected:
-        raise CodeError("Der Code hat die falsche Länge (vollständig kopiert?).")
+        raise CodeError(t("Der Code hat die falsche Länge (vollständig kopiert?).", "The code has the wrong length (copied completely?)."))
     body, crc = raw[:-2], raw[-2:]
     if binascii.crc_hqx(body, 0xFFFF).to_bytes(2, "big") != crc:
-        raise CodeError("Die Prüfsumme des Codes stimmt nicht (Tippfehler?).")
+        raise CodeError(t("Die Prüfsumme des Codes stimmt nicht (Tippfehler?).", "The checksum of the code is wrong (typo?)."))
     if body[0] != CODE_VERSION:
-        raise CodeError("Dieser Code stammt von einer anderen Version von OPNexus.")
+        raise CodeError(t("Dieser Code stammt von einer anderen Version von OPNexus.", "This code comes from a different version of OPNexus."))
     return {
         "ip": str(ipaddress.IPv4Address(body[1:5])),
         "port": int.from_bytes(body[5:7], "big"),
@@ -155,7 +156,7 @@ class Store:
     def set_cluster(self, secret: str, peer_ip: str, peer_port: int, peer_pin: str) -> None:
         ipaddress.IPv4Address(peer_ip)
         if not SUM_RE.fullmatch(peer_pin) or not re.fullmatch(r"[0-9a-f]{64}", secret) or not (0 < peer_port < 65536):
-            raise ValueError("ungültige Kopplungsdaten")
+            raise ValueError(t("ungültige Kopplungsdaten", "invalid pairing data"))
         _write_private(self.cluster_file, {"secret": secret, "peer_ip": peer_ip, "peer_port": peer_port, "peer_pin": peer_pin})
 
     def cluster(self) -> dict | None:

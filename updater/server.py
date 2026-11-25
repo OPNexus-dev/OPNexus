@@ -35,6 +35,7 @@ from pathlib import Path
 
 import ha_agent
 import ha_net
+from lang import t
 
 STATE_DIR = Path(os.environ.get("UPDATER_STATE_DIR", "/state"))
 PROJECT_DIR = Path(os.environ.get("OPNEXUS_DIR", "/project"))
@@ -309,7 +310,7 @@ def _run_ha_job(job: dict, argv: list[str], extra_env: dict[str, str], stdin_tex
     except OSError as exc:
         code = 127
         with HA_LOG_FILE.open("a", encoding="utf-8") as log:
-            log.write(f"Agent: Skript konnte nicht gestartet werden: {exc}\n")
+            log.write(t(f"Agent: Skript konnte nicht gestartet werden: {exc}\n", f"Agent: the script could not be started: {exc}\n"))
     job.update(state="succeeded" if code == 0 else "failed", exit_code=code, finished_at=now_iso())
     write_ha_job(job)
     _status_cache["value"] = None
@@ -582,7 +583,7 @@ def _run_job(job: dict) -> None:
     except OSError as exc:
         code = 127
         with LOG_FILE.open("a", encoding="utf-8") as log:
-            log.write(f"Updater: Skript konnte nicht gestartet werden: {exc}\n")
+            log.write(t(f"Updater: Skript konnte nicht gestartet werden: {exc}\n", f"Updater: the script could not be started: {exc}\n"))
     if code == 0:
         state = "succeeded"
     elif code == 3 and job["action"] == "update":
@@ -623,7 +624,7 @@ def self_update() -> None:
                           '{{.Config.Image}}|{{range .Mounts}}{{if eq .Destination "' + str(PROJECT_DIR) + '"}}{{.Source}}{{end}}{{end}}')
         current_image, _, host_dir = inspect.stdout.strip().partition("|")
         if inspect.returncode != 0 or not host_dir.startswith("/"):
-            note("Updater: eigenes Verzeichnis auf dem Host nicht ermittelbar — Updater-Container nicht erneuert.")
+            note(t("Updater: eigenes Verzeichnis auf dem Host nicht ermittelbar — Updater-Container nicht erneuert.", "Updater: its own directory on the host cannot be determined — updater container not renewed."))
             return
         # Der Docker-Socket kann auf dem Host unter einem anderen Pfad liegen
         # als im Container (Rootless Docker: /run/user/<UID>/docker.sock).
@@ -648,10 +649,10 @@ def self_update() -> None:
             "--entrypoint", "docker", new_image, "compose", "up", "-d", "--no-build", "--no-deps", "updater",
         )
         if started.returncode != 0:
-            note("Updater: Selbst-Update fehlgeschlagen: " + started.stderr.strip()[:300])
+            note(t("Updater: Selbst-Update fehlgeschlagen: ", "Updater: self-update failed: ") + started.stderr.strip()[:300])
             return
         # `docker run -d` belegt nur, dass der Hilfscontainer gestartet ist — nicht, dass der Wechsel gelang.
-        note("Updater: Selbst-Erneuerung auf " + new_image + " gestartet.")
+        note(t("Updater: Selbst-Erneuerung auf ", "Updater: self-renewal to ") + new_image + t(" gestartet.", " started."))
         # Gelingt der Wechsel, ersetzt der Hilfscontainer genau diesen Updater und beendet damit auch dieses Warten;
         # das Ergebnis des Auftrags ist da längst gespeichert. Zurück kommen wir nur, wenn der Hilfscontainer endet,
         # ohne uns zu ersetzen — meist, weil er scheiterte. Dann steht seine Ausgabe im Protokoll.
@@ -660,13 +661,16 @@ def self_update() -> None:
         if code and code != "0":
             logs = _docker("logs", "--tail", "20", SELF_UPDATE_HELPER)
             tail = (logs.stdout + logs.stderr).strip()[-600:]
-            note(f"Updater: Selbst-Erneuerung fehlgeschlagen (Exit {code}); der Updater bleibt auf {current_image}."
+            note(t(f"Updater: Selbst-Erneuerung fehlgeschlagen (Exit {code}); der Updater bleibt auf {current_image}.",
+                   f"Updater: self-renewal failed (exit {code}); the updater stays on {current_image}.")
                  + (f"\n{tail}" if tail else ""))
         elif code == "0":
-            note(f"Updater: Der Hilfscontainer endete ohne Fehler, der Updater läuft aber noch auf {current_image} "
-                 "— mit 'docker compose up -d updater' erneuern.")
+            note(t(f"Updater: Der Hilfscontainer endete ohne Fehler, der Updater läuft aber noch auf {current_image} "
+                   "— mit 'docker compose up -d updater' erneuern.",
+                   f"Updater: the helper container ended without an error, but the updater is still on {current_image} "
+                   "— renew it with 'docker compose up -d updater'."))
     except (OSError, subprocess.TimeoutExpired) as exc:
-        note(f"Updater: Selbst-Update fehlgeschlagen: {exc}")
+        note(t(f"Updater: Selbst-Update fehlgeschlagen: {exc}", f"Updater: self-update failed: {exc}"))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -850,13 +854,13 @@ def mark_interrupted() -> None:
         job.update(state="failed", finished_at=now_iso())
         write_job(job)
         with LOG_FILE.open("a", encoding="utf-8") as log:
-            log.write("Updater: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus status).\n")
+            log.write(t("Updater: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus status).\n", "Updater: was restarted during the job — please check the state (opnexus status).\n"))
     ha_job = read_ha_job()
     if ha_job.get("state") == "running":
         ha_job.update(state="failed", finished_at=now_iso())
         write_ha_job(ha_job)
         with HA_LOG_FILE.open("a", encoding="utf-8") as log:
-            log.write("Agent: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus ha status).\n")
+            log.write(t("Agent: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus ha status).\n", "Agent: was restarted during the job — please check the state (opnexus ha status).\n"))
 
 
 def probe_docker() -> None:
@@ -869,10 +873,12 @@ def probe_docker() -> None:
     except (OSError, subprocess.TimeoutExpired):
         proc = None
     if proc is not None and proc.returncode == 0:
-        print(f"updater: Docker-Socket erreichbar (Engine {proc.stdout.strip()}).", flush=True)
+        print(t(f"updater: Docker-Socket erreichbar (Engine {proc.stdout.strip()}).", f"updater: Docker socket reachable (engine {proc.stdout.strip()})."), flush=True)
     else:
-        print("updater: Docker-Socket nicht erreichbar — bei Rootless Docker "
-              "DOCKER_HOST_SOCKET in der .env setzen ('opnexus updater enable' erkennt ihn).",
+        print(t("updater: Docker-Socket nicht erreichbar — bei Rootless Docker "
+                "DOCKER_HOST_SOCKET in der .env setzen ('opnexus updater enable' erkennt ihn).",
+                "updater: Docker socket not reachable — with rootless Docker set DOCKER_HOST_SOCKET "
+                "in the .env ('opnexus updater enable' detects it)."),
               file=sys.stderr, flush=True)
 
 

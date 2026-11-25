@@ -24,7 +24,7 @@ RUN set -e; arch="${TARGETARCH:-amd64}"; \
 # übernimmt sie von hier (B18). Bei einem lokalen Build ohne sie bleibt /usr/share/opnexus leer. (Zwei Quellen, damit
 # das Muster auch ohne Treffer gültig ist.)
 COPY opnexus docker-compose.release.y[m]l /tmp/opx/
-COPY server.py ha_agent.py ha_net.py ha_cli.py /app/
+COPY server.py ha_agent.py ha_net.py ha_cli.py lang.py /app/
 RUN install -m 0755 /tmp/opx/opnexus /usr/local/bin/opnexus \
     && mkdir -p /usr/share/opnexus \
     && if [ -f /tmp/opx/docker-compose.release.yml ]; then install -m 0644 /tmp/opx/docker-compose.release.yml /usr/share/opnexus/docker-compose.yml; fi \

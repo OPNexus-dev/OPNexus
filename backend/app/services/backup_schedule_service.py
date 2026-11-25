@@ -113,7 +113,7 @@ async def run_due(db: AsyncSession, *, force: bool = False) -> dict:
                 taken += 1
             except OpnsenseAPIError as exc:
                 failed += 1
-                logger.warning("Geplantes Backup von %s fehlgeschlagen: %s", host.name, exc)
+                logger.warning("Scheduled backup of %s failed: %s", host.name, exc)
             pruned += await _prune(db, host, cfg.keep_count)
         cfg.last_run_at = now
     uploaded = 0

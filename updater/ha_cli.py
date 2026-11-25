@@ -28,6 +28,7 @@ from pathlib import Path
 
 import ha_agent
 import ha_net
+from lang import t
 
 PROJECT_DIR = Path(os.environ.get("OPNEXUS_DIR", "/project"))
 GATE_DIR = Path(os.environ.get("HA_GATE_DIR", "/ha-gate"))
@@ -133,9 +134,9 @@ def cmd_hello(args) -> int:
         return result
     status, body = result
     if status == 401:
-        return fail(5, "Der Partner lehnt den Code ab (abgelaufen, verbraucht oder falsch).")
+        return fail(5, t("Der Partner lehnt den Code ab (abgelaufen, verbraucht oder falsch).", "The partner rejects the code (expired, used or wrong)."))
     if status != 200:
-        return fail(5, f"Der Partner antwortet mit Status {status}.")
+        return fail(5, t(f"Der Partner antwortet mit Status {status}.", f"The partner answers with status {status}."))
     out(**{k: ("" if v is None else v) for k, v in body.items()})
     return 0
 
@@ -146,7 +147,7 @@ def cmd_pair(args) -> int:
         return 2
     local = store()
     if local.cluster():
-        return fail(1, "Dieser Knoten ist schon gekoppelt.")
+        return fail(1, t("Dieser Knoten ist schon gekoppelt.", "This node is already paired."))
     cluster_secret = ha_agent.new_cluster_secret()
     # Zuerst lokal eintragen: der Partner fragt in `commit` über das Gate dieses Knotens zurück und muss dort bestehen.
     local.set_cluster(cluster_secret, parts["ip"], parts["port"], parts["pin"].hex())
@@ -158,8 +159,10 @@ def cmd_pair(args) -> int:
     status, body = result
     if status != 200:
         local.clear_cluster()
-        reason = {401: "Der Partner lehnt den Code ab.", 409: "Der Partner ist schon gekoppelt oder Teil eines Paars.",
-                  502: "Der Partner erreicht dieses Gate nicht (Adresse, Port 8445 und Zugriffslisten prüfen)."}.get(status, f"Status {status}")
+        reason = {401: t("Der Partner lehnt den Code ab.", "The partner rejects the code."),
+                  409: t("Der Partner ist schon gekoppelt oder Teil eines Paars.", "The partner is already paired or part of a pair."),
+                  502: t("Der Partner erreicht dieses Gate nicht (Adresse, Port 8445 und Zugriffslisten prüfen).",
+                         "The partner cannot reach this gate (check address, port 8445 and access lists).")}.get(status, f"Status {status}")
         return fail(5, reason)
     out(peer=parts["ip"], port=parts["port"])
     return 0
@@ -195,7 +198,7 @@ def cmd_newsecret(args) -> int:
 def cmd_adopt(args) -> int:
     secret = sys.stdin.readline().strip()
     if store().cluster():
-        return fail(1, "Dieser Knoten ist schon gekoppelt.")
+        return fail(1, t("Dieser Knoten ist schon gekoppelt.", "This node is already paired."))
     try:
         store().set_cluster(secret, args.ip, args.port, args.pin)
     except ValueError as exc:
@@ -206,11 +209,11 @@ def cmd_adopt(args) -> int:
 def cmd_call(args) -> int:
     verb = ha_agent.VERBS.get(args.verb)
     if verb is None:
-        return fail(2, f"Unbekanntes Verb: {args.verb}")
+        return fail(2, t(f"Unbekanntes Verb: {args.verb}", f"Unknown verb: {args.verb}"))
     wait = ha_agent.SYNC_TIMEOUTS.get(args.verb, ha_agent.SYNC_TIMEOUT_DEFAULT) + CLIENT_MARGIN
     client = _peer_client(timeout=700.0 if verb.kind in ("job", "stream") else wait)
     if client is None:
-        return fail(1, "Dieser Knoten ist nicht gekoppelt.")
+        return fail(1, t("Dieser Knoten ist nicht gekoppelt.", "This node is not paired."))
     path = "/ha/peer/" + args.verb
     if verb.kind == "stream":
         # stdin in eine Datei puffern (nicht in den Speicher), dann mit bekannter Länge senden
@@ -232,9 +235,9 @@ def cmd_call(args) -> int:
         return result
     status, body = result
     if status == 401:
-        return fail(5, "Der Partner lehnt diese Anfrage ab (Kopplung gelöst oder Adresse geändert?).")
+        return fail(5, t("Der Partner lehnt diese Anfrage ab (Kopplung gelöst oder Adresse geändert?).", "The partner rejects this request (pairing dissolved or address changed?)."))
     if status not in (200, 202):
-        return fail(1, f"Der Partner antwortet mit Status {status}: {body.get('error', '')}")
+        return fail(1, t(f"Der Partner antwortet mit Status {status}: {body.get('error', '')}", f"The partner answers with status {status}: {body.get('error', '')}"))
     if verb.kind == "job":
         return _follow_job(client)
     if verb.kind == "local":
@@ -256,14 +259,14 @@ def _follow_job(client: ha_net.PeerClient) -> int:
             # Während eines Wechsels oder Updates startet der Partner Dienste neu (auch den Gate): Lücken sind normal, aber nicht endlos.
             silent_since = silent_since if silent_since is not None else time.monotonic()
             if time.monotonic() - silent_since > JOB_GAP_SECONDS:
-                return fail(4, f"Der Partner hat sich {int(JOB_GAP_SECONDS)} s lang nicht gemeldet. Zustand dort mit 'ha status' prüfen.")
+                return fail(4, t(f"Der Partner hat sich {int(JOB_GAP_SECONDS)} s lang nicht gemeldet. Zustand dort mit 'ha status' prüfen.", f"The partner has not answered for {int(JOB_GAP_SECONDS)} s. Check its state there with 'ha status'."))
             continue
         silent_since = None
         if isinstance(result, int):
             return result
         status, body = result
         if status != 200:
-            return fail(1, f"Der Partner antwortet mit Status {status}.")
+            return fail(1, t(f"Der Partner antwortet mit Status {status}.", f"The partner answers with status {status}."))
         log = body.get("log") or []
         for line in log[shown:]:
             print(line)

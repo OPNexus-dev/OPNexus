@@ -20,7 +20,7 @@ from app.schemas.notification import (
     NotificationSettingsUpdate,
     TestNotificationRequest,
 )
-from app.services import notification_channels, notification_delivery, notification_secret_store, notification_settings_service, url_guard
+from app.services import notification_channels, notification_delivery, notification_i18n, notification_secret_store, notification_settings_service, url_guard
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -75,6 +75,7 @@ async def list_problems(
 @router.post("/test")
 async def test_notification(payload: TestNotificationRequest, db: AsyncSession = Depends(get_db)):
     settings_row = await notification_settings_service.get_settings(db)
+    notification_i18n.set_current(await notification_i18n.effective_language(db, settings_row.language))
     fake_problem = NotificationProblem(
         problem_type="test",
         dedup_key="test",
@@ -183,6 +184,7 @@ async def delete_channel(channel_id: uuid.UUID, db: AsyncSession = Depends(get_d
 @router.post("/channels/{channel_id}/test")
 async def test_channel(channel_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     row = await _get_channel(db, channel_id)
+    notification_i18n.set_current(await notification_i18n.effective_language(db, (await notification_settings_service.get_settings(db)).language))
     try:
         await notification_channels.send_test(row)
     except notification_delivery.NotificationDeliveryError as exc:

@@ -95,6 +95,10 @@ class NotificationSettings(Base):
     # NULL = the default list (an old row never got one).
     service_watchlist: Mapped[list | None] = mapped_column(JSON, nullable=True, default=lambda: list(DEFAULT_SERVICE_WATCHLIST))
 
+    # Language of the notification texts: "de", "en" or NULL = automatic (language of the oldest admin account,
+    # English if none was ever chosen; see services/notification_i18n.py).
+    language: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
     poll_interval_seconds: Mapped[int] = mapped_column(Integer, default=300)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

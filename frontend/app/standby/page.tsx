@@ -24,7 +24,7 @@ function ageText(seconds: number | null | undefined, t: (key: string, params?: R
 }
 
 export default function StandbyPage() {
-  const { t, errorMessage } = useLanguage();
+  const { t, errorMessage, language } = useLanguage();
   const [phase, setPhase] = useState<Phase>("checking");
   const [status, setStatus] = useState<StandbyStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +151,8 @@ export default function StandbyPage() {
 
   const mode = status?.promote.mode;
   const missing = status && !status.secrets.complete;
-  const sentenceOk = status != null && sentence.trim() === status.promote.force_sentence;
+  const wanted = status == null ? "" : language === "en" ? status.promote.force_sentence_en : status.promote.force_sentence;
+  const sentenceOk = status != null && [status.promote.force_sentence, status.promote.force_sentence_en].includes(sentence.trim());
 
   const rows: [string, React.ReactNode][] = status ? [
     [t("standby.rows.node"), <span key="n">{status.node} <Badge tone="info">{t("standby.badge.standby")}</Badge></span>],
@@ -237,7 +238,7 @@ export default function StandbyPage() {
                   {mode === "force" && (
                     <>
                       <p role="alert" className="text-sm text-amber-900">{t("standby.takeover.force", { ip: status.peer_ip })}</p>
-                      <FieldGroup label={t("standby.takeover.typeLabel", { sentence: status.promote.force_sentence })}>
+                      <FieldGroup label={t("standby.takeover.typeLabel", { sentence: wanted })}>
                         <Input autoComplete="off" autoCapitalize="none" spellCheck={false} value={sentence} onChange={(e) => setSentence(e.target.value)} />
                       </FieldGroup>
                     </>

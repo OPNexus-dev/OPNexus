@@ -37,7 +37,7 @@ def configured_url() -> str | None:
             raise ValueError("Die Adresse muss mit https:// beginnen")
     except ValueError as exc:
         if not _warned:
-            logger.warning("HEARTBEAT_URL wird ignoriert: %s", exc)
+            logger.warning("HEARTBEAT_URL is ignored: %s", exc)
             _warned = True
         return None
     return url
@@ -53,9 +53,9 @@ async def ping() -> bool:
             async with url_guard.guarded_client(timeout=_TIMEOUT_SECONDS, follow_redirects=False) as client:
                 (await client.get(url, headers={"User-Agent": f"OPNexus/{APP_VERSION}"})).raise_for_status()
         except ValueError as exc:
-            logger.warning("Heartbeat nicht gesendet: %s", exc)
+            logger.warning("Heartbeat not sent: %s", exc)
             return False
         except httpx.HTTPError as exc:
-            logger.warning("Heartbeat fehlgeschlagen (%s)", url_guard.failure_reason(exc))
+            logger.warning("Heartbeat failed (%s)", url_guard.failure_reason(exc))
             return False
     return True

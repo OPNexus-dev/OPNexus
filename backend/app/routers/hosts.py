@@ -45,7 +45,7 @@ def _upstream_error(host: OpnsenseHost, exc: OpnsenseAPIError) -> HTTPException:
     hand an authenticated-but-otherwise-unprivileged (read_only) caller.
     Full detail goes to the backend log (visible via `docker compose logs
     backend` since the logging fix), client gets a generic 502."""
-    logger.warning("OPNsense-Anfrage an Host '%s' fehlgeschlagen: %s", host.name, exc)
+    logger.warning("OPNsense request to host '%s' failed: %s", host.name, exc)
     return api_error(502, ErrorCode.HOST_REQUEST_FAILED, host=host.name)
 
 
@@ -91,7 +91,7 @@ async def _checked_pin(base_url: str, pem: str) -> str:
     try:
         await tls_pin_service.verify_matches(base_url, pem)
     except tls_pin_service.TlsPinError as exc:
-        logger.warning("TLS-Pin für %s abgelehnt: %s", base_url, exc)
+        logger.warning("TLS pin for %s rejected: %s", base_url, exc)
         raise api_error(422, ErrorCode.TLS_PIN_MISMATCH)
     return pem.strip() + "\n"
 
@@ -103,7 +103,7 @@ async def tls_probe(payload: TlsProbeRequest):
     try:
         return await tls_pin_service.probe(payload.base_url.rstrip("/"))
     except tls_pin_service.TlsPinError as exc:
-        logger.warning("TLS-Probe %s fehlgeschlagen: %s", payload.base_url, exc)
+        logger.warning("TLS probe %s failed: %s", payload.base_url, exc)
         raise api_error(502, ErrorCode.TLS_PROBE_FAILED)
 
 

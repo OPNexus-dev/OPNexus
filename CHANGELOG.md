@@ -18,15 +18,23 @@ OPNexus follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`)
   growing).
 - **PATCH** — bug fixes and small corrections without a new feature.
 
-In addition, **every MINOR and MAJOR version gets a codename** — birds of prey, in ascending
-alphabetical order across the releases (similar to Ubuntu's alliterative animal codenames, without the
-forced double initial). A PATCH release keeps the codename of its MINOR version. The current version
-is in `frontend/lib/version.ts` (`APP_VERSION`/`APP_CODENAME`) and `backend/app/version.py`, both
+In addition, **every MINOR and MAJOR version gets a codename** — birds of prey up to 1.38.0, and from 1.39.0 on the names of
+cities, in ascending alphabetical order (Amsterdam, Berlin, Copenhagen, Dublin, …). A PATCH release keeps the codename of its
+MINOR version. The current version is in `frontend/lib/version.ts` (`APP_VERSION`/`APP_CODENAME`) and `backend/app/version.py`, both
 maintained by hand — no build pipeline, no git-hash tagging. It is shown in the app on the login page,
 in the footer of every page, on `/about` and in the settings.
 
-Next codenames (in order, when the next MINOR version is due): decided at the next MINOR release
-(Griffon was taken by 1.34.0).
+Next codenames (in order, when the next MINOR version is due): Berlin, Copenhagen, Dublin, Edinburgh, Florence.
+
+## [1.39.0] "Amsterdam" — 2026-11-25
+
+- **Deploy several rules at once.** Tick rules in the list and use "Review and deploy": one dialog with the preview of every rule, then every rule is deployed one after the other exactly like a single deployment (its own approval, checks, confirmation window and automatic rollback). A refused rule does not stop the others, and "Confirm all deployed" confirms them together (at most 50 rules per run; operators need the right to deploy). New API: `POST /api/rules/bulk/deploy` and `/bulk/confirm`.
+- **Rules as a compact table, with usage.** The rules page has a table view (the new default; cards stay available): action colours, source, destination, status per target, sortable columns, and **Last hit** from the observed pf counters, with a "usage" filter (in use, unused, collecting data, unknown). On a CARP pair the newest hit of any node counts. New API: `GET /api/rules/usage`.
+- **Overlap warning before deploying.** The preview, and the dialog for several rules, now say when a rule would be shadowed by an earlier rule or duplicate one on a target firewall, and which later rules it would make pointless. It is a read-only hint: it never blocks a deployment. New API: `GET /api/rules/{id}/overlap`.
+- **The whole product speaks both languages.** What was still German-only is now translated: the explanations the server adds to deploy previews, maintenance and audit entries and error texts (about 240 sentences, shown in English when the interface is English), the console tools behind `opnexus export`, `opnexus apply`, `opnexus backup` and `opnexus restore` (they follow `OPNEXUS_LANG` or your locale, and the `opnexus` command passes its language on), the start-up hints of the backend (database password, volume, schema revision), and the English confirmation sentence "old primary is off" for a forced takeover on the standby page (the German one still works). Server logs are English from this version on. A new check (`scripts/check_server_texts.py`, part of the release gate and CI) fails when a German sentence, log line or console text without an English counterpart is added. Only texts that OPNsense itself returns stay as the firewall wrote them.
+- **Configuration as code in English.** The header of an exported file and the title of `opnexus-config-v1.schema.json` are English now ("OPNexus configuration (schema v1)").
+- **Notification texts in English.** Email, webhook text, ntfy, Gotify, Telegram, Teams and Matrix can now be sent in English: Settings › Notifications has a new field "Language of the messages" (Automatic / Deutsch / English). Automatic follows the language of the oldest administrator account, so existing installations keep their German texts, and English is used when nobody ever chose a language (migration 0038). The JSON object `context` of the webhook is not translated, so receivers that parse it keep working; only `subject` and `message` change. Prose that comes from other parts of OPNexus (for example the reason a rollout stopped) is still German.
+- **Updater and HA agent in English.** The log lines and errors of the updater container and the HA pairing (for example "The partner rejects the code") follow the same language rule as the `opnexus` command: English unless `OPNEXUS_LANG=de` or a German locale is set.
 
 ## [1.38.0] "Lammergeier" — 2026-11-21
 

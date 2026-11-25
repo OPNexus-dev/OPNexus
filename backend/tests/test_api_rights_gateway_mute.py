@@ -191,7 +191,8 @@ async def test_api_rights_alert_opens_once_resolves_and_is_delivered(client, res
     host = await _create_host(client, "fw1", "https://fw1.test")
     hid = uuid.UUID(host["id"])
     await _only("api_rights_enabled")
-    await _set(webhook_enabled=True, webhook_url="https://hooks.test/n")
+    # The texts asserted below are German: pin the language (automatic would give English, see test_notification_i18n.py).
+    await _set(webhook_enabled=True, webhook_url="https://hooks.test/n", language="de")
     hook = respx_mock.post("https://hooks.test/n").mock(return_value=httpx.Response(200))
     await _add_samples(hid, [DENIED_GW] * 3)
     async with SessionLocal() as db:

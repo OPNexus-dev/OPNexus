@@ -66,7 +66,7 @@ def http_partner(peer_ip: str, port: int | None = None) -> PartnerProbe | None:
     try:
         address = ipaddress.ip_address(peer_ip.strip())
     except ValueError:
-        logger.warning("HA_PEER_IP ist keine IP-Adresse (%r): der Partner-Wächter ist aus", peer_ip)
+        logger.warning("HA_PEER_IP is not an IP address (%r): the partner guard is off", peer_ip)
         return None
     host = f"[{address}]" if address.version == 6 else str(address)
     port = port or settings.ha_peer_port
@@ -168,10 +168,9 @@ class LeaderGate:
         objection = view is not None and view[0] == LEADER and view[1] >= await self._own_epoch()
         if objection != self._partner_objection:
             if objection:
-                logger.error("Split-Brain: der Partner ist Leader (Epoche %s, eigene %s); dieser Knoten führt keine "
-                             "Hintergrunddienste aus, bis der Partner gestoppt oder neu aufgebaut ist", view[1], self._epoch)
+                logger.error("Split brain: the partner is leader (epoch %s, own %s); this node runs no background services until the partner is stopped or rebuilt", view[1], self._epoch)
             else:
-                logger.warning("Split-Brain-Wächter: der Partner ist nicht mehr Leader mit gleicher oder höherer Epoche")
+                logger.warning("Split-brain guard: the partner is no longer leader with the same or a higher epoch")
         self._partner_objection = objection
         self.split_brain = objection
         return objection
@@ -187,7 +186,7 @@ class LeaderGate:
                     self.split_brain = self._partner_objection = False
                     return REPLICA
         except Exception as exc:
-            logger.warning("Leader-Sperre: Datenbank nicht erreichbar (%s)", type(exc).__name__)
+            logger.warning("Leader lock: database not reachable (%s)", type(exc).__name__)
             await self._close()
             return STANDBY
         if await self._partner_objects(fresh=True):
@@ -199,7 +198,7 @@ class LeaderGate:
                     self._conn.scalar(text("SELECT pg_try_advisory_lock(:key)"), {"key": LOCK_KEY}), self.check_timeout)
                 await self._conn.commit()  # leave no transaction open on a connection that lives for days
         except Exception as exc:
-            logger.warning("Leader-Sperre: Datenbank nicht erreichbar (%s)", type(exc).__name__)
+            logger.warning("Leader lock: database not reachable (%s)", type(exc).__name__)
             await self._close()
             return STANDBY
         if not got:
@@ -219,11 +218,11 @@ class LeaderGate:
                                                   self.check_timeout)
                 await self._conn.commit()
         except Exception as exc:
-            logger.error("Leader-Sperre verloren: Verbindung zur Datenbank gestört (%s)", type(exc).__name__)
+            logger.error("Leader lock lost: connection to the database disturbed (%s)", type(exc).__name__)
             self._lost.set()
             return False
         if recovery:
-            logger.error("Leader-Sperre aufgegeben: die Datenbank ist jetzt eine Replica")
+            logger.error("Leader lock given up: the database is now a replica")
             self._lost.set()
             return False
         self._last_ok = asyncio.get_running_loop().time()
@@ -260,8 +259,8 @@ class LeaderGate:
             if isinstance(exc, LeadershipLost):
                 self._lost.set()
                 continue
-            logger.error("Hintergrundschleife %s beendet (%s), wird neu gestartet", name,
-                         type(exc).__name__ if exc else "ohne Fehler")
+            logger.error("Background loop %s ended (%s), restarting", name,
+                         type(exc).__name__ if exc else "without error")
             self._tasks[name] = asyncio.create_task(self._loops[name](), name=f"loop:{name}")
 
     # ── supervisor ───────────────────────────────────────────────────────
@@ -275,7 +274,7 @@ class LeaderGate:
     async def _tenure(self) -> None:
         """From the moment the lock is ours until it is lost."""
         self.role = TAKEOVER
-        logger.info("Leader-Sperre erhalten; Hintergrunddienste starten in %.0f s", self.takeover_delay)
+        logger.info("Leader lock acquired; background services start in %.0f s", self.takeover_delay)
         deadline = asyncio.get_running_loop().time() + self.takeover_delay
         while (left := deadline - asyncio.get_running_loop().time()) > 0:
             await self._wait_or_lost(min(left, self.check_interval))
@@ -285,7 +284,7 @@ class LeaderGate:
             return
         self.role = LEADER
         self._start_loops()
-        logger.info("Dieser Prozess führt die Hintergrunddienste aus (Leader)")
+        logger.info("This process runs the background services (leader)")
         while not self._lost.is_set():
             await self._wait_or_lost(self.check_interval)
             if self._lost.is_set() or not await self.check() or await self._partner_objects():
@@ -306,18 +305,18 @@ class LeaderGate:
                     await self._close()
                     self.role = FENCED if self._partner_objection else STANDBY
                 if self._partner_objection:
-                    logger.warning("Hintergrunddienste angehalten (Split-Brain-Wächter); bewerbe mich später neu")
+                    logger.warning("Background services stopped (split-brain guard); will apply again later")
                 else:
-                    logger.warning("Hintergrunddienste angehalten (Leader-Sperre verloren); bewerbe mich neu")
+                    logger.warning("Background services stopped (leader lock lost); applying again")
                 announced = None
             else:
                 self.role = state
                 if announced != state:
                     logger.info(
                         "Bereitschaft: %s", {
-                            REPLICA: "die Datenbank ist eine Replica",
-                            FENCED: "der HA-Partner ist Leader (Split-Brain-Wächter)",
-                        }.get(state, "ein anderer Prozess führt die Hintergrunddienste aus oder die Datenbank fehlt"))
+                            REPLICA: "the database is a replica",
+                            FENCED: "the HA partner is leader (split-brain guard)",
+                        }.get(state, "another process runs the background services or the database is missing"))
                     announced = state
             await asyncio.sleep(self.retry_interval)
 

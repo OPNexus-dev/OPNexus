@@ -14,6 +14,7 @@ import ssl
 import subprocess
 import tempfile
 from pathlib import Path
+from lang import t
 
 
 class PinMismatch(Exception):
@@ -51,7 +52,7 @@ def make_gate_cert(directory: Path, ip: str) -> str:
              "-keyout", str(tmp_key), "-out", str(cert)],
             check=True, capture_output=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
-        raise PeerError("Das Zertifikat ließ sich nicht erzeugen (openssl vorhanden?).") from exc
+        raise PeerError(t("Das Zertifikat ließ sich nicht erzeugen (openssl vorhanden?).", "The certificate could not be generated (is openssl installed?).")) from exc
     finally:
         os.umask(old_umask)
     os.replace(tmp_key, key)
@@ -77,7 +78,7 @@ class _PinnedConnection(http.client.HTTPSConnection):
                 self.sock.close()
             finally:
                 self.sock = None
-            raise PinMismatch("Das Zertifikat der Gegenstelle passt nicht zum Kopplungscode.")
+            raise PinMismatch(t("Das Zertifikat der Gegenstelle passt nicht zum Kopplungscode.", "The peer's certificate does not match the pairing code."))
 
 
 class PeerClient:
@@ -109,7 +110,7 @@ class PeerClient:
         except PinMismatch:
             raise
         except (OSError, http.client.HTTPException, socket.timeout) as exc:
-            raise PeerError(f"{self.ip}:{self.port} antwortet nicht ({exc.__class__.__name__}).") from exc
+            raise PeerError(t(f"{self.ip}:{self.port} antwortet nicht ({exc.__class__.__name__}).", f"{self.ip}:{self.port} does not respond ({exc.__class__.__name__}).")) from exc
         finally:
             conn.close()
         try:

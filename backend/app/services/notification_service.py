@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.notification import NotificationChannel, NotificationProblem, NotificationSettings
-from app.services import ha_checks, monitor_checks, notification_channels, notification_checks, notification_dedup, notification_delivery
+from app.services import ha_checks, monitor_checks, notification_channels, notification_checks, notification_dedup, notification_delivery, notification_i18n
 from app.services import notification_settings_service
 
 logger = logging.getLogger(__name__)
@@ -175,6 +175,11 @@ async def run_notification_checks(db: AsyncSession) -> dict:
     )).all() if enabled_types else []
     pending += [(problem, "opened") for problem in undelivered if id(problem) not in already]
     # Delivered once all checks ran (and in parallel): a slow target no longer holds up the checks after it.
-    await _deliver_all(settings_row, pending, channels)
+    # The language is a context variable: every delivery task is started inside _deliver_all and copies it.
+    token = notification_i18n.set_current(await notification_i18n.effective_language(db, settings_row.language))
+    try:
+        await _deliver_all(settings_row, pending, channels)
+    finally:
+        notification_i18n.reset_current(token)
     await db.commit()
     return result

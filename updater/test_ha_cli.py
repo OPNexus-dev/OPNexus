@@ -19,6 +19,7 @@ import ha_cli
 import ha_net
 import server
 import test_server_ha
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the updater speaks English by default; these tests check the German texts
 
 FAKE = test_server_ha.FAKE
 

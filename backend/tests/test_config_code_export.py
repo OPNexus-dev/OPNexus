@@ -11,8 +11,8 @@ from app.models.rule import FirewallRule
 from tests.config_code_seed import seed_everything
 
 GOLDEN = '''\
-# OPNexus-Konfiguration (Schema v1), exportiert von OPNexus {version}.
-# Enthält keine Zugänge zu Firewalls, Benutzer, Tokens oder Schlüssel. Prüfen: opnexus apply DATEI --dry-run
+# OPNexus configuration (schema v1), exported by OPNexus {version}.
+# Contains no access to firewalls, users, tokens or keys. Check: opnexus apply FILE --dry-run
 opnexus_config: 1
 device_groups:
 - name: Filialen

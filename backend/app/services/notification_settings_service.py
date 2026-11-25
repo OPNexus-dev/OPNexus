@@ -34,6 +34,9 @@ async def update_settings(db: AsyncSession, payload: NotificationSettingsUpdate)
         if value is not None:
             setattr(row, field, value)
 
+    if payload.language is not None:
+        row.language = None if payload.language == "auto" else payload.language
+
     if payload.clear_webhook_signing_secret:
         notification_secret_store.delete_secret("webhook_signing_secret")
         row.webhook_signing_secret_set = False

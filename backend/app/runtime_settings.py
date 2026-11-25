@@ -194,7 +194,7 @@ async def refresh_loop() -> None:
         try:
             await refresh()
         except Exception as exc:
-            logger.warning("Einstellungen konnten nicht neu gelesen werden (%s)", type(exc).__name__)
+            logger.warning("Settings could not be re-read (%s)", type(exc).__name__)
 
 
 async def save(db: AsyncSession, values: dict[str, Any], actor: str) -> list[str]:

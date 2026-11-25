@@ -150,7 +150,7 @@ async def check(db: AsyncSession) -> dict:
                     _state.latest, _state.release_url = tag.lstrip("v"), release_url
                 _state.checked_at, _state.error = now, None
             except Exception as exc:  # Netz, HTTP, JSON, Format: alles nur "geht gerade nicht"
-                logger.warning("Update-Check fehlgeschlagen: %s", exc.__class__.__name__)
+                logger.warning("Update check failed: %s", exc.__class__.__name__)
                 _state.error = "unavailable"
 
     latest = _parse(_state.latest) if _state.latest else None

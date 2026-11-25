@@ -96,7 +96,7 @@ async def create_rollback_point(host: OpnsenseHost, version: str | None) -> dict
             await audit_service.persist(kind="snapshot", action="snapshot.del", entity_name=old["name"], host_id=str(host.id),
                                         host_name=host.name, status="applied", message="Älterer Rückweg-Punkt aufgeräumt", details={})
         except OpnsenseAPIError as exc:
-            logger.warning("Rückweg-Punkt %s auf %s nicht gelöscht: %s", old["name"], host.name, exc)
+            logger.warning("Rollback point %s on %s not deleted: %s", old["name"], host.name, exc)
     return {"uuid": point["uuid"], "name": point["name"], "version": version}
 
 
@@ -122,7 +122,7 @@ async def activate_and_reboot(host: OpnsenseHost, rollback: dict) -> dict:
             try:
                 await opnsense_client.activate_snapshot(host, current["uuid"])
             except OpnsenseAPIError:
-                logger.warning("Rückweg auf %s: vorheriges Boot-Environment nicht reaktiviert", host.name)
+                logger.warning("Rollback on %s: previous boot environment not reactivated", host.name)
 
     await opnsense_client.activate_snapshot(host, target["uuid"])
     try:

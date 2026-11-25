@@ -12,12 +12,13 @@ import os
 import sys
 
 from app.services import backup_crypto, notification_secret_store
+from app.cli_lang import t
 
 
 def main() -> int:
     passphrase = os.environ.get("BACKUP_PASSPHRASE") or notification_secret_store.read_secret("backup_passphrase")
     if not passphrase:
-        print("Keine Passphrase: BACKUP_PASSPHRASE setzen.", file=sys.stderr)
+        print(t("Keine Passphrase: BACKUP_PASSPHRASE setzen.", "No passphrase: set BACKUP_PASSPHRASE."), file=sys.stderr)
         return 2
     try:
         sys.stdout.buffer.write(backup_crypto.decrypt(sys.stdin.buffer.read(), passphrase))

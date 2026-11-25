@@ -51,6 +51,7 @@ from app import runtime_settings
 from app import legacy_schema_patches
 from app.config import settings
 from app.database import Base, engine
+from app.cli_lang import t
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ def _pg_dump_major() -> int:
     out = subprocess.run(["pg_dump", "--version"], check=True, capture_output=True, text=True).stdout
     match = re.search(r"PostgreSQL\) (\d+)", out)
     if not match:
-        raise RuntimeError(f"pg_dump-Version nicht erkennbar: {out.strip()!r}")
+        raise RuntimeError(t(f"pg_dump-Version nicht erkennbar: {out.strip()!r}", f"pg_dump version not recognisable: {out.strip()!r}"))
     return int(match.group(1))
 
 
@@ -143,12 +144,16 @@ async def _ensure_pg_client_matches_server() -> None:
         server_major = int((await conn.execute(text("SHOW server_version_num"))).scalar_one()) // 10000
     client_major = await asyncio.to_thread(_pg_dump_major)
     if client_major != server_major:
-        raise RuntimeError(
+        raise RuntimeError(t(
             f"pg_dump im Backend-Image ist Version {client_major}, der Postgres-Server Version {server_major}. "
             "Ein solches Backup ließe sich nicht zurückspielen. backend/scripts/install_pg_client.sh und "
             "das postgres-Image in docker-compose.yml müssen dieselbe Hauptversion haben. Die Datenbank "
-            "wurde NICHT migriert (SKIP_MIGRATION_BACKUP=true überspringt Backup und diese Prüfung bewusst)."
-        )
+            "wurde NICHT migriert (SKIP_MIGRATION_BACKUP=true überspringt Backup und diese Prüfung bewusst).",
+            f"pg_dump in the backend image is version {client_major}, the Postgres server is version {server_major}. "
+            "Such a backup could not be restored. backend/scripts/install_pg_client.sh and the postgres image in "
+            "docker-compose.yml must have the same major version. The database was NOT migrated "
+            "(SKIP_MIGRATION_BACKUP=true skips the backup and this check on purpose).",
+        ))
 
 
 def _prune_backups(directory: Path) -> None:
@@ -159,12 +164,12 @@ def _prune_backups(directory: Path) -> None:
 
 async def _backup_before_migration(from_revision: str, to_revision: str) -> None:
     if settings.skip_migration_backup:
-        logger.warning("Pre-Upgrade-Backup übersprungen (SKIP_MIGRATION_BACKUP=true)")
+        logger.warning("Pre-upgrade backup skipped (SKIP_MIGRATION_BACKUP=true)")
         return
     directory = Path(settings.migration_backup_dir)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     target = directory / f"{_BACKUP_PREFIX}{from_revision}-to-{to_revision}-{stamp}.dump"
-    logger.info("Schema-Migration %s → %s: sichere Datenbank nach %s", from_revision, to_revision, target)
+    logger.info("Schema migration %s → %s: backing up the database to %s", from_revision, to_revision, target)
     await _ensure_pg_client_matches_server()
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -172,10 +177,12 @@ async def _backup_before_migration(from_revision: str, to_revision: str) -> None
         _prune_backups(directory)
     except Exception as exc:
         detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) and exc.stderr else repr(exc)
-        raise RuntimeError(
+        raise RuntimeError(t(
             f"Pre-Upgrade-Backup nach {target} fehlgeschlagen ({detail}). Die Datenbank wurde "
-            "NICHT migriert. Backup-Ziel prüfen oder mit SKIP_MIGRATION_BACKUP=true bewusst überspringen."
-        ) from exc
+            "NICHT migriert. Backup-Ziel prüfen oder mit SKIP_MIGRATION_BACKUP=true bewusst überspringen.",
+            f"Pre-upgrade backup to {target} failed ({detail}). The database was NOT migrated. "
+            "Check the backup target or skip it on purpose with SKIP_MIGRATION_BACKUP=true.",
+        )) from exc
 
 
 async def _migrate() -> None:
@@ -189,21 +196,24 @@ async def _migrate() -> None:
         try:
             script.get_revision(current)
         except Exception as exc:
-            raise RuntimeError(
+            raise RuntimeError(t(
                 f"Die Datenbank hat Schema-Revision {current}, die diese OPNexus-Version nicht kennt — "
                 "sie wurde von einer neueren Version migriert. Die neuere Version wieder starten oder "
-                "das Pre-Upgrade-Backup einspielen."
-            ) from exc
+                "das Pre-Upgrade-Backup einspielen.",
+                f"The database has schema revision {current}, which this OPNexus version does not know — "
+                "it was migrated by a newer version. Start the newer version again or restore the "
+                "pre-upgrade backup.",
+            )) from exc
 
     if current is None and not has_tables:
-        logger.info("Leere Datenbank: lege Schema an (Revision %s)", head)
+        logger.info("Empty database: creating the schema (revision %s)", head)
         async with engine.begin() as conn:
             await conn.run_sync(_run_alembic, "upgrade", "head")
         return
 
     if current is None:
         await _backup_before_migration("legacy", head)
-        logger.info("Datenbank aus der Zeit vor Alembic erkannt: Legacy-Brücke, dann Migration auf %s", head)
+        logger.info("Database from before Alembic detected: legacy bridge, then migration to %s", head)
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
             await legacy_schema_patches.apply(conn)
@@ -212,7 +222,7 @@ async def _migrate() -> None:
         return
 
     if current == head:
-        logger.info("Datenbankschema ist aktuell (Revision %s)", head)
+        logger.info("Database schema is current (revision %s)", head)
         return
 
     try:  # the kept-backups count may be set in the web interface; an old schema without the table keeps the default
@@ -220,7 +230,7 @@ async def _migrate() -> None:
     except Exception:
         pass
     await _backup_before_migration(current, head)
-    logger.info("Migriere Datenbankschema %s → %s", current, head)
+    logger.info("Migrating database schema %s → %s", current, head)
     async with engine.begin() as conn:
         await conn.run_sync(_run_alembic, "upgrade", "head")
 
@@ -234,20 +244,18 @@ async def _log_replica_state() -> bool:
     script = ScriptDirectory.from_config(_config())
     head = script.get_current_head()
     if current is None:
-        logger.info("Datenbank ist eine Replica ohne Schema; es wird nicht migriert")
+        logger.info("Database is a replica without a schema; not migrating")
         return True
     try:
         script.get_revision(current)
     except Exception:
-        logger.warning("Replica: Die Datenbank hat Schema-Revision %s, die diese Version nicht kennt (neuer als der "
-                       "Code). Es wird nicht migriert; dieses Backend sollte auf die Version des Primärs gebracht werden.",
+        logger.warning("Replica: the database has schema revision %s, which this version does not know (newer than the code). Not migrating; this backend should be brought to the version of the primary.",
                        current)
         return True
     if current == head:
-        logger.info("Replica: Datenbankschema ist aktuell (Revision %s); es wird nicht migriert", head)
+        logger.info("Replica: database schema is current (revision %s); not migrating", head)
     else:
-        logger.info("Replica: Datenbank steht auf Revision %s, der Code erwartet %s; es wird nicht migriert "
-                    "(das macht der Primär, die Änderung kommt per Replikation)", current, head)
+        logger.info("Replica: database is at revision %s, the code expects %s; not migrating (the primary does that, the change arrives by replication)", current, head)
     return True
 
 

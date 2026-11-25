@@ -144,9 +144,9 @@ async def _deploy_revert_sweep_loop():
             async with SessionLocal() as db:
                 reverted = await carp_maintenance_window_service.sweep_expired(db)
             if reverted:
-                logger.info("CARP-Auto-Revert: %d Zeitfenster verarbeitet", len(reverted))
+                logger.info("CARP auto-revert: %d window(s) processed", len(reverted))
         except Exception:
-            logger.exception("CARP-Auto-Revert-Sweep fehlgeschlagen")
+            logger.exception("CARP auto-revert sweep failed")
         try:
             async with SessionLocal() as db:
                 reverted = await sweep_expired_hierarchy_deployments(db)
@@ -158,14 +158,14 @@ async def _deploy_revert_sweep_loop():
             async with SessionLocal() as db:
                 reverted = await rule_cleanup_service.sweep_expired_cleanups(db)
             if reverted:
-                logger.info("Regel-Bereinigung: %d Operation(en) automatisch zurückgenommen/abgeschlossen", len(reverted))
+                logger.info("Rule cleanup: %d operation(s) rolled back/finished automatically", len(reverted))
         except Exception:
             logger.exception("Rule-cleanup revert sweep failed")
         try:
             async with SessionLocal() as db:
                 reverted = await rule_order_service.sweep_expired_order_changes(db)
             if reverted:
-                logger.info("Regel-Reihenfolge: %d unbestätigte Verschiebung(en) automatisch zurückgenommen", len(reverted))
+                logger.info("Rule order: %d unconfirmed move(s) rolled back automatically", len(reverted))
         except Exception:
             logger.exception("Rule-order revert sweep failed")
         await asyncio.sleep(_SWEEP_INTERVAL_SECONDS)
@@ -196,10 +196,10 @@ async def _notification_poll_loop():
                 events = await carp_event_service.detect_and_record(db)
             for event in events:
                 logger.info(
-                    "CARP-Rollenwechsel auf %s: %s -> %s", event.host_name, event.from_status, event.to_status,
+                    "CARP role change on %s: %s -> %s", event.host_name, event.from_status, event.to_status,
                 )
         except Exception:
-            logger.exception("CARP-Ereignis-Erkennung fehlgeschlagen")
+            logger.exception("CARP event detection failed")
         await asyncio.sleep(interval)
 
 
@@ -229,19 +229,19 @@ async def _log_ingest_poll_loop():
                     result = await log_ingest_service.poll_all_hosts(db)
                     if result["inserted"]:
                         logger.info(
-                            "Log-Ingest: %d neue Einträge über %d Host(s) (%d fehlgeschlagen)",
+                            "Log ingest: %d new entries from %d host(s) (%d failed)",
                             result["inserted"], result["hosts_polled"], result["hosts_failed"],
                         )
 
                 if cycle % _LOG_PRUNE_EVERY_N_CYCLES == 0:
                     deleted = await log_ingest_service.prune_old_entries(db, retention_days)
                     if deleted:
-                        logger.info("Log-Retention: %d alte Einträge gelöscht", deleted)
+                        logger.info("Log retention: %d old entries deleted", deleted)
                     trimmed = await log_ingest_service.enforce_size_limit(db, max_size_gb)
                     if trimmed:
-                        logger.info("Log-Größenlimit (%.1f GB): %d älteste Einträge gelöscht", max_size_gb, trimmed)
+                        logger.info("Log size limit (%.1f GB): %d oldest entries deleted", max_size_gb, trimmed)
         except Exception:
-            logger.exception("Log-Ingest-Poll fehlgeschlagen")
+            logger.exception("Log ingest poll failed")
         await asyncio.sleep(interval)
 
 
@@ -259,18 +259,18 @@ async def _resource_poll_loop():
                 result = await resource_monitor_service.poll_all_hosts(db)
                 if result["hosts_failed"]:
                     logger.warning(
-                        "Resource-Sampling: %d von %d Host(s) fehlgeschlagen",
+                        "Resource sampling: %d of %d host(s) failed",
                         result["hosts_failed"], result["hosts_polled"],
                     )
                 if cycle % _RESOURCE_PRUNE_EVERY_N_CYCLES == 0:
                     deleted = await resource_monitor_service.prune_old_samples(db, runtime_settings.value("resource_sample_retention_days"))
                     if deleted:
-                        logger.info("Resource-Sample-Retention: %d alte Einträge gelöscht", deleted)
+                        logger.info("Resource sample retention: %d old entries deleted", deleted)
                     pruned = await rule_history_service.prune(db)
                     if pruned:
-                        logger.info("Regelverlauf-Retention: %d alte Einträge gelöscht", pruned)
+                        logger.info("Rule history retention: %d old entries deleted", pruned)
         except Exception:
-            logger.exception("Resource-Poll fehlgeschlagen")
+            logger.exception("Resource poll failed")
         await asyncio.sleep(runtime_settings.value("resource_poll_interval_seconds"))
 
 
@@ -292,19 +292,19 @@ async def _scheduled_maintenance_poll_loop():
                 result = await scheduled_maintenance_service.fire_due(db)
                 if result["due"]:
                     logger.info(
-                        "Geplante Wartung: %d fällig, %d ausgeführt, %d blockiert/fehlgeschlagen",
+                        "Scheduled maintenance: %d due, %d executed, %d blocked/failed",
                         result["due"], result["fired"], result["blocked_or_failed"],
                     )
                 in_progress = await scheduled_maintenance_service.advance_running(db)
         except Exception:
-            logger.exception("Geplante-Wartung-Poll fehlgeschlagen")
+            logger.exception("Scheduled maintenance poll failed")
             in_progress = 0
         # Firmware rollouts (1.25) only ever create schedules; the next tick of the lines above fires them.
         try:
             async with SessionLocal() as db:
                 in_progress += await rollout_engine.advance_runs(db)
         except Exception:
-            logger.exception("Rollout-Poll fehlgeschlagen")
+            logger.exception("Rollout poll failed")
         # A handover run is stepped quickly (the partner should take over within a minute or two);
         # otherwise the relaxed cadence is plenty.
         await asyncio.sleep(_RUNNING_MAINTENANCE_POLL_SECONDS if in_progress else _SCHEDULED_MAINTENANCE_POLL_SECONDS)
@@ -325,7 +325,7 @@ async def _compliance_poll_loop():
             async with SessionLocal() as db:
                 await compliance_service.check_all(db)
         except Exception:
-            logger.exception("Sicherheitslage-Prüfung fehlgeschlagen")
+            logger.exception("Security posture check failed")
         await asyncio.sleep(_COMPLIANCE_INTERVAL_SECONDS)
 
 
@@ -342,7 +342,7 @@ async def _audit_export_poll_loop():
             async with SessionLocal() as db:
                 shipped = await audit_export_service.run_once(db)
         except Exception:
-            logger.exception("Audit-Export fehlgeschlagen")
+            logger.exception("Audit export failed")
         await asyncio.sleep(0 if shipped >= audit_export_service.BATCH else _AUDIT_EXPORT_POLL_SECONDS)
 
 
@@ -358,9 +358,9 @@ async def _backup_poll_loop():
             async with SessionLocal() as db:
                 result = await backup_schedule_service.run_due(db)
             if result["taken"] or result["failed"] or result["uploaded"]:
-                logger.info("Geplante Backups: %s", result)
+                logger.info("Scheduled backups: %s", result)
         except Exception:
-            logger.exception("Geplante Backups fehlgeschlagen")
+            logger.exception("Scheduled backups failed")
         await asyncio.sleep(_BACKUP_POLL_SECONDS)
 
 
@@ -378,9 +378,9 @@ async def _rule_observe_loop():
             async with SessionLocal() as db:
                 result = await rule_history_service.observe_all(db)
             if result["events"] or result["failed"]:
-                logger.info("Regelverlauf: %s", result)
+                logger.info("Rule history: %s", result)
         except Exception:
-            logger.exception("Regelverlauf fehlgeschlagen")
+            logger.exception("Rule history failed")
         await asyncio.sleep(max(runtime_settings.value("rule_observe_interval_seconds"), settings.rule_observe_min_interval_seconds))
 
 
@@ -395,19 +395,19 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         hint = explain_database_error(exc)
         if hint:
-            logger.error("Start abgebrochen: Verbindung zur Datenbank nicht möglich.\n%s", hint)
+            logger.error("Start aborted: cannot connect to the database.\n%s", hint)
         raise
     try:  # values from Settings › Betrieb; refreshed in every process (leader or not)
         await runtime_settings.refresh()
     except Exception:  # a replica whose schema is older than this code (standby updated first) has no such table yet
-        logger.warning("Einstellungen aus dem Webinterface nicht lesbar, Standardwerte gelten bis zum nächsten Versuch",
+        logger.warning("Settings from the web interface not readable, defaults apply until the next attempt",
                        exc_info=True)
     async with SessionLocal() as db:
         await auth_service.bootstrap_admin(db)
         try:
             await overlay_service.sync(db)  # hub config + proxy rule follow the database after every start
         except Exception:
-            logger.exception("Overlay-Konfiguration konnte nicht geschrieben werden")
+            logger.exception("Overlay configuration could not be written")
     if any(o.startswith("https://") for o in settings.allowed_origins) and not settings.cookie_secure:
         logger.warning(
             "FRONTEND_ORIGIN is https:// but COOKIE_SECURE is false — the session cookie "

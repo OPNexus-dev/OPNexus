@@ -70,8 +70,16 @@ class NotificationSettingsRead(BaseModel):
     resource_confirm_samples: int = 5
     service_watchlist: list[str] = Field(default_factory=lambda: list(DEFAULT_SERVICE_WATCHLIST))
 
+    # "auto" = follow the oldest admin account's language (English if none was chosen); see services/notification_i18n.py
+    language: Literal["auto", "de", "en"] = "auto"
+
     poll_interval_seconds: int
     updated_at: datetime
+
+    @field_validator("language", mode="before")
+    @classmethod
+    def _auto_language(cls, value):
+        return "auto" if value is None else value
 
     @field_validator("service_watchlist", mode="before")
     @classmethod
@@ -131,6 +139,7 @@ class NotificationSettingsUpdate(BaseModel):
     alert_confirm_samples: int | None = Field(default=None, ge=1, le=60)
     resource_confirm_samples: int | None = Field(default=None, ge=1, le=60)
     service_watchlist: list[str] | None = Field(default=None, max_length=100)
+    language: Literal["auto", "de", "en"] | None = None
 
     @field_validator("service_watchlist")
     @classmethod

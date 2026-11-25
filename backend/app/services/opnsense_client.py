@@ -92,7 +92,7 @@ async def _before_reload(host: OpnsenseHost) -> None:
     try:
         await sample_before_reload(host)
     except Exception as exc:  # noqa: BLE001 - a failed sample must never block or fail the write itself
-        logger.info("Zählerprobe vor dem Anwenden auf %s fehlgeschlagen: %s", host.name, exc)
+        logger.info("Counter probe before applying on %s failed: %s", host.name, exc)
 
 
 def _refuse_unresolved_placeholders(method: str, path: str, kwargs: dict) -> None:

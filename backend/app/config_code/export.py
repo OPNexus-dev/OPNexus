@@ -22,8 +22,8 @@ from app.models.rule import FirewallRule
 from app.version import APP_VERSION
 
 HEADER = (
-    "# OPNexus-Konfiguration (Schema v{schema}), exportiert von OPNexus {version}.\n"
-    "# Enthält keine Zugänge zu Firewalls, Benutzer, Tokens oder Schlüssel. Prüfen: opnexus apply DATEI --dry-run\n"
+    "# OPNexus configuration (schema v{schema}), exported by OPNexus {version}.\n"
+    "# Contains no access to firewalls, users, tokens or keys. Check: opnexus apply FILE --dry-run\n"
 )
 
 

@@ -219,7 +219,7 @@ async def advance_runs(db: AsyncSession) -> int:
     try:
         await auto_start(db)
     except Exception:
-        logger.exception("Rollout: automatischer Start fehlgeschlagen")
+        logger.exception("Rollout: automatic start failed")
         await db.rollback()
     ids = list((await db.scalars(select(RolloutRun.id).where(
         (RolloutRun.status.in_(ACTIVE)) | RolloutRun.hosts.any(RolloutRunHost.status.in_(HOST_OPEN))))).all())
@@ -229,7 +229,7 @@ async def advance_runs(db: AsyncSession) -> int:
         try:
             await tick(run_id)
         except Exception as exc:
-            logger.exception("Rollout %s: Schritt fehlgeschlagen", run_id)
+            logger.exception("Rollout %s: step failed", run_id)
             async with SessionLocal() as s:
                 run = await _lock(s, run_id)
                 if run is not None and run.status in ACTIVE and run.status != "paused":

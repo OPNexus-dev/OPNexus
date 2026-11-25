@@ -338,11 +338,11 @@ cmd_backup_full() {
     extra=(--host-files)
     ( umask 077
       host_files_tar "$with_env" "$with_ca" \
-        | FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create "${extra[@]}" > "$out.partial"
+        | FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.full_backup create "${extra[@]}" > "$out.partial"
       rcs=("${PIPESTATUS[@]}"); [ "${rcs[0]}" = 0 ] && [ "${rcs[1]}" = 0 ] ) || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen." "Full backup failed."; }
   else
     ( umask 077
-      FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup create > "$out.partial" ) \
+      FULL_BACKUP_PASSPHRASE="$pass" c exec -T -e FULL_BACKUP_PASSPHRASE -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.full_backup create > "$out.partial" ) \
       || { rm -f "$out.partial"; die "Vollsicherung fehlgeschlagen." "Full backup failed."; }
   fi
   mv "$out.partial" "$out"; chmod 600 "$out"
@@ -424,7 +424,7 @@ cmd_restore() {
   [ -n "$file" ] && [ -f "$file" ] || die "Aufruf: opnexus restore DATEI.opxfull [--with-env] [--with-ca] [--yes]" "Usage: opnexus restore FILE.opxfull [--with-env] [--with-ca] [--yes]"
   pass="$(ask_passphrase)"
   say "Prüfe die Datei …" "Checking the file …"
-  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup info < "$file" \
+  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.full_backup info < "$file" \
     || die "Die Datei lässt sich nicht öffnen (falsche Passphrase oder keine Vollsicherung)." "The file cannot be opened (wrong passphrase or not a full backup)."
   if [ "$yes" != 1 ]; then
     read -rp "$(T "Das überschreibt Datenbank und Geheimnisse dieser Installation. Fortfahren? [j/N] " "This overwrites the database and secrets of this installation. Continue? [y/N] ")" ans </dev/tty
@@ -436,11 +436,11 @@ cmd_restore() {
   say "Sicherheitskopie des jetzigen Zustands …" "Safety copy of the current state …"
   cmd_backup || say "(Sicherheitskopie nicht möglich — fahre trotzdem fort, weil die Installation leer sein kann)" "(Safety copy not possible — continuing anyway because the installation may be empty)"
   say "Spiele zurück …" "Restoring …"
-  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup restore < "$file" \
+  FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.full_backup restore < "$file" \
     || die "Zurückspielen fehlgeschlagen. Der vorherige Stand liegt als Dump in /backups; Dienste sind gestoppt." "Restore failed. The previous state is in /backups as a dump; services are stopped."
   if [ "$with_env" = 1 ] || [ "$with_ca" = 1 ]; then
     hosttmp=$(mktemp -d) && chmod 700 "$hosttmp"
-    FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE backend python -m app.full_backup host-files < "$file" \
+    FULL_BACKUP_PASSPHRASE="$pass" c run --rm --no-deps -T -e FULL_BACKUP_PASSPHRASE -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.full_backup host-files < "$file" \
       | tar -x -C "$hosttmp" || { rm -rf "$hosttmp"; die "Die Dateien des Servers (.env/CA) ließen sich nicht lesen. Datenbank und Geheimnisse sind schon zurückgespielt; Dienste sind gestoppt." "The server's files (.env/CA) could not be read. Database and secrets are already restored; services are stopped."; }
     if [ "$with_env" = 1 ]; then
       if [ -f "$hosttmp/env" ]; then merge_env_from_backup "$hosttmp/env" "$yes"; else say "Die Sicherung enthält keine .env (nicht mit --with-env erstellt)." "The backup does not contain an .env (not created with --with-env)."; fi
@@ -880,7 +880,7 @@ cmd_password() {
       case "$answer" in j|J|y|Y) ;; *) die "Abgebrochen." "Aborted." ;; esac
     fi
   fi
-  c exec -T backend python -m app.reset_password ${user:+"$user"}
+  c exec -T -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.reset_password ${user:+"$user"}
 }
 
 # Konfiguration als Code (1.32). Die Datei geht über stdin ins Backend (es öffnet nie selbst eine Datei).
@@ -905,7 +905,7 @@ cmd_export() {
   mkdir -p "$out"
   local target="$out/opnexus-config.yaml"
   ( umask 077
-    c exec -T backend python -m app.config_code export ${kinds:+--kinds "$kinds"} > "$target.partial" ) \
+    c exec -T -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.config_code export ${kinds:+--kinds "$kinds"} > "$target.partial" ) \
     || { rm -f "$target.partial"; die "Export fehlgeschlagen." "Export failed."; }
   mv "$target.partial" "$target"
   say "Geschrieben: $target" "Written: $target"
@@ -926,7 +926,7 @@ cmd_apply() {
   local flags=(); [ "$prune" = 1 ] && flags+=(--prune)
   local out code
   set +e
-  out="$(c exec -T backend python -m app.config_code plan "${flags[@]}" $([ "$json" = 1 ] && echo --json) < "$file")"
+  out="$(c exec -T -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.config_code plan "${flags[@]}" $([ "$json" = 1 ] && echo --json) < "$file")"
   code=$?
   set -e
   if [ "$json" = 1 ]; then
@@ -950,7 +950,7 @@ cmd_apply() {
     case "$answer" in j|J|y|Y) ;; *) die "Abgebrochen." "Aborted." ;; esac
   fi
   set +e
-  c exec -T backend python -m app.config_code apply "${flags[@]}" --plan-token "$token" < "$file"
+  c exec -T -e OPNEXUS_LANG="$CLI_LANG" backend python -m app.config_code apply "${flags[@]}" --plan-token "$token" < "$file"
   code=$?
   set -e
   exit "$code"

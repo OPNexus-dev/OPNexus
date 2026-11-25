@@ -90,6 +90,7 @@ function NotificationsSection() {
   const [resourceSamples, setResourceSamples] = useState(5);
   const [watchlist, setWatchlist] = useState("");
   const [pollInterval, setPollInterval] = useState(300);
+  const [textLanguage, setTextLanguage] = useState<"auto" | "de" | "en">("auto");
 
   function applyFromServer(data: NotificationSettings) {
     setNs(data);
@@ -132,6 +133,7 @@ function NotificationsSection() {
     setResourceSamples(data.resource_confirm_samples);
     setWatchlist(data.service_watchlist.join(", "));
     setPollInterval(data.poll_interval_seconds);
+    setTextLanguage(data.language ?? "auto");
     setWebhookSecret("");
     setClearWebhookSecret(false);
     setSmtpPassword("");
@@ -192,6 +194,7 @@ function NotificationsSection() {
         resource_confirm_samples: resourceSamples,
         service_watchlist: watchlist.split(/[\s,]+/).filter(Boolean),
         poll_interval_seconds: pollInterval,
+        language: textLanguage,
       });
       applyFromServer(data);
       setNotice(t("settings.notify.saved"));
@@ -342,6 +345,15 @@ function NotificationsSection() {
             <span className="mb-1 block font-medium text-slate-700">{t("settings.notify.pollInterval")}</span>
             <Input type="number" min={60} value={pollInterval} onChange={(e) => setPollInterval(Number(e.target.value))} />
             <span className="mt-1 block text-xs text-slate-500">{t("settings.notify.pollHint")}</span>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">{t("settings.notify.textLanguage")}</span>
+            <Select value={textLanguage} onChange={(e) => setTextLanguage(e.target.value as "auto" | "de" | "en")}>
+              <option value="auto">{t("settings.notify.textLanguageAuto")}</option>
+              <option value="de">{t("settings.language.de")}</option>
+              <option value="en">{t("settings.language.en")}</option>
+            </Select>
+            <span className="mt-1 block text-xs text-slate-500">{t("settings.notify.textLanguageHint")}</span>
           </label>
         </div>
 

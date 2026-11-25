@@ -175,14 +175,14 @@ async def main() -> None:
     directory.mkdir(parents=True, exist_ok=True)
     hub = Hub(directory)
     server = await asyncio.start_server(hub.handle_client, "0.0.0.0", PROXY_PORT)
-    logger.info("Overlay-Hub gestartet (Proxy auf :%d)", PROXY_PORT)
+    logger.info("Overlay hub started (proxy on :%d)", PROXY_PORT)
     error = None
     async with server:
         while True:
             try:
                 new_error = await asyncio.to_thread(hub.tick, error)
             except Exception:
-                logger.exception("Overlay-Hub-Runde fehlgeschlagen")
+                logger.exception("Overlay hub round failed")
                 new_error = "interner Fehler"
             if new_error and new_error != error:
                 logger.warning("Overlay: %s", new_error)

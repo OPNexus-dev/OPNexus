@@ -20,6 +20,7 @@ from app.database import SessionLocal
 from app.models.audit import AuditEvent
 from app.models.ha_state import HaState
 from app.models.user import AdminUser
+from app.cli_lang import t
 
 ACTOR_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")   # the account's id; the name is looked up here
 MODES = {"normal": "Partner angehalten", "force": "erzwungen (Partner nicht erreichbar)"}
@@ -45,7 +46,7 @@ async def record(action: str, actor: str, mode: str) -> uuid.UUID:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
-        print("Aufruf: python -m app.ha_audit promote ACCOUNT_ID normal|force", file=sys.stderr)
+        print(t("Aufruf: python -m app.ha_audit promote ACCOUNT_ID normal|force", "Usage: python -m app.ha_audit promote ACCOUNT_ID normal|force"), file=sys.stderr)
         return 1
     try:
         asyncio.run(record(*argv))

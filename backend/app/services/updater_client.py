@@ -44,7 +44,7 @@ async def _call(method: str, path: str, payload: dict | None, timeout: float) ->
         async with httpx.AsyncClient(timeout=timeout) as http:
             response = await http.request(method, settings.updater_url.rstrip("/") + path, headers=headers, json=payload)
     except httpx.HTTPError as exc:
-        logger.info("Updater nicht erreichbar: %s", exc.__class__.__name__)
+        logger.info("Updater not reachable: %s", exc.__class__.__name__)
         raise UpdaterUnavailable("unreachable") from exc
     try:
         body = response.json()

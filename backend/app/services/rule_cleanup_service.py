@@ -307,7 +307,7 @@ async def _load_nodes(db: AsyncSession, host: OpnsenseHost, *, unused_days: int,
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001 - no partial preview: one unreadable node stops everything
-            logger.info("Bereinigung: %s nicht lesbar: %s", member.name, exc)
+            logger.info("Cleanup: %s not readable: %s", member.name, exc)
             raise api_error(502, ErrorCode.BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR, host=member.name) from exc
         if not rule_hit_service.looks_complete({"rows": ctx.rows}):
             raise api_error(502, ErrorCode.BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR, host=member.name)
@@ -320,7 +320,7 @@ async def _load_nodes(db: AsyncSession, host: OpnsenseHost, *, unused_days: int,
             own_source = await client.own_source_address(member)
         except OpnsenseAPIError as exc:
             own_source = None  # shown as "unknown" in the preview; the configured sources still protect
-            logger.info("Bereinigung: OPNexus-Adresse auf %s nicht ermittelbar: %s", member.name, exc)
+            logger.info("Cleanup: OPNexus address on %s cannot be determined: %s", member.name, exc)
         nodes.append(Node(
             host=member, role=roles.get(member.id), ctx=ctx,
             rules={r.uuid.lower(): r for r in rules if r.uuid and not r.uuid.startswith("pf@")},
@@ -835,7 +835,7 @@ async def _sample(db: AsyncSession, host: OpnsenseHost, *, strict: bool) -> None
         # (both reads happen before sample_host touches the database: nothing to roll back)
         if strict:
             raise api_error(502, ErrorCode.BEREINIGUNG_FIREWALL_NICHT_ERREICHBAR, host=host.name) from exc
-        logger.info("Bereinigung: Zählerprobe vor dem Anwenden auf %s fehlgeschlagen: %s", host.name, exc)
+        logger.info("Cleanup: counter probe before applying on %s failed: %s", host.name, exc)
     await _lock(db)
 
 
@@ -1249,7 +1249,7 @@ async def sweep_expired_cleanups(db: AsyncSession) -> list[str]:
             done = await _revert(db, op, allowed=SWEEP_STATUSES)
         if done:
             handled.append(str(op.id))
-            logger.info("Bereinigung %s automatisch zurückgenommen (%s)", op.id, op.status)
+            logger.info("Cleanup %s rolled back automatically (%s)", op.id, op.status)
     abandoned = (await db.scalars(select(RuleCleanupOperation).where(
         RuleCleanupOperation.kind.notin_(SWITCH_KINDS), RuleCleanupOperation.status == "running")
         .execution_options(populate_existing=True))).all()
@@ -1540,7 +1540,7 @@ async def _restore_position(member: OpnsenseHost, new_uuid: str, item: RuleClean
     try:
         await client.move_rule_before(member, new_uuid, anchor)
     except OpnsenseAPIError as exc:
-        logger.info("Bereinigung: moveRuleBefore auf %s unklar/abgelehnt: %s", member.name, exc)
+        logger.info("Cleanup: moveRuleBefore on %s unclear/refused: %s", member.name, exc)
     try:
         rows = {str(r.get("uuid")).lower(): r for r in ((await client.search_rules(member, all_rows=True)) or {}).get("rows") or []
                 if isinstance(r, dict) and r.get("uuid")}

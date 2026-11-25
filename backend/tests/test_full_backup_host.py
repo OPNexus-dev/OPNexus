@@ -13,6 +13,13 @@ from app import full_backup as fb
 from tests.test_full_backup import PASS, _dump, data  # noqa: F401  (fixture)
 
 
+@pytest.fixture(autouse=True)
+def _german_console(monkeypatch):
+    # The texts asserted here are the German ones (the console language follows OPNEXUS_LANG, see app/cli_lang.py).
+    monkeypatch.setenv("OPNEXUS_LANG", "de")
+
+
+
 def _tar(entries: dict[str, bytes | None], *, links: dict[str, str] | None = None) -> bytes:
     out = io.BytesIO()
     with tarfile.open(fileobj=out, mode="w") as tar:

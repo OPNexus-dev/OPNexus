@@ -119,7 +119,7 @@ async def fire_due(db: AsyncSession) -> dict:
             try:
                 await _fire_one(db, sched)
             except Exception:
-                logger.exception("Geplante Wartung %s fehlgeschlagen", sched.id)
+                logger.exception("Scheduled maintenance %s failed", sched.id)
                 await db.rollback()
                 sched = await db.get(ScheduledMaintenance, sched.id, populate_existing=True)
                 if sched.status in ("pending", "running") and sched.phase is None:
@@ -177,7 +177,7 @@ async def recover_interrupted(db: AsyncSession) -> int:
             op.message = "Ausgang unklar: der Ablauf wurde unterbrochen. Nicht automatisch wiederholen."
         await db.commit()
         closed += 1
-        logger.warning("Geplante Wartung %s: unterbrochen, als fehlgeschlagen abgeschlossen", sched.id)
+        logger.warning("Scheduled maintenance %s: interrupted, closed as failed", sched.id)
     return closed
 
 
@@ -202,20 +202,20 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
             # minutes ago by the same installation, so it waits for the end of the grace period instead of lapsing.
             sched.run_at = grace_end
             await db.commit()
-            logger.warning("Geplante Wartung %s: Rollout-Schritt überfällig nach einem Wechsel, verschoben bis %s",
+            logger.warning("Scheduled maintenance %s: rollout step overdue after a switchover, postponed until %s",
                            sched.id, grace_end.isoformat())
             return
         sched.status = "failed"
         sched.result = {"error": "Rollout-Schritt nicht rechtzeitig gestartet, nichts ausgeführt", "not_fired": True}
         await db.commit()
-        logger.warning("Geplante Wartung %s: Rollout-Schritt überfällig, nicht ausgeführt", sched.id)
+        logger.warning("Scheduled maintenance %s: rollout step overdue, not executed", sched.id)
         return
     host = await db.get(OpnsenseHost, sched.host_id)
     if not host or not host.enabled:
         sched.status = "failed"
         sched.result = {"error": "Host nicht gefunden oder deaktiviert"}
         await db.commit()
-        logger.warning("Geplante Wartung %s: Host nicht verfügbar", sched.id)
+        logger.warning("Scheduled maintenance %s: host not available", sched.id)
         return
     try:
         await ensure_no_maintenance(db, [host])
@@ -223,14 +223,14 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
         sched.status = "failed"
         sched.result = {"error": str(exc.detail)}
         await db.commit()
-        logger.warning("Geplante Wartung %s blockiert: %s", sched.id, exc.detail)
+        logger.warning("Scheduled maintenance %s blocked: %s", sched.id, exc.detail)
         return
     if sched.carp_handover and host.cluster_name:
         try:
             statuses = await get_statuses(await peers(db, host))
         except client.OpnsenseAPIError as exc:
             statuses = {}
-            logger.warning("Geplante Wartung %s: Rolle nicht lesbar: %s", sched.id, exc)
+            logger.warning("Scheduled maintenance %s: role not readable: %s", sched.id, exc)
         if statuses.get(host.id, {}).get("carp_status") == "MASTER":
             await _start_handover(db, sched, host)
             return
@@ -241,7 +241,7 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
         sched.status = "failed"
         sched.result = {"error": f"Host nicht erreichbar: {exc}"}
         await db.commit()
-        logger.warning("Geplante Wartung %s: Host nicht erreichbar", sched.id)
+        logger.warning("Scheduled maintenance %s: host not reachable", sched.id)
         return
     if sched.action in _BACKUP_BEFORE and not state["blocked"]:
         # Read-only on the firewall. Fail closed: no backup, no update. Taken only after the
@@ -253,13 +253,13 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
             sched.status = "failed"
             sched.result = {"error": f"Automatisches Backup vor dem Update fehlgeschlagen: {str(exc)[:300]}"}
             await db.commit()
-            logger.warning("Geplante Wartung %s: Backup vor dem Update fehlgeschlagen", sched.id)
+            logger.warning("Scheduled maintenance %s: backup before the update failed", sched.id)
             return
     if state["actions"][sched.action]:
         sched.status = "failed"
         sched.result = {"error": " ".join(state["actions"][sched.action])}
         await db.commit()
-        logger.warning("Geplante Wartung %s blockiert: %s", sched.id, sched.result["error"])
+        logger.warning("Scheduled maintenance %s blocked: %s", sched.id, sched.result["error"])
         return
     if sched.action in _BACKUP_BEFORE:
         # Way back (1.32, B5): a boot environment of the running system, after every other check passed.
@@ -270,7 +270,7 @@ async def _fire_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
             sched.status = "failed"
             sched.result = {"error": f"Rückweg-Punkt (Boot-Environment) vor dem Update nicht angelegt: {str(exc)[:300]}"}
             await db.commit()
-            logger.warning("Geplante Wartung %s: Rückweg-Punkt fehlgeschlagen", sched.id)
+            logger.warning("Scheduled maintenance %s: rollback point failed", sched.id)
             return
 
     boot_before = await _boot_time(host) if sched.auto_verify else None
@@ -345,7 +345,7 @@ async def _end(db, sched, host, op, *, ok, message, op_status=None, **result):
     await db.commit()
     await _audit(host, sched, op, sched.action, "completed" if ok else (op_status or "unknown"), message)
     if not ok:
-        logger.warning("Geplante Wartung %s beendet: %s", sched.id, message)
+        logger.warning("Scheduled maintenance %s ended: %s", sched.id, message)
 
 
 async def _toggle(host, expected: str) -> None:
@@ -452,7 +452,7 @@ async def _advance_one(db: AsyncSession, sched: ScheduledMaintenance) -> None:
             return
         await _STEPS[sched.phase](db, sched, host, op)
     except Exception as exc:  # a stuck run must not loop forever or take the poll loop down
-        logger.exception("Geplante Wartung %s: Schritt %s fehlgeschlagen", sched.id, sched.phase)
+        logger.exception("Scheduled maintenance %s: step %s failed", sched.id, sched.phase)
         if host is not None:
             hint = (f"{host.name} kann im CARP-Wartungsmodus verblieben sein — Rollen prüfen."
                     if (sched.progress or {}).get("handover") else f"Zustand von {host.name} prüfen.")

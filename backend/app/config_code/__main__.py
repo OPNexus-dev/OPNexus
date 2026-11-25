@@ -14,6 +14,7 @@ import re
 import sys
 import uuid
 
+from app.cli_lang import language, t
 from app.config_code import apply as applier
 from app.config_code import plan as planner
 from app.config_code import schema
@@ -78,8 +79,67 @@ WARNINGS_DE = {
     "variable_removed_in_use": "Variable {name} von {host} wird entfernt, ein Objekt nutzt sie noch",
     "target_host_disabled": "Ziel-Host {host} ist deaktiviert",
 }
+ERRORS_EN = {
+    "yaml_alias_forbidden": "Aliases (*name) are not allowed",
+    "yaml_anchor_forbidden": "Anchors (&name) are not allowed",
+    "yaml_merge_forbidden": "Merge keys (<<) are not allowed",
+    "yaml_tag_forbidden": "Explicit tags (!, !!) are not allowed",
+    "yaml_directive_forbidden": "Directives (%YAML, %TAG) are not allowed",
+    "yaml_multiple_documents": "More than one YAML document",
+    "yaml_empty": "The file is empty",
+    "yaml_syntax": "YAML syntax error",
+    "duplicate_key": "Duplicate key",
+    "non_string_key": "Key must be text",
+    "too_deep": "Nested too deeply",
+    "too_many_nodes": "Too many elements",
+    "scalar_too_long": "Value too long",
+    "too_many_objects": "Too many objects",
+    "too_many_entries": "Too many entries",
+    "too_many_variables": "Too many variables for this host",
+    "too_large": "File too large",
+    "bad_encoding": "Not valid UTF-8",
+    "not_a_mapping": "The file must be a mapping",
+    "missing_version": "opnexus_config: 1 is missing",
+    "unsupported_version": "This version of the file format is unknown",
+    "unknown_field": "Unknown field",
+    "missing_field": "Required field missing",
+    "bad_type": "Wrong type",
+    "bad_value": "Invalid value",
+    "bad_format": "Wrong format",
+    "too_short": "Too short",
+    "too_long": "Too long",
+    "control_character": "Control characters not allowed",
+    "surrounding_whitespace": "Leading or trailing spaces not allowed",
+    "bad_variable_name": "Invalid variable name",
+    "bad_variable_value": "Invalid variable value",
+    "duplicate_object_key": "Key appears twice in the file",
+    "duplicate_entry": "Entry appears twice",
+    "unknown_host": "Unknown host",
+    "unknown_group": "Unknown device group",
+    "unknown_hierarchy_group": "Unknown hierarchy group",
+    "hierarchy_cycle": "Cycle in the hierarchy tree",
+    "host_in_two_hierarchy_groups": "Host in two hierarchy groups",
+    "placeholder_not_supported": "Placeholders {{…}} are not possible in hierarchy rules",
+}
+REASONS_EN = {
+    "busy_deployment": "open deployment (confirm or roll back first)",
+    "prune_deployed": "was deployed (remove it in the interface first)",
+    "prune_referenced": "is still in use",
+}
+WARNINGS_EN = {
+    "redeploy_needed": "{count} changed objects are deployed: deploy them again afterwards via the preview",
+    "targets_without_link": "{count} new objects have targets but no link to objects on the firewalls (duplicates possible when deploying)",
+    "unknown_alias_reference": "{value}: not a central alias in OPNexus (created by hand on the firewall? then this is fine)",
+    "variable_removed_in_use": "Variable {name} of {host} will be removed, an object still uses it",
+    "target_host_disabled": "Target host {host} is disabled",
+}
 SYMBOL = {"create": "+", "update": "~", "delete": "-", "blocked": "!"}
-LABEL = {"create": "(neu)", "delete": "(entfernen)"}
+LABEL_DE = {"create": "(neu)", "delete": "(entfernen)"}
+LABEL_EN = {"create": "(new)", "delete": "(remove)"}
+
+
+def _pick(german: dict, english: dict) -> dict:
+    return german if language() == "de" else english
 
 
 def safe(text) -> str:
@@ -94,26 +154,27 @@ def _short(value) -> str:
 def format_errors(errors: list[dict]) -> str:
     lines = []
     for e in errors:
-        where = f"Zeile {e['line']}: " if e.get("line") else ""
+        where = t(f"Zeile {e['line']}: ", f"Line {e['line']}: ") if e.get("line") else ""
         path = f"{safe(e['path'])}: " if e.get("path") else ""
         detail = ""
         params = {k: v for k, v in (e.get("params") or {}).items() if k in ("value", "field", "key", "host", "group", "max", "probes")}
         if params:
             detail = " (" + ", ".join(f"{k}={safe(v)}" for k, v in params.items()) + ")"
-        lines.append(f"  {where}{path}{ERRORS_DE.get(e['code'], e['code'])}{detail}")
+        lines.append(f"  {where}{path}{_pick(ERRORS_DE, ERRORS_EN).get(e['code'], e['code'])}{detail}")
     return "\n".join(lines)
 
 
 def format_plan(public: dict) -> str:
     lines = []
+    LABEL = _pick(LABEL_DE, LABEL_EN)
     for item in public["items"]:
         action = item["action"]
         planned = item["planned_action"]
         name = f"{item['kind']} {safe(item['key'])}"
-        suffix = "" if item["deployed_hosts"] == 0 else f"  [auf {item['deployed_hosts']} Firewall(s) ausgerollt]"
+        suffix = "" if item["deployed_hosts"] == 0 else t(f"  [auf {item['deployed_hosts']} Firewall(s) ausgerollt]", f"  [deployed on {item['deployed_hosts']} firewall(s)]")
         if action == "blocked":
-            reasons = "; ".join(REASONS_DE.get(r, r) for r in item["reasons"])
-            lines.append(f"! {name}  blockiert {LABEL.get(planned, '(ändern)')}: {reasons}")
+            reasons = "; ".join(_pick(REASONS_DE, REASONS_EN).get(r, r) for r in item["reasons"])
+            lines.append(f"! {name}  " + t("blockiert", "blocked") + f" {LABEL.get(planned, t('(ändern)', '(change)'))}: {reasons}")
         elif planned in LABEL:
             lines.append(f"{SYMBOL[planned]} {name}  {LABEL[planned]}{suffix}")
         else:
@@ -123,15 +184,16 @@ def format_plan(public: dict) -> str:
                 else:
                     lines.append(f"~ {name}{suffix}")
             if item.get("implicit"):
-                lines[-1] += "  (Folge der Reihenfolge)"
+                lines[-1] += t("  (Folge der Reihenfolge)", "  (follows from the order)")
     for warning in public["warnings"]:
-        template = WARNINGS_DE.get(warning["code"])
+        template = _pick(WARNINGS_DE, WARNINGS_EN).get(warning["code"])
         params = {k: safe(v) for k, v in (warning.get("params") or {}).items()}
         text = template.format(**params) if template else warning["code"]
         where = f"{safe(warning['path'])}: " if warning.get("path") else ""
         lines.append(f"? {where}{text}")
     s = public["summary"]
-    lines.append(f"Plan: {s['create']} neu, {s['update']} geändert, {s['delete']} entfernt, {s['unchanged']} unverändert, {s['blocked']} blockiert")
+    lines.append(t(f"Plan: {s['create']} neu, {s['update']} geändert, {s['delete']} entfernt, {s['unchanged']} unverändert, {s['blocked']} blockiert",
+                   f"Plan: {s['create']} new, {s['update']} changed, {s['delete']} removed, {s['unchanged']} unchanged, {s['blocked']} blocked"))
     return "\n".join(lines)
 
 
@@ -151,7 +213,7 @@ async def run(argv: list[str], stdin: bytes | None = None) -> tuple[int, str, st
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        return 1, "", "Aufruf: python -m app.config_code {export|plan|apply|schema}\n"
+        return 1, "", t("Aufruf: python -m app.config_code {export|plan|apply|schema}\n", "Usage: python -m app.config_code {export|plan|apply|schema}\n")
     if args.command == "schema":
         return 0, schema.json_schema_text(), ""
 
@@ -166,7 +228,7 @@ async def run(argv: list[str], stdin: bytes | None = None) -> tuple[int, str, st
                 if args.kinds:
                     wanted = {k.strip() for k in args.kinds.split(",") if k.strip()}
                     if not wanted <= set(schema.KINDS):
-                        return 1, "", f"Unbekannte Art in --kinds. Möglich: {', '.join(schema.KINDS)}\n"
+                        return 1, "", t(f"Unbekannte Art in --kinds. Möglich: {', '.join(schema.KINDS)}\n", f"Unknown kind in --kinds. Possible: {', '.join(schema.KINDS)}\n")
                 return 0, await export_yaml(db, wanted), ""
 
             raw = stdin if stdin is not None else _read_stdin()
@@ -184,18 +246,18 @@ async def run(argv: list[str], stdin: bytes | None = None) -> tuple[int, str, st
                     return (2 if s["create"] + s["update"] + s["delete"] else 0), out, ""
 
                 if not args.plan_token:
-                    return 1, "", "apply braucht --plan-token (opnexus apply zeigt erst den Plan und fragt dann).\n"
+                    return 1, "", t("apply braucht --plan-token (opnexus apply zeigt erst den Plan und fragt dann).\n", "apply needs --plan-token (opnexus apply shows the plan first and then asks).\n")
                 try:
                     plan = await applier.apply_config(db, parsed, args.prune, args.plan_token)
                 except applier.PlanStale:
                     await db.rollback()
-                    return 4, "", "Seit dem Plan hat sich etwas geändert. Nichts wurde übernommen. Bitte neu planen.\n"
+                    return 4, "", t("Seit dem Plan hat sich etwas geändert. Nichts wurde übernommen. Bitte neu planen.\n", "Something changed since the plan. Nothing was applied. Please plan again.\n")
                 except applier.PlanBlocked as exc:
                     await db.rollback()
-                    return 4, format_plan(exc.plan.public()) + "\n", "Der Plan enthält blockierte Objekte. Nichts wurde übernommen.\n"
+                    return 4, format_plan(exc.plan.public()) + "\n", t("Der Plan enthält blockierte Objekte. Nichts wurde übernommen.\n", "The plan contains blocked objects. Nothing was applied.\n")
                 except applier.SelfCheckFailed as exc:
                     await db.rollback()
-                    return 4, "", f"Selbstprüfung fehlgeschlagen, zurückgenommen: {', '.join(exc.differences[:10])}\n"
+                    return 4, "", t(f"Selbstprüfung fehlgeschlagen, zurückgenommen: {', '.join(exc.differences[:10])}\n", f"Self-check failed, rolled back: {', '.join(exc.differences[:10])}\n")
                 except Exception:
                     await db.rollback()
                     raise
@@ -203,12 +265,14 @@ async def run(argv: list[str], stdin: bytes | None = None) -> tuple[int, str, st
                 s = plan.summary()
                 if args.json:
                     return 0, json.dumps({"summary": s, "sha256": parsed.sha256}, ensure_ascii=False) + "\n", ""
-                return 0, (f"Übernommen: {s['create']} neu, {s['update']} geändert, {s['delete']} entfernt. "
-                           "Es wurde nichts auf Firewalls geschrieben: die Entwürfe jetzt über Vorschau → Ausrollen → Bestätigen ausrollen.\n"), ""
+                return 0, t(f"Übernommen: {s['create']} neu, {s['update']} geändert, {s['delete']} entfernt. "
+                            "Es wurde nichts auf Firewalls geschrieben: die Entwürfe jetzt über Vorschau → Ausrollen → Bestätigen ausrollen.\n",
+                            f"Applied: {s['create']} new, {s['update']} changed, {s['delete']} removed. "
+                            "Nothing was written to firewalls: now deploy the drafts via Preview → Deploy → Confirm.\n"), ""
             except ConfigError as exc:
                 if args.json:
                     return 3, json.dumps({"code": exc.code, "errors": exc.errors}, ensure_ascii=False, indent=2) + "\n", ""
-                return 3, "", f"Die Datei ist ungültig:\n{format_errors(exc.errors)}\n"
+                return 3, "", t("Die Datei ist ungültig:\n", "The file is invalid:\n") + f"{format_errors(exc.errors)}\n"
     finally:
         audit_service.context.reset(context)
 
@@ -217,7 +281,7 @@ def main(argv: list[str]) -> int:
     try:
         code, out, err = asyncio.run(run(argv))
     except Exception as exc:  # noqa: BLE001  the host CLI shows one line, details are in the container log
-        sys.stderr.write(f"Fehler: {safe(exc)[:300]}\n")
+        sys.stderr.write(t(f"Fehler: {safe(exc)[:300]}\n", f"Error: {safe(exc)[:300]}\n"))
         return 1
     sys.stdout.write(out)
     sys.stderr.write(err)

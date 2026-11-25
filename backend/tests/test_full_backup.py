@@ -11,6 +11,12 @@ from app import full_backup as fb
 from app.config import settings
 from app.services import backup_crypto
 
+
+@pytest.fixture(autouse=True)
+def _german_console(monkeypatch):
+    # The texts asserted here are the German ones (the console language follows OPNEXUS_LANG, see app/cli_lang.py).
+    monkeypatch.setenv("OPNEXUS_LANG", "de")
+
 PASS = "full backup passphrase 1"
 old_mtime = 1_700_000_000  # Nov 2023
 

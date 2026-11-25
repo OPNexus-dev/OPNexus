@@ -244,7 +244,7 @@ async def observe_host(db: AsyncSession, host: OpnsenseHost, now: datetime | Non
         counters = await rule_hit_service.read_counters(host)
     except OpnsenseAPIError as exc:
         counters = None
-        logger.info("Regelzähler von %s nicht lesbar: %s", host.name, exc)
+        logger.info("Rule counters of %s not readable: %s", host.name, exc)
     result = await observe_rows(db, host, search, now)
     if not result.get("skipped"):  # a rejected or unconfirmed answer must not touch the usage data either
         if counters is not None:
@@ -263,11 +263,11 @@ async def observe_all(db: AsyncSession, now: datetime | None = None) -> dict:
             summary["events"] += result["events"]
         except OpnsenseAPIError as exc:
             summary["failed"] += 1
-            logger.warning("Regelverlauf von %s nicht lesbar: %s", host.name, exc)
+            logger.warning("Rule history of %s not readable: %s", host.name, exc)
         except Exception:  # noqa: BLE001 - one host must never stop the cycle for the others
             summary["failed"] += 1
             await db.rollback()
-            logger.exception("Regelverlauf von %s fehlgeschlagen", host.name)
+            logger.exception("Rule history of %s failed", host.name)
     return summary
 
 

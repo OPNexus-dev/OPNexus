@@ -171,9 +171,9 @@ async def sample_all(db: AsyncSession) -> int:
             await sample_host(db, host)
             sampled += 1
         except OpnsenseAPIError as exc:
-            logger.warning("Regelnutzung von %s nicht lesbar: %s", host.name, exc)
+            logger.warning("Rule usage of %s not readable: %s", host.name, exc)
         except Exception:
-            logger.exception("Regelnutzung von %s fehlgeschlagen", host.name)
+            logger.exception("Rule usage of %s failed", host.name)
     return sampled
 
 

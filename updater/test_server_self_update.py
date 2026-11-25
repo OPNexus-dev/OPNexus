@@ -13,6 +13,8 @@ import unittest
 from pathlib import Path
 
 import server
+import os
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the updater speaks English by default; these tests check the German texts
 
 
 class _Completed:

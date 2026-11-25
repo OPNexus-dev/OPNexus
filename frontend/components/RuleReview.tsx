@@ -2,6 +2,7 @@
 
 import { api, Rule, RuleCreate, RulePreview, RuleRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
+import { OverlapHint } from "@/components/OverlapHint";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
@@ -68,6 +69,7 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
     {plan && <div className="space-y-4">
       <p className="text-sm text-slate-500">{ts(plan.basis)}</p>
       {plan.warnings.map(w => <p key={w} className="rounded-lg bg-flame-50 p-3 text-sm text-flame-800">{ts(w)}</p>)}
+      {mode === "preview" && plan.hosts.length > 0 && <OverlapHint ruleId={rule.id} />}
       {plan.hosts.length === 0 && <div className="space-y-2"><p className="text-sm text-slate-500">{t("review.rule.noTargets")}</p><Button onClick={() => onRestore(rule)}>{t("review.assignTargets")}</Button></div>}
       {plan.hosts.map(h => <div key={h.host_id} className="rounded-xl border border-slate-200 p-3">
         <div className="flex flex-wrap justify-between gap-2 text-sm"><strong>{h.host_name}</strong><span className="text-sky-700">{t(`review.actions.${h.action}`)}</span></div>

@@ -1453,7 +1453,7 @@ export interface StandbyStatus {
   sync_age_seconds: number | null;
   secrets: { complete: boolean; hosts: string[]; totp: string[] };
   partner: { agent: boolean | null; health: { role: string; epoch: number } | null };
-  promote: { mode: "normal" | "force" | "refused" | "unavailable"; force_sentence: string };
+  promote: { mode: "normal" | "force" | "refused" | "unavailable"; force_sentence: string; force_sentence_en: string };
   job: StandbyJob | null;
 }
 
@@ -1679,6 +1679,8 @@ export const api = {
   updateRule: (id: string, data: RuleCreate, expectedUpdatedAt: string) => request<Rule>(`/rules/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
   previewRule: (id: string) => request<RulePreview>(`/rules/${id}/preview`),
   ruleRevisions: (id: string) => request<RuleRevision[]>(`/rules/${id}/revisions`),
+  ruleUsage: () => request<RuleUsage[]>("/rules/usage"),
+  ruleOverlap: (id: string) => request<RuleOverlap>(`/rules/${id}/overlap`),
   deployRule: (id: string, previewToken: string) => request<Rule>(`/rules/${id}/deploy`, { method: "POST", body: JSON.stringify({ preview_token: previewToken }) }),
   listAliases: () => request<PolicyAlias[]>("/aliases"),
   createAlias: (data: PolicyAliasCreate) => request<PolicyAlias>("/aliases", { method: "POST", body: JSON.stringify(data) }),
@@ -1699,6 +1701,10 @@ export const api = {
   retryRollback: (id: string, hostId: string, token: string) => request<void>(`/rules/${id}/deployments/${hostId}/retry-rollback`, { method: "POST", body: JSON.stringify({ preview_token: token }) }),
   deleteGroup: (id: string) => request<void>(`/groups/${id}`, { method: "DELETE" }),
   confirmRule: (id: string) => request<Rule>(`/rules/${id}/confirm`, { method: "POST" }),
+  bulkDeployRules: (items: { rule_id: string; preview_token: string }[]) =>
+    request<BulkDeployResult>("/rules/bulk/deploy", { method: "POST", body: JSON.stringify({ items }) }),
+  bulkConfirmRules: (ruleIds: string[]) =>
+    request<BulkConfirmResult>("/rules/bulk/confirm", { method: "POST", body: JSON.stringify({ rule_ids: ruleIds }) }),
   deleteRule: (id: string) => request<void>(`/rules/${id}`, { method: "DELETE" }),
 
   searchLogs: (params: LogSearchParams = {}) =>
@@ -1882,6 +1888,33 @@ export const api = {
 
 export interface GroupWrite { name: string; description: string; host_ids: string[]; }
 export interface DeviceGroup extends GroupWrite { id: string; }
+export interface RuleUsage {
+  rule_id: string;
+  state: "used" | "unused" | "collecting" | "unknown" | "disabled";
+  last_hit_at: string | null;
+  watching_since: string | null;
+  hosts_total: number;
+  hosts_tracked: number;
+  days: number;
+}
+export interface OverlapRef { uuid: string; description: string; managed: { kind: string; id: string; name: string } | null }
+export interface RuleOverlapHost {
+  host_id: string; host_name: string; status: "ok" | "unavailable" | "skipped";
+  overlap: { kind: "shadowed" | "duplicate"; confidence: "sure" | "probable"; by: OverlapRef & { enabled: boolean } } | null;
+  makes_pointless: (OverlapRef & { kind: "shadowed" | "duplicate"; confidence: "sure" | "probable" })[];
+  makes_pointless_total: number;
+}
+export interface RuleOverlap { hosts: RuleOverlapHost[]; has_findings: boolean }
+/** Most rules one bulk request may carry (the server refuses more). */
+export const BULK_RULE_LIMIT = 50;
+export interface BulkRuleResult {
+  rule_id: string;
+  status: "deployed" | "attention" | "failed" | "skipped";
+  error: { code: string; params?: Record<string, unknown> } | null;
+  rule: Rule | null;
+}
+export interface BulkDeployResult { results: BulkRuleResult[]; deployed: number; attention: number; failed: number; skipped: number; }
+export interface BulkConfirmResult { confirmed: number; results: BulkRuleResult[]; }
 export interface RuleRevision { id: string; created_at: string; note: string; snapshot: RuleCreate; }
 export interface RulePreview {
   token: string; can_deploy: boolean; basis: string; warnings: string[];
@@ -2146,6 +2179,7 @@ export interface NotificationSettings {
   alert_confirm_samples: number;
   resource_confirm_samples: number;
   service_watchlist: string[];
+  language: "auto" | "de" | "en";
   poll_interval_seconds: number;
   updated_at: string;
 }
@@ -2207,6 +2241,7 @@ export interface NotificationSettingsUpdate {
   alert_confirm_samples?: number;
   resource_confirm_samples?: number;
   service_watchlist?: string[];
+  language?: "auto" | "de" | "en";
   poll_interval_seconds?: number;
 }
 

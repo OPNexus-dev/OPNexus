@@ -20,6 +20,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import server
+os.environ.setdefault("OPNEXUS_LANG", "de")  # the updater speaks English by default; these tests check the German texts
 
 FAKE = """#!/bin/sh
 case "$1" in

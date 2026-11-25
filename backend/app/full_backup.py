@@ -32,6 +32,7 @@ from pathlib import Path
 
 from sqlalchemy.engine import make_url
 
+from app.cli_lang import t
 from app.config import settings
 from app.services import backup_crypto
 from app.version import APP_VERSION
@@ -82,7 +83,7 @@ def _restore_database(source: Path) -> None:
         env=env, capture_output=True, text=True, timeout=1800,
     )
     if result.returncode != 0:
-        raise FullBackupError(f"pg_restore fehlgeschlagen: {result.stderr.strip()[:400]}")
+        raise FullBackupError(t(f"pg_restore fehlgeschlagen: {result.stderr.strip()[:400]}", f"pg_restore failed: {result.stderr.strip()[:400]}"))
 
 
 def _head_revision() -> str:
@@ -143,11 +144,11 @@ def _host_members(host_files: bytes | None) -> list[tuple[tarfile.TarInfo, bytes
     if host_files is None:
         return []
     if len(host_files) > _HOST_MAX_BYTES:
-        raise FullBackupError("Die Dateien des Servers sind zu groß")
+        raise FullBackupError(t("Die Dateien des Servers sind zu groß", "The server files are too large"))
     try:
         src = tarfile.open(fileobj=io.BytesIO(host_files), mode="r:")
     except tarfile.TarError:
-        raise FullBackupError("Die Dateien des Servers sind kein gültiges tar") from None
+        raise FullBackupError(t("Die Dateien des Servers sind kein gültiges tar", "The server files are not a valid tar")) from None
     out = []
     with src:
         for member in src.getmembers():
@@ -155,9 +156,9 @@ def _host_members(host_files: bytes | None) -> list[tuple[tarfile.TarInfo, bytes
             if not parts:
                 continue
             if member.name.startswith(("/", "\\")) or ".." in parts or parts[0] not in _HOST_TOP:
-                raise FullBackupError(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}")
+                raise FullBackupError(t(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}", f"Illegal entry in the server files: {member.name!r}"))
             if not (member.isfile() or member.isdir()):
-                raise FullBackupError(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}")
+                raise FullBackupError(t(f"Unzulässiger Eintrag in den Dateien des Servers: {member.name!r}", f"Illegal entry in the server files: {member.name!r}"))
             info = tarfile.TarInfo("host/" + "/".join(parts))
             info.mtime, info.mode = member.mtime, (0o600 if member.isfile() else 0o700)
             if member.isdir():
@@ -168,13 +169,13 @@ def _host_members(host_files: bytes | None) -> list[tuple[tarfile.TarInfo, bytes
                 info.size = len(content)
                 out.append((info, content))
     if not out:
-        raise FullBackupError("Die Dateien des Servers sind leer")
+        raise FullBackupError(t("Die Dateien des Servers sind leer", "The server files are empty"))
     return out
 
 
 def create(passphrase: str, *, dump=_dump_database, revision=None, host_files: bytes | None = None) -> bytes:
     if len(passphrase) < MIN_PASSPHRASE:
-        raise FullBackupError(f"Die Passphrase braucht mindestens {MIN_PASSPHRASE} Zeichen")
+        raise FullBackupError(t(f"Die Passphrase braucht mindestens {MIN_PASSPHRASE} Zeichen", f"The passphrase needs at least {MIN_PASSPHRASE} characters"))
     manifest = {
         "format": FORMAT, "app_version": APP_VERSION, "db_revision": revision or _head_revision(),
         "created_at": datetime.now(timezone.utc).isoformat(), "data": sorted(_DATA_DIRS),
@@ -187,10 +188,12 @@ def create(passphrase: str, *, dump=_dump_database, revision=None, host_files: b
         blob = _pack(manifest, dump, host_files)
         if _fingerprint() == before:
             return backup_crypto.encrypt(blob, passphrase)
-    raise FullBackupError(
+    raise FullBackupError(t(
         "Während der Sicherung haben sich Geheimnisse geändert (jemand legt gerade Objekte an oder löscht sie). "
-        "Die Sicherung wäre in sich unstimmig; bitte gleich noch einmal versuchen."
-    )
+        "Die Sicherung wäre in sich unstimmig; bitte gleich noch einmal versuchen.",
+        "Secrets changed during the backup (someone is creating or deleting objects right now). "
+        "The backup would be inconsistent; please try again right away.",
+    ))
 
 
 def _open(blob: bytes, passphrase: str) -> tarfile.TarFile:
@@ -201,7 +204,7 @@ def _open(blob: bytes, passphrase: str) -> tarfile.TarFile:
     try:
         return tarfile.open(fileobj=io.BytesIO(plain), mode="r:gz")
     except tarfile.TarError:
-        raise FullBackupError("Das ist keine vollständige OPNexus-Sicherung (Archiv unlesbar)") from None
+        raise FullBackupError(t("Das ist keine vollständige OPNexus-Sicherung (Archiv unlesbar)", "This is not a complete OPNexus backup (archive unreadable)")) from None
 
 
 def _manifest(tar: tarfile.TarFile) -> dict:
@@ -211,7 +214,7 @@ def _manifest(tar: tarfile.TarFile) -> dict:
     except (KeyError, ValueError):
         manifest = None
     if not isinstance(manifest, dict) or manifest.get("format") != FORMAT:
-        raise FullBackupError("Das ist keine vollständige OPNexus-Sicherung (Manifest fehlt oder ist neuer)")
+        raise FullBackupError(t("Das ist keine vollständige OPNexus-Sicherung (Manifest fehlt oder ist neuer)", "This is not a complete OPNexus backup (manifest missing or newer)"))
     return manifest
 
 
@@ -225,19 +228,21 @@ def restore(blob: bytes, passphrase: str, *, restore_db=_restore_database, head=
     with _open(blob, passphrase) as tar:
         manifest = _manifest(tar)
         if not _older_or_equal(manifest.get("db_revision"), head):
-            raise FullBackupError(
+            raise FullBackupError(t(
                 f"Die Sicherung stammt aus einer neueren OPNexus-Version ({manifest.get('app_version')}). "
-                "Erst auf diese Version aktualisieren, dann zurückspielen."
-            )
+                "Erst auf diese Version aktualisieren, dann zurückspielen.",
+                f"The backup comes from a newer OPNexus version ({manifest.get('app_version')}). "
+                "Update to that version first, then restore.",
+            ))
         members = tar.getmembers()
         for member in members:  # reject anything that could escape: absolute paths, .., links, devices
             if member.name.startswith(("/", "\\")) or ".." in Path(member.name).parts or not (member.isfile() or member.isdir()):
-                raise FullBackupError(f"Unzulässiger Eintrag im Archiv: {member.name!r}")
+                raise FullBackupError(t(f"Unzulässiger Eintrag im Archiv: {member.name!r}", f"Illegal entry in the archive: {member.name!r}"))
         known = {f"data/{name}" for name in _DATA_DIRS}
         with tempfile.TemporaryDirectory() as tmp:
             dump = tar.extractfile("database.dump")
             if dump is None:
-                raise FullBackupError("Die Sicherung enthält keine Datenbank")
+                raise FullBackupError(t("Die Sicherung enthält keine Datenbank", "The backup contains no database"))
             dump_path = Path(tmp) / "database.dump"
             dump_path.write_bytes(dump.read())
             restore_db(dump_path)
@@ -306,7 +311,7 @@ def _main(argv: list[str]) -> int:
         else:
             print(json.dumps(restore(sys.stdin.buffer.read(), passphrase), indent=1))
     except (FullBackupError, subprocess.SubprocessError, OSError) as exc:
-        print(f"Fehler: {exc}", file=sys.stderr)
+        print(t(f"Fehler: {exc}", f"Error: {exc}"), file=sys.stderr)
         return 1
     return 0
 

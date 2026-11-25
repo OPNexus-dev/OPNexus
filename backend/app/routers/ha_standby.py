@@ -25,6 +25,9 @@ router = APIRouter(prefix="/ha/standby", tags=["ha-standby"])
 
 # The sentence that has to be typed to take over although the partner cannot be asked to stop (same as `opnexus ha promote --force`).
 FORCE_SENTENCE = "alter Primaer ist aus"
+# The same sentence in English (as `opnexus ha promote --force` accepts both): either one confirms; the page shows the one
+# of the language it is displayed in.
+FORCE_SENTENCE_EN = "old primary is off"
 
 
 def _require_standby() -> None:
@@ -123,7 +126,7 @@ async def status(request: Request, db: AsyncSession = Depends(get_db)) -> dict:
         "sync_age_seconds": None if snap.last_sync_at is None else max(0, int((now - snap.last_sync_at).total_seconds())),
         "secrets": {"complete": not (missing["hosts"] or missing["totp"]), "hosts": missing["hosts"], "totp": missing["totp"]},
         "partner": {"agent": reachable, "health": None if health is None else {"role": health[0], "epoch": health[1]}},
-        "promote": {"mode": decide_promote(reachable, health), "force_sentence": FORCE_SENTENCE},
+        "promote": {"mode": decide_promote(reachable, health), "force_sentence": FORCE_SENTENCE, "force_sentence_en": FORCE_SENTENCE_EN},
         "job": (agent or {}).get("job"),
     }
 
@@ -149,8 +152,8 @@ async def promote(payload: PromoteRequest, request: Request, db: AsyncSession = 
         raise api_error(503, ErrorCode.UPDATER_UNAVAILABLE)
     if mode == "refused":
         raise api_error(409, ErrorCode.PEER_IS_LEADER)
-    if mode == "force" and not (payload.force and payload.confirm.strip() == FORCE_SENTENCE):
-        raise api_error(400, ErrorCode.STANDBY_CONFIRMATION_REQUIRED, sentence=FORCE_SENTENCE)
+    if mode == "force" and not (payload.force and payload.confirm.strip() in (FORCE_SENTENCE, FORCE_SENTENCE_EN)):
+        raise api_error(400, ErrorCode.STANDBY_CONFIRMATION_REQUIRED, sentence=FORCE_SENTENCE, sentence_en=FORCE_SENTENCE_EN)
     try:
         return await updater_client.ha_local_promote(force=(mode == "force"), actor=str(actor))
     except updater_client.UpdaterUnavailable:

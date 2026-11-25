@@ -92,7 +92,10 @@
         "watchlist": "Watched services",
         "watchlistHint": "OPNsense service names, comma-separated. OPNexus reports a service only if it ran before and has stopped now. Remove services you stopped on purpose.",
         "serverDiskLimit": "OPNexus server: disk full from (%)"
-      }
+      },
+      "textLanguage": "Language of the messages",
+      "textLanguageAuto": "Automatic",
+      "textLanguageHint": "Applies to email, the webhook text and all other channels. Automatic follows the language of the oldest administrator account (English if none was chosen). The fields in the webhook's JSON object \"context\" stay unchanged."
     },
     "logs": {
       "saved": "Log ingest settings saved.",
@@ -656,6 +659,89 @@
     "deleteTypeNameAria": "Type the host name to confirm"
   },
   "rules": {
+    "view": {
+      "label": "View",
+      "cards": "Cards",
+      "table": "Table"
+    },
+    "table": {
+      "col": {
+        "action": "Action",
+        "name": "Rule",
+        "interface": "Interface",
+        "protocol": "Protocol",
+        "source": "Source",
+        "destination": "Destination",
+        "targets": "Targets",
+        "state": "Status",
+        "lastHit": "Last hit",
+        "actions": "Actions"
+      },
+      "sortBy": "Sort by {column}",
+      "confirmShort": "Confirm",
+      "selectedHint": "Select with the checkbox to deploy several rules at once."
+    },
+    "usage": {
+      "filter": "Usage",
+      "all": "Any usage",
+      "used": "In use",
+      "unused": "Unused",
+      "collecting": "Collecting data",
+      "unknown": "Unknown",
+      "disabled": "Disabled",
+      "justNow": "just now",
+      "minutesAgo": "{n} min ago",
+      "hoursAgo": "{n} h ago",
+      "daysAgo": "{n} d ago",
+      "unusedBadge": "No hit in {days} d",
+      "collectingBadge": "Collecting data",
+      "usedTip": "Last hit: {date}",
+      "unusedTip": "Watched since {date}: no hit in {days} days. Check whether the rule is still needed.",
+      "collectingTip": "OPNexus has watched this rule since {date}. A rule counts as unused only after {days} days without a hit.",
+      "unknownTip": "No usage data yet: the rule is not deployed or has not been sampled so far.",
+      "disabledTip": "The rule is switched off.",
+      "partialTip": "Data from {tracked} of {total} targets."
+    },
+    "overlap": {
+      "checking": "Checking the target firewalls for overlaps…",
+      "shadowed": "On {host} the earlier rule “{by}” already decides everything this rule matches: it would never take effect.",
+      "duplicate": "On {host} this rule duplicates the earlier rule “{by}” (same action, same traffic).",
+      "managed": "managed by OPNexus",
+      "probable": "probably",
+      "sure": "certain",
+      "makesPointless": "On {host} this rule would make {count} later rule(s) pointless: {list}.",
+      "more": "and {count} more",
+      "unavailable": "The overlap check could not read {host}. The deployment is not affected."
+    },
+    "bulk": {
+      "selectRule": "Select rule {name}",
+      "selectAll": "Select all shown rules",
+      "selected": "{count} selected",
+      "clear": "Clear selection",
+      "limit": "At most {max} rules per run.",
+      "review": "Review and deploy ({count})",
+      "confirmPending": "Confirm all pending ({count})",
+      "confirmedAll": "{count} deployments confirmed.",
+      "title": "Deploy {count} rules",
+      "intro": "Every rule is deployed on its own, one after the other, with exactly the approval shown here. A rule that is refused does not stop the others. Each deployment must be confirmed within the time limit, otherwise it is rolled back automatically.",
+      "willDeploy": "{count} of {total} rules will be deployed.",
+      "nothingToDeploy": "None of the selected rules has anything to deploy.",
+      "notDeployable": "Not deployed in this run",
+      "noChange": "Already in sync, nothing to deploy.",
+      "previewFailed": "The preview could not be loaded: {error}",
+      "details": "Show changes",
+      "deploy": "Deploy {count} rules",
+      "deploying": "Deploying…",
+      "summary": "{deployed} deployed, {attention} need attention, {failed} not deployed, {skipped} skipped.",
+      "status": {
+        "deployed": "Deployed, confirmation pending",
+        "attention": "Written, needs attention",
+        "failed": "Not deployed",
+        "skipped": "Skipped"
+      },
+      "confirmDeployed": "Confirm all deployed",
+      "close": "Close"
+    },
     "title": "Firewall rules",
     "groupTitle": "Rules · {name}",
     "new": "New rule",
@@ -1082,6 +1168,7 @@
     "OUTBOUND_MODE_UNREADABLE": "Outbound mode on {host} not readable: {reason}",
     "INVALID_CHARACTERS": "The input contains a character that cannot be stored (e.g. a NUL character)",
     "UPSTREAM_REJECTED": "The firewall rejected the request: {reason}",
+    "BULK_DEPLOY_UNEXPECTED": "Unexpected error during the bulk deploy; the remaining rules were not touched. Check this rule on the firewall.",
     "SERVICE_NOT_FOUND": "{service}: service not found on this firewall",
     "SERVICE_LOCKED": "{service}: service is locked and cannot be controlled via the API",
     "OUTBOUND_MODE_BLOCKS_PUSH": "{host}: outbound NAT mode “{mode}” does not allow a push. Switch the mode to Hybrid/Manual in OPNsense itself. OPNexus does not change this mode.",
@@ -1225,7 +1312,7 @@
     "PEER_IS_LEADER": "The partner still answers as leader. A takeover would make two primaries; switch the partner off safely first.",
     "STANDBY_ADMIN_ONLY": "Only local accounts with the administrator role can sign in on the standby.",
     "STANDBY_LOGIN_UNAVAILABLE": "Signing in is not possible here yet: the second-factor secret of this account has not been synced from the primary. Try again later or use `opnexus ha promote` in a terminal.",
-    "STANDBY_CONFIRMATION_REQUIRED": "Please type the sentence “{sentence}” exactly to confirm that the partner really is off.",
+    "STANDBY_CONFIRMATION_REQUIRED": "Please type the sentence “{sentence_en}” (or in German “{sentence}”) exactly to confirm that the partner really is off.",
     "HA_LOCAL_ACCOUNT_REQUIRED": "This action needs a local account with a password (single sign-on accounts cannot confirm it). Alternative: the terminal.",
     "HA_NOT_PRIMARY": "This action is only possible on the primary.",
     "HA_ALREADY_IN_PAIR": "This node is already part of an HA pair.",

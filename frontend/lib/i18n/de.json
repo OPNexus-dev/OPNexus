@@ -92,7 +92,10 @@
         "watchlist": "Überwachte Dienste",
         "watchlistHint": "OPNsense-Dienstnamen, kommagetrennt. OPNexus meldet einen Dienst nur, wenn er zuvor lief und jetzt nicht mehr. Absichtlich gestoppte Dienste hier entfernen.",
         "serverDiskLimit": "OPNexus-Server: Platte voll ab (%)"
-      }
+      },
+      "textLanguage": "Sprache der Nachrichten",
+      "textLanguageAuto": "Automatisch",
+      "textLanguageHint": "Gilt für E-Mail, Webhook-Text und alle weiteren Kanäle. Automatisch folgt der Sprache des ältesten Administrator-Kontos (ohne Wahl: Englisch). Die Felder im JSON-Objekt „context“ des Webhooks bleiben unverändert."
     },
     "logs": {
       "saved": "Log-Ingest-Einstellungen gespeichert.",
@@ -656,6 +659,89 @@
     "deleteTypeNameAria": "Hostnamen zur Bestätigung eingeben"
   },
   "rules": {
+    "view": {
+      "label": "Ansicht",
+      "cards": "Karten",
+      "table": "Tabelle"
+    },
+    "table": {
+      "col": {
+        "action": "Aktion",
+        "name": "Regel",
+        "interface": "Schnittstelle",
+        "protocol": "Protokoll",
+        "source": "Quelle",
+        "destination": "Ziel",
+        "targets": "Ziele",
+        "state": "Status",
+        "lastHit": "Zuletzt getroffen",
+        "actions": "Aktionen"
+      },
+      "sortBy": "Nach {column} sortieren",
+      "confirmShort": "Bestätigen",
+      "selectedHint": "Mit der Checkbox auswählen, um mehrere Regeln gleichzeitig auszurollen."
+    },
+    "usage": {
+      "filter": "Nutzung",
+      "all": "Jede Nutzung",
+      "used": "In Benutzung",
+      "unused": "Ungenutzt",
+      "collecting": "Sammelt Daten",
+      "unknown": "Unbekannt",
+      "disabled": "Deaktiviert",
+      "justNow": "gerade eben",
+      "minutesAgo": "vor {n} Min.",
+      "hoursAgo": "vor {n} Std.",
+      "daysAgo": "vor {n} T.",
+      "unusedBadge": "Kein Treffer seit {days} T.",
+      "collectingBadge": "Sammelt Daten",
+      "usedTip": "Zuletzt getroffen: {date}",
+      "unusedTip": "Beobachtet seit {date}: seit {days} Tagen kein Treffer. Prüfen, ob die Regel noch gebraucht wird.",
+      "collectingTip": "OPNexus beobachtet diese Regel seit {date}. Als ungenutzt gilt sie erst nach {days} Tagen ohne Treffer.",
+      "unknownTip": "Noch keine Nutzungsdaten: Die Regel ist nicht ausgerollt oder wurde noch nicht abgefragt.",
+      "disabledTip": "Die Regel ist ausgeschaltet.",
+      "partialTip": "Daten von {tracked} von {total} Zielen."
+    },
+    "overlap": {
+      "checking": "Die Ziel-Firewalls werden auf Überschneidungen geprüft …",
+      "shadowed": "Auf {host} entscheidet die frühere Regel „{by}“ schon alles, was diese Regel trifft: Sie würde nie wirken.",
+      "duplicate": "Auf {host} doppelt diese Regel die frühere Regel „{by}“ (gleiche Aktion, gleicher Verkehr).",
+      "managed": "von OPNexus verwaltet",
+      "probable": "wahrscheinlich",
+      "sure": "sicher",
+      "makesPointless": "Auf {host} würde diese Regel {count} spätere Regel(n) wirkungslos machen: {list}.",
+      "more": "und {count} weitere",
+      "unavailable": "Die Überschneidungsprüfung konnte {host} nicht lesen. Das Ausrollen ist davon nicht betroffen."
+    },
+    "bulk": {
+      "selectRule": "Regel {name} auswählen",
+      "selectAll": "Alle angezeigten Regeln auswählen",
+      "selected": "{count} ausgewählt",
+      "clear": "Auswahl aufheben",
+      "limit": "Höchstens {max} Regeln pro Durchlauf.",
+      "review": "Prüfen und ausrollen ({count})",
+      "confirmPending": "Alle offenen bestätigen ({count})",
+      "confirmedAll": "{count} Deployments bestätigt.",
+      "title": "{count} Regeln ausrollen",
+      "intro": "Jede Regel wird einzeln und nacheinander mit genau der hier gezeigten Freigabe ausgerollt. Eine abgelehnte Regel hält die anderen nicht auf. Jedes Deployment muss innerhalb der Frist bestätigt werden, sonst wird es automatisch zurückgenommen.",
+      "willDeploy": "{count} von {total} Regeln werden ausgerollt.",
+      "nothingToDeploy": "Keine der ausgewählten Regeln hat etwas auszurollen.",
+      "notDeployable": "Wird in diesem Durchlauf nicht ausgerollt",
+      "noChange": "Bereits abgeglichen, nichts auszurollen.",
+      "previewFailed": "Die Vorschau konnte nicht geladen werden: {error}",
+      "details": "Änderungen anzeigen",
+      "deploy": "{count} Regeln ausrollen",
+      "deploying": "Wird ausgerollt…",
+      "summary": "{deployed} ausgerollt, {attention} brauchen Aufmerksamkeit, {failed} nicht ausgerollt, {skipped} übersprungen.",
+      "status": {
+        "deployed": "Ausgerollt, Bestätigung offen",
+        "attention": "Geschrieben, prüfen",
+        "failed": "Nicht ausgerollt",
+        "skipped": "Übersprungen"
+      },
+      "confirmDeployed": "Alle ausgerollten bestätigen",
+      "close": "Schließen"
+    },
     "title": "Firewall-Regeln",
     "groupTitle": "Regeln · {name}",
     "new": "Neue Regel",
@@ -1082,6 +1168,7 @@
     "OUTBOUND_MODE_UNREADABLE": "Outbound-Modus auf {host} nicht lesbar: {reason}",
     "INVALID_CHARACTERS": "Die Eingabe enthält ein nicht speicherbares Zeichen (z. B. ein NUL-Zeichen)",
     "UPSTREAM_REJECTED": "Die Firewall hat die Anfrage abgelehnt: {reason}",
+    "BULK_DEPLOY_UNEXPECTED": "Unerwarteter Fehler beim Sammel-Ausrollen; die übrigen Regeln wurden nicht angefasst. Stand dieser Regel auf der Firewall prüfen.",
     "SERVICE_NOT_FOUND": "{service}: Dienst auf dieser Firewall nicht gefunden",
     "SERVICE_LOCKED": "{service}: Dienst ist gesperrt und kann nicht per API gesteuert werden",
     "OUTBOUND_MODE_BLOCKS_PUSH": "{host}: Outbound-NAT-Modus „{mode}“ erlaubt keinen Push. Modus in OPNsense selbst auf Hybrid/Manuell umstellen. OPNexus ändert diesen Modus nicht.",
@@ -1225,7 +1312,7 @@
     "PEER_IS_LEADER": "Der Partner antwortet noch als Leader. Eine Übernahme ergäbe zwei Primäre; erst den Partner sicher abschalten.",
     "STANDBY_ADMIN_ONLY": "Am Standby können sich nur lokale Konten mit der Rolle Administrator anmelden.",
     "STANDBY_LOGIN_UNAVAILABLE": "Die Anmeldung ist hier noch nicht möglich: das Geheimnis für den zweiten Faktor dieses Kontos ist noch nicht vom Primär abgeglichen. Später erneut versuchen oder `opnexus ha promote` im Terminal nutzen.",
-    "STANDBY_CONFIRMATION_REQUIRED": "Bitte den Satz „{sentence}“ genau eintippen, um zu bestätigen, dass der Partner wirklich aus ist.",
+    "STANDBY_CONFIRMATION_REQUIRED": "Bitte den Satz „{sentence}“ (oder englisch „{sentence_en}“) genau eintippen, um zu bestätigen, dass der Partner wirklich aus ist.",
     "HA_LOCAL_ACCOUNT_REQUIRED": "Diese Aktion braucht ein lokales Konto mit Passwort (Konten über Single Sign-on können sie nicht bestätigen). Alternative: das Terminal.",
     "HA_NOT_PRIMARY": "Diese Aktion ist nur am Primär möglich.",
     "HA_ALREADY_IN_PAIR": "Dieser Knoten ist schon Teil eines HA-Paars.",

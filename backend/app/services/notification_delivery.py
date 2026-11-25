@@ -17,7 +17,7 @@ import httpx
 from app import runtime_settings
 from app.config import settings
 from app.models.notification import NotificationProblem, NotificationSettings
-from app.services import notification_secret_store, url_guard
+from app.services import notification_i18n, notification_secret_store, url_guard
 
 
 class NotificationDeliveryError(Exception):
@@ -55,12 +55,16 @@ _LABELS = {
 }
 
 
-def render_message(problem: NotificationProblem, transition: str) -> tuple[str, str]:
+def render_message(problem: NotificationProblem, transition: str, language: str | None = None) -> tuple[str, str]:
     """transition: "opened" | "resolved". Single source of copy for both
-    delivery channels, so webhook and email never drift in wording."""
-    label = _LABELS.get(problem.problem_type, problem.problem_type)
+    delivery channels, so webhook and email never drift in wording.
+    ``language``: "de" (the source texts) or "en"; None = the language of the running delivery
+    (notification_i18n.current(), set once per check cycle from the notification settings)."""
+    language = language or notification_i18n.current()
+    label = notification_i18n.label(problem.problem_type, language, _LABELS)
     if transition == "resolved":
-        subject = f"OPNexus: {label} behoben"
+        suffix = notification_i18n.RESOLVED_EN if language == "en" else "behoben"
+        subject = f"OPNexus: {label} {suffix}"
     else:
         subject = f"OPNexus: {label}"
 
@@ -68,7 +72,7 @@ def render_message(problem: NotificationProblem, transition: str) -> tuple[str, 
     for key, value in problem.context.items():
         if value in (None, "", []):
             continue
-        lines.append(f"{key}: {value}")
+        lines.append(f"{notification_i18n.key_name(key, language)}: {notification_i18n.value_text(value, language)}")
     body = "\n".join(lines)
     return subject, body
 
