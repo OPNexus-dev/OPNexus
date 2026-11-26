@@ -21,7 +21,8 @@ from app.services.interface_service import check_interface_consistency, role_tar
 from app.services.rule_deploy_service import _build_payload as _payload_for
 from app.services.opnsense_client import OpnsenseAPIError
 from app.services.rule_deploy_service import confirm_rule, deploy_rule, undeploy_rule, revert_deployment
-from app.services import rule_adopt_service, rule_overlap_service, rule_usage_service, variables_service
+from app.routers.governance import get_settings as get_governance_settings
+from app.services import audit_service, rule_adopt_service, rule_management_guard_service, rule_overlap_service, rule_usage_service, variables_service
 from app.services.adopt_common import LINK_ERRORS, link_api_error
 from app.schemas.rule import AdoptRequest, UnmanagedRule
 
@@ -199,7 +200,7 @@ async def bulk_deploy(body: BulkDeployRequest, db: AsyncSession = Depends(get_db
             results.append(BulkRuleResult(rule_id=item.rule_id, status="skipped"))
             continue
         try:
-            rule = await _deploy_checked(db, item.rule_id, item.preview_token)
+            rule = await _deploy_checked(db, item.rule_id, item.preview_token, item.acknowledge_management_risk, body.comment)
             results.append(BulkRuleResult(rule_id=item.rule_id, status=_bulk_status(rule), rule=rule))
         except HTTPException as exc:
             await db.rollback()
@@ -242,9 +243,13 @@ async def bulk_confirm(body: BulkConfirmRequest, db: AsyncSession = Depends(get_
     return BulkConfirmResult(confirmed=confirmed, results=results)
 
 
-async def _deploy_checked(db: AsyncSession, rule_id: uuid.UUID, preview_token: str | None) -> RuleRead:
+async def _deploy_checked(db: AsyncSession, rule_id: uuid.UUID, preview_token: str | None,
+                          acknowledge_management_risk: bool = False, comment: str | None = None) -> RuleRead:
     """The one write path of "deploy this rule": approval check, consistency checks, deploy. Shared by the single and
     the bulk endpoint so a bulk deploy can never skip a check the single one makes."""
+    comment = (comment or "").strip() or None
+    if comment is None and (await get_governance_settings(db)).require_deploy_comment:
+        raise api_error(422, ErrorCode.DEPLOY_COMMENT_REQUIRED)
     rule = await _load_rule(db, rule_id)
     plan = preview(rule)
     if preview_token is not None and preview_token != plan["token"]:
@@ -274,6 +279,15 @@ async def _deploy_checked(db: AsyncSession, rule_id: uuid.UUID, preview_token: s
                 detail = describe_alias_contents(contents)
                 raise api_error(409, ErrorCode.ALIAS_CONTENT_DIFFERS, field_label=field_label, alias=value, detail=detail)
     await ensure_aliases_settled(db, hosts, [rule.source_net, rule.destination_net, rule.source_port, rule.destination_port])
+    if not acknowledge_management_risk:
+        # The automatic revert needs the way OPNexus -> firewall. Only a SURE finding stops the deploy (R11); unknown is a hint.
+        guard = await rule_management_guard_service.check_rule(db, rule, hosts)
+        if guard["risk"] == "blocks":
+            names = ", ".join(h["host_name"] for h in guard["hosts"] if h["risk"] == "blocks")
+            raise api_error(409, ErrorCode.MANAGEMENT_PATH_AT_RISK, hosts=names)
+    audit_ctx = audit_service.context.get()
+    if audit_ctx is not None:
+        audit_ctx["comment"] = comment   # picked up by the deployment audit entries written below
     await deploy_rule(db, rule, hosts)
     await db.refresh(rule, attribute_names=["deployments"])
     for d in rule.deployments:
@@ -283,7 +297,9 @@ async def _deploy_checked(db: AsyncSession, rule_id: uuid.UUID, preview_token: s
 
 @router.post("/{rule_id}/deploy", response_model=RuleRead)
 async def deploy(rule_id: uuid.UUID, approval: DeployApproval | None = Body(default=None), db: AsyncSession = Depends(get_db)):
-    return await _deploy_checked(db, rule_id, approval.preview_token if approval else None)
+    return await _deploy_checked(db, rule_id, approval.preview_token if approval else None,
+                                 approval.acknowledge_management_risk if approval else False,
+                                 approval.comment if approval else None)
 
 
 @router.post("/{rule_id}/confirm", response_model=RuleRead)
@@ -353,6 +369,16 @@ async def rule_overlap(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     rule = await _load_rule(db, rule_id)
     hosts = variables_service.applicable_hosts(_payload_for, rule, [h for h in effective_hosts(rule) if h.enabled])
     return await rule_overlap_service.check_rule(db, rule, hosts)
+
+
+@router.get("/{rule_id}/management-check")
+async def rule_management_check(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Read-only hint next to the preview (R11): would this rule block the way OPNexus or a management source reaches the
+    firewall? The automatic revert needs that way. Reads the firewalls, writes nothing; a sure finding is what makes the
+    deploy ask for an explicit acknowledgement."""
+    rule = await _load_rule(db, rule_id)
+    hosts = variables_service.applicable_hosts(_payload_for, rule, [h for h in effective_hosts(rule) if h.enabled])
+    return await rule_management_guard_service.check_rule(db, rule, hosts)
 
 
 @router.get("/{rule_id}/revisions")

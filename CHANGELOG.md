@@ -24,7 +24,18 @@ MINOR version. The current version is in `frontend/lib/version.ts` (`APP_VERSION
 maintained by hand — no build pipeline, no git-hash tagging. It is shown in the app on the login page,
 in the footer of every page, on `/about` and in the settings.
 
-Next codenames (in order, when the next MINOR version is due): Berlin, Copenhagen, Dublin, Edinburgh, Florence.
+Next codenames (in order, when the next MINOR version is due): Copenhagen, Dublin, Edinburgh, Florence.
+
+## [1.40.0] "Berlin" — 2026-11-26
+
+- **Safer deploys: the management path is checked.** The automatic rollback runs inside OPNexus and needs the way from OPNexus to the firewall API, so a rule that blocks exactly that way could not be taken back automatically. The preview (single rule and the dialog for several rules) now asks each target firewall, read-only, whether the rule would turn a passing management packet — from OPNexus itself or from a configured management source — into a block. A sure finding needs an explicit acknowledgement, and the server refuses the deploy without it (API and bulk included). A default-deny at the end of the list does not warn while an earlier rule still lets the traffic through. `GET /api/rules/{id}/management-check`.
+- **Comment on deploy (optional setting).** Every rule deploy takes a comment (reason or ticket number), stored in the audit entries and shown in the audit list. *Settings › Sign-in & access › Require a comment when deploying* makes it mandatory (off by default). Migration 0039.
+- **"Used by" for aliases.** A new button on every alias lists the centrally managed rules, port forwards, 1:1 and outbound NAT, hierarchy rules and other aliases that use it; an alias that is still used cannot be deleted any more (the refusal names what uses it). `GET /api/aliases/{id}/usage`.
+- **Audit shows what changed.** Opening a deployment entry shows the changed fields as a before/after table and the comment; the raw record moved to "Technical details", and the bare "HTTP 202" lines are hidden.
+- **Log filters for source IP, destination IP and port.** Three new fields on the log page (one exact address each; port matches source or destination), and every address and port in the table is a click-to-filter link.
+- **One confirmation dialog.** The 35 native browser dialogs (delete, revoke, remove from host, stop service, …) are replaced by one themed, translated dialog that can be used with the keyboard; destructive actions get a red confirm button.
+- **Smaller fixes.** Audit and NAT have their own navigation icons (Logs and Audit shared one, which mattered on phones where the navigation shows icons only); the header of the security page wraps on narrow screens.
+- **Public repository.** The 2026-10-07 security review (with its reproduction material) and the maintainer's release scripts are no longer part of the public snapshot; `SECURITY.md`, the `opnexus` command and the image verification stay.
 
 ## [1.39.2] "Amsterdam" — 2026-11-25
 

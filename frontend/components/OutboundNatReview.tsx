@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { api, OutboundNat, OutboundNatCreate, NatPreview, OutboundNatRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Button } from "@/components/ui/Button";
@@ -26,6 +27,7 @@ export function OutboundNatReview({ rule, mode, onClose, onDeployed, onRestore, 
   const [busy, setBusy] = useState(false);
   const toast = useToast();
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const fieldLabel = (field: string) => (`fields.${field}` !== t(`fields.${field}`) ? t(`fields.${field}`) : field);
   useEffect(() => {
     let active = true;
@@ -57,7 +59,7 @@ export function OutboundNatReview({ rule, mode, onClose, onDeployed, onRestore, 
     const question = action === "remove"
       ? t("review.rule.removeConfirm", { name: rule.description, host: host.host_name })
       : t("review.rule.rollbackConfirm", { host: host.host_name });
-    if (!confirm(question)) return;
+    if (!(await confirmAction(question))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       if (action === "remove") await api.removeOutboundNatPreviousTarget(rule.id, host.host_id, plan.token);

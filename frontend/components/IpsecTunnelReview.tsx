@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { api, IpsecPreview, IpsecTunnel, IpsecTunnelBase, IpsecTunnelRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Button } from "@/components/ui/Button";
@@ -36,6 +37,7 @@ export function IpsecTunnelReview({ tunnel, mode, onClose, onDeployed, onRestore
   const [armed, setArmed] = useState(false);
   const toast = useToast();
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
 
   useEffect(() => {
     let active = true;
@@ -62,7 +64,7 @@ export function IpsecTunnelReview({ tunnel, mode, onClose, onDeployed, onRestore
 
   async function removeTarget(host: IpsecPreview["hosts"][number]) {
     if (!plan) return;
-    if (!confirm(t("review.tunnel.removeConfirm", { name: tunnel.description, host: host.host_name }))) return;
+    if (!(await confirmAction(t("review.tunnel.removeConfirm", { name: tunnel.description, host: host.host_name }), { danger: true }))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       await api.removeIpsecTunnelPreviousTarget(tunnel.id, host.host_id, plan.token);

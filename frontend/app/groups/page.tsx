@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Suspense, useEffect, useState } from "react";
 import { api, DeviceGroup, GroupWrite, GroupImpact, Host, PolicyAlias, Rule } from "@/lib/api";
@@ -29,6 +30,7 @@ export default function GroupsPage() {
 
 function GroupsContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const toast = useToast();
   const router = useRouter();
@@ -68,7 +70,7 @@ function GroupsContent() {
     finally { setBusy(false); }
   }
   async function remove(group: DeviceGroup) {
-    if (!confirm(t("groups.deleteConfirm", { name: group.name }))) return;
+    if (!(await confirmAction(t("groups.deleteConfirm", { name: group.name }), { danger: true }))) return;
     try { await api.deleteGroup(group.id); await load(); toast.show(t("groups.deleted", { name: group.name }), "success"); }
     catch (e) { setError(errorMessage(e, "common.deleteFailed")); }
   }

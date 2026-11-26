@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/Button";
 import { Loading } from "@/components/ui/Loading";
 import { Modal } from "@/components/ui/Modal";
 import { OverlapHint } from "@/components/OverlapHint";
+import { ManagementGuardHint, ManagementGuardState } from "@/components/ManagementGuardHint";
+import { DeployCommentField, useDeployCommentRequired } from "@/components/DeployCommentField";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useEffect, useState } from "react";
@@ -32,6 +34,10 @@ export function BulkDeployModal({ rules: initialRules, onClose, onDone }: { rule
   const [result, setResult] = useState<BulkDeployResult | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [comment, setComment] = useState("");
+  const commentRequired = useDeployCommentRequired();
+  const [guards, setGuards] = useState<Record<string, ManagementGuardState>>({});
+  const setGuard = (id: string) => (state: ManagementGuardState) => setGuards((g) => (g[id]?.risk === state.risk && g[id]?.acknowledged === state.acknowledged ? g : { ...g, [id]: state }));
   const fieldLabel = (field: string) => (`fields.${field}` !== t(`fields.${field}`) ? t(`fields.${field}`) : field);
 
   useEffect(() => {
@@ -46,12 +52,13 @@ export function BulkDeployModal({ rules: initialRules, onClose, onDone }: { rule
   }, []);
 
   const deployable = (loaded ?? []).filter((l) => l.plan?.can_deploy);
+  const unacknowledged = deployable.filter((l) => guards[l.rule.id]?.risk === "blocks" && !guards[l.rule.id]?.acknowledged).length;
   const byId = new Map(rules.map((r) => [r.id, r]));
 
   async function deploy() {
     setBusy(true); setError(null);
     try {
-      const outcome = await api.bulkDeployRules(deployable.map((l) => ({ rule_id: l.rule.id, preview_token: l.plan!.token })));
+      const outcome = await api.bulkDeployRules(deployable.map((l) => ({ rule_id: l.rule.id, preview_token: l.plan!.token, acknowledge_management_risk: guards[l.rule.id]?.risk === "blocks" && guards[l.rule.id]?.acknowledged })), comment);
       setResult(outcome);
       onDone();
     } catch (e) { setError(errorMessage(e, "review.pushFailed")); }
@@ -97,6 +104,7 @@ export function BulkDeployModal({ rules: initialRules, onClose, onDone }: { rule
                     {plan.hosts.map((h) => <li key={h.host_id} className="flex justify-between gap-2"><span>{h.host_name}</span><span className="text-sky-700">{t(`review.actions.${h.action}`)}</span></li>)}
                   </ul>
                   <div className="mt-2"><OverlapHint ruleId={rule.id} compact /></div>
+                  <div className="mt-2"><ManagementGuardHint ruleId={rule.id} compact onChange={setGuard(rule.id)} /></div>
                   <details className="mt-2">
                     <summary className="cursor-pointer text-xs text-slate-500">{t("rules.bulk.details")}</summary>
                     {plan.hosts.filter((h) => h.changes.length > 0 && h.action !== "disabled").map((h) => (
@@ -113,11 +121,13 @@ export function BulkDeployModal({ rules: initialRules, onClose, onDone }: { rule
           })}
         </div>}
         {loaded !== null && <div className="mt-4 space-y-2">
+          {deployable.length > 0 && <DeployCommentField value={comment} onChange={setComment} required={commentRequired} disabled={busy} />}
           <p className="text-sm text-slate-600">{deployable.length === 0 ? t("rules.bulk.nothingToDeploy") : t("rules.bulk.willDeploy", { count: deployable.length, total: loaded.length })}</p>
           <div className="flex flex-wrap gap-2">
-            <Button disabled={busy || deployable.length === 0} loading={busy} onClick={deploy}>{busy ? t("rules.bulk.deploying") : t("rules.bulk.deploy", { count: deployable.length })}</Button>
+            <Button disabled={busy || deployable.length === 0 || unacknowledged > 0 || (commentRequired && !comment.trim())} loading={busy} onClick={deploy}>{busy ? t("rules.bulk.deploying") : t("rules.bulk.deploy", { count: deployable.length })}</Button>
             <Button variant="ghost" disabled={busy} onClick={onClose}>{t("rules.bulk.close")}</Button>
           </div>
+          {unacknowledged > 0 && <p className="text-xs text-red-700">{t("rules.management.needsAck")}</p>}
           <p className="text-xs text-slate-500">{t("review.pushShort")}</p>
         </div>}
       </>}

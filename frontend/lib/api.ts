@@ -705,6 +705,10 @@ export interface AdoptAllResult {
 
 export type PolicyAliasType = "host" | "network" | "port" | "networkgroup" | "mac" | "asn";
 
+export interface AliasUsage {
+  total: number; truncated: boolean;
+  items: { kind: "rule" | "port_forward" | "one_to_one" | "outbound_nat" | "hierarchy_rule" | "alias"; id: string; name: string; fields: string[] }[];
+}
 export interface PolicyAlias {
   id: string;
   name: string;
@@ -768,6 +772,9 @@ export interface LogSearchResult {
 }
 
 export interface LogSearchParams {
+  src?: string;
+  dst?: string;
+  port?: number | "";
   host_id?: string;
   cluster_name?: string;
   q?: string;
@@ -1684,7 +1691,8 @@ export const api = {
   repairRuleLinks: (hostId: string, token: string) =>
     request<{ repaired: number }>(`/rule-order/hosts/${hostId}/links/repair`, { method: "POST", body: JSON.stringify({ token }) }),
   ruleOverlap: (id: string) => request<RuleOverlap>(`/rules/${id}/overlap`),
-  deployRule: (id: string, previewToken: string) => request<Rule>(`/rules/${id}/deploy`, { method: "POST", body: JSON.stringify({ preview_token: previewToken }) }),
+  ruleManagementCheck: (id: string) => request<RuleManagementCheck>(`/rules/${id}/management-check`),
+  deployRule: (id: string, previewToken: string, acknowledgeManagementRisk = false, comment = "") => request<Rule>(`/rules/${id}/deploy`, { method: "POST", body: JSON.stringify({ preview_token: previewToken, ...(acknowledgeManagementRisk ? { acknowledge_management_risk: true } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) }) }),
   listAliases: () => request<PolicyAlias[]>("/aliases"),
   createAlias: (data: PolicyAliasCreate) => request<PolicyAlias>("/aliases", { method: "POST", body: JSON.stringify(data) }),
   updateAlias: (id: string, data: PolicyAliasCreate, expectedUpdatedAt: string) => request<PolicyAlias>(`/aliases/${id}`, { method: "PUT", body: JSON.stringify({ ...data, expected_updated_at: expectedUpdatedAt }) }),
@@ -1693,6 +1701,7 @@ export const api = {
   deployAlias: (id: string, previewToken?: string) => request<PolicyAlias>(`/aliases/${id}/deploy`, { method: "POST", body: previewToken ? JSON.stringify({ preview_token: previewToken }) : undefined }),
   confirmAlias: (id: string) => request<PolicyAlias>(`/aliases/${id}/confirm`, { method: "POST" }),
   deleteAlias: (id: string) => request<void>(`/aliases/${id}`, { method: "DELETE" }),
+  aliasUsage: (id: string) => request<AliasUsage>(`/aliases/${id}/usage`),
   removeAliasPreviousTarget: (id: string, hostId: string, token: string) => request<void>(`/aliases/${id}/deployments/${hostId}/remove`, { method: "POST", body: JSON.stringify({ preview_token: token }) }),
   retryAliasRollback: (id: string, hostId: string, token: string) => request<void>(`/aliases/${id}/deployments/${hostId}/retry-rollback`, { method: "POST", body: JSON.stringify({ preview_token: token }) }),
 
@@ -1704,8 +1713,8 @@ export const api = {
   retryRollback: (id: string, hostId: string, token: string) => request<void>(`/rules/${id}/deployments/${hostId}/retry-rollback`, { method: "POST", body: JSON.stringify({ preview_token: token }) }),
   deleteGroup: (id: string) => request<void>(`/groups/${id}`, { method: "DELETE" }),
   confirmRule: (id: string) => request<Rule>(`/rules/${id}/confirm`, { method: "POST" }),
-  bulkDeployRules: (items: { rule_id: string; preview_token: string }[]) =>
-    request<BulkDeployResult>("/rules/bulk/deploy", { method: "POST", body: JSON.stringify({ items }) }),
+  bulkDeployRules: (items: { rule_id: string; preview_token: string; acknowledge_management_risk?: boolean }[], comment = "") =>
+    request<BulkDeployResult>("/rules/bulk/deploy", { method: "POST", body: JSON.stringify({ items, ...(comment.trim() ? { comment: comment.trim() } : {}) }) }),
   bulkConfirmRules: (ruleIds: string[]) =>
     request<BulkConfirmResult>("/rules/bulk/confirm", { method: "POST", body: JSON.stringify({ rule_ids: ruleIds }) }),
   deleteRule: (id: string) => request<void>(`/rules/${id}`, { method: "DELETE" }),
@@ -1779,6 +1788,7 @@ export const api = {
   testOidc: () => request<{ success: boolean; authorization_endpoint: string }>("/settings/oidc/test", { method: "POST" }),
   getGovernance: () => request<GovernanceSettings>("/settings/governance"),
   updateGovernance: (operators_may_deploy: boolean) => request<GovernanceSettings>("/settings/governance", { method: "PUT", body: JSON.stringify({ operators_may_deploy }) }),
+  setRequireDeployComment: (require_deploy_comment: boolean) => request<GovernanceSettings>("/settings/governance", { method: "PUT", body: JSON.stringify({ require_deploy_comment }) }),
   updateCleanupSettings: (data: CleanupSettingsUpdate) => request<GovernanceSettings>("/settings/governance", { method: "PUT", body: JSON.stringify(data) }),
 
   getOverlay: () => request<{ settings: OverlaySettings; peers: OverlayPeer[] }>("/overlay"),
@@ -1914,6 +1924,12 @@ export interface RuleOverlapHost {
   makes_pointless_total: number;
 }
 export interface RuleOverlap { hosts: RuleOverlapHost[]; has_findings: boolean }
+export type ManagementRisk = "none" | "unknown" | "blocks";
+export interface RuleManagementCheck {
+  risk: ManagementRisk;
+  hosts: { host_id: string; host_name: string; status: "ok" | "unavailable" | "skipped"; risk: ManagementRisk; opnexus_address_known: boolean | null;
+    findings: { who: "opnexus" | "admin" | "none"; port?: number; interface?: string; verdict?: string; sure?: boolean; reason?: string }[] }[];
+}
 /** Most rules one bulk request may carry (the server refuses more). */
 export const BULK_RULE_LIMIT = 50;
 export interface BulkRuleResult {
@@ -2402,7 +2418,7 @@ export interface RuleCleanupResult {
   history: { watching_since: string | null };
 }
 export interface GovernanceSettings {
-  operators_may_deploy: boolean; cleanup_max_rules: number; cleanup_delete_min_days: number;
+  operators_may_deploy: boolean; require_deploy_comment?: boolean; cleanup_max_rules: number; cleanup_delete_min_days: number;
   // The list itself only comes for admins; everybody else just learns whether it is set.
   cleanup_management_sources: string[]; cleanup_management_sources_configured: boolean;
   // Extra management ports (besides API port, 443, 80, 22); the list only for admins, too.

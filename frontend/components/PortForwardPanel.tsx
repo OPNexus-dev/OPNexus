@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { protocolSelect } from "@/lib/protocols";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import Link from "next/link";
@@ -119,6 +120,7 @@ export default function PortForwardPanel() {
 
 function PortForwardContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const [showAdopt, setShowAdopt] = useState(false);
   const toast = useToast();
@@ -341,7 +343,7 @@ function PortForwardContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t("rules.deleteConfirm"))) return;
+    if (!(await confirmAction(t("rules.deleteConfirm"), { danger: true }))) return;
     const description = rules?.find((r) => r.id === id)?.description;
     try { await api.deletePortForward(id); await load(); toast.show(description ? t("rules.deletedNamed", { name: description }) : t("rules.deleted"), "success"); }
     catch (e) { setError(errorMessage(e, "common.deleteFailed")); }

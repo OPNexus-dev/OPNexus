@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { MaintenanceWindowEditor } from "@/components/MaintenanceWindowEditor";
 import { RolloutPlanEditor } from "@/components/RolloutPlanEditor";
 import { RolloutStatusBanner } from "@/components/RolloutStatusBanner";
@@ -26,6 +27,7 @@ type Tab = "runs" | "plans" | "windows";
 
 export default function RolloutsPage() {
   const { t, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const toast = useToast();
   const router = useRouter();
   const readOnly = useReadOnly();
@@ -190,7 +192,7 @@ export default function RolloutsPage() {
                       : <Button variant="outline" onClick={() => openPreview(p, "activate")}><Power size={14} />{t("rollouts.plan.activate")}</Button>)}
                     {p.auto_start && p.active && !p.fingerprint_ok && <Button variant="outline" onClick={() => openPreview(p, "activate")}><Power size={14} />{t("rollouts.plan.activate")}</Button>}
                     <Button variant="outline" aria-label={t("rollouts.plan.edit")} title={t("rollouts.plan.edit")} onClick={() => setEditPlan(p)}><Pencil size={14} /></Button>
-                    <Button variant="dangerSubtle" aria-label={t("common.delete")} title={t("common.delete")} onClick={() => confirm(t("rollouts.plan.deleteConfirm", { name: p.name })) && act(() => api.deleteRolloutPlan(p.id), "rollouts.plan.deleted")}><Trash2 size={14} /></Button>
+                    <Button variant="dangerSubtle" aria-label={t("common.delete")} title={t("common.delete")} onClick={async () => { if (await confirmAction(t("rollouts.plan.deleteConfirm", { name: p.name }), { danger: true })) act(() => api.deleteRolloutPlan(p.id), "rollouts.plan.deleted"); }}><Trash2 size={14} /></Button>
                   </div>
                 )}
               </div>
@@ -219,7 +221,7 @@ export default function RolloutsPage() {
                 {!readOnly && (
                   <div className="flex gap-2">
                     <Button variant="outline" aria-label={t("mwindows.edit")} title={t("mwindows.edit")} onClick={() => setEditWindow(w)}><Pencil size={14} /></Button>
-                    <Button variant="dangerSubtle" aria-label={t("common.delete")} title={t("common.delete")} onClick={() => confirm(t("mwindows.deleteConfirm", { name: w.name })) && act(() => api.deleteMaintenanceWindow(w.id), "mwindows.deleted")}><Trash2 size={14} /></Button>
+                    <Button variant="dangerSubtle" aria-label={t("common.delete")} title={t("common.delete")} onClick={async () => { if (await confirmAction(t("mwindows.deleteConfirm", { name: w.name }), { danger: true })) act(() => api.deleteMaintenanceWindow(w.id), "mwindows.deleted"); }}><Trash2 size={14} /></Button>
                   </div>
                 )}
               </div>

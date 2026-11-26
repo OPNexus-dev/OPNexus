@@ -86,6 +86,8 @@ def deployment_history(session, flush_context, instances):
             "rollback_payload": copy.deepcopy(dep.previous_payload),
             "revert_deadline": dep.revert_deadline.isoformat() if dep.revert_deadline else None,
         }
+        if ctx.get("comment"):
+            details["comment"] = ctx["comment"]
         # A failed push may never have populated last_payload. Preserve the
         # intended payload separately from the last known applied state.
         if entity is not None and action == "deploy":

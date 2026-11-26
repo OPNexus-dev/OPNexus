@@ -1,5 +1,7 @@
 {
   "common": {
+    "confirmTitle": "Please confirm",
+    "confirm": "Confirm",
     "save": "Save",
     "actions": "Actions",
     "statusOnline": "Online",
@@ -702,6 +704,23 @@
       "disabledTip": "The rule is switched off.",
       "partialTip": "Data from {tracked} of {total} targets."
     },
+    "comment": {
+      "label": "Comment",
+      "optional": "optional",
+      "required": "required",
+      "placeholder": "Why does this go out now? (e.g. ticket number or reason)",
+      "needed": "Please enter a comment."
+    },
+    "management": {
+      "checking": "Checking whether the rule blocks management access…",
+      "blocks": "Warning: on {host} this rule would block access {who} to the firewall. The automatic revert runs in OPNexus and could then no longer step in; the firewall would have to be reset by hand.",
+      "whoOpnexus": "from OPNexus",
+      "whoAdmin": "from a management source",
+      "whoBoth": "from OPNexus and a management source",
+      "acknowledge": "I understand the firewall would then have to be reset by hand, and I want to deploy anyway.",
+      "unknown": "Whether this rule blocks management access could not be checked (address of OPNexus or management source unknown). If something goes wrong, the automatic revert cannot step in.",
+      "needsAck": "Please acknowledge the management-connection warning first."
+    },
     "overlap": {
       "checking": "Checking the target firewalls for overlaps…",
       "shadowed": "On {host} the earlier rule “{by}” already decides everything this rule matches: it would never take effect.",
@@ -1198,6 +1217,10 @@
     "UPSTREAM_REJECTED": "The firewall rejected the request: {reason}",
     "RULE_LINKS_CHANGED": "The assignment has changed since it was shown. Please check again.",
     "BULK_DEPLOY_UNEXPECTED": "Unexpected error during the bulk deploy; the remaining rules were not touched. Check this rule on the firewall.",
+    "LOG_FILTER_INVALID": "“{value}” is not a single IP address. Please enter exactly one address for source and destination.",
+    "DEPLOY_COMMENT_REQUIRED": "A comment is required when deploying (administrator setting). Please add a short reason for the change.",
+    "ALIAS_STILL_USED": "The alias is still used by {count} object(s): {names}. Remove the use first, then delete it.",
+    "MANAGEMENT_PATH_AT_RISK": "The rule would block management access to {hosts}. The automatic revert could then no longer step in. Deploy only after explicit acknowledgement.",
     "SERVICE_NOT_FOUND": "{service}: service not found on this firewall",
     "SERVICE_LOCKED": "{service}: service is locked and cannot be controlled via the API",
     "OUTBOUND_MODE_BLOCKS_PUSH": "{host}: outbound NAT mode “{mode}” does not allow a push. Switch the mode to Hybrid/Manual in OPNsense itself. OPNexus does not change this mode.",
@@ -1925,6 +1948,15 @@
     "save": "Save group"
   },
   "aliases": {
+    "usage": {
+      "title": "Used by",
+      "button": "Used by …",
+      "loading": "Looking for uses …",
+      "empty": "No centrally managed object uses this alias.",
+      "note": "Only objects managed by OPNexus are listed. Rules that exist only on a firewall are not included.",
+      "more": "Further uses are not listed.",
+      "kind": { "rule": "Rule", "port_forward": "Port forward", "one_to_one": "1:1 NAT", "outbound_nat": "Outbound NAT", "hierarchy_rule": "Hierarchy rule", "alias": "Alias" }
+    },
     "loading": "Loading aliases…",
     "loadFailed": "Could not load aliases",
     "createFailed": "Could not create alias",
@@ -2368,6 +2400,7 @@
     "dutiesTitle": "Separation of duties",
     "dutiesIntro": "When switched off, operators can prepare changes (edit, preview) but only an administrator may roll them out: deploy, remove or roll back a deployment, run or schedule maintenance and apply network changes. The refusal is recorded in the audit.",
     "operatorsDeploy": "Operators may roll out changes themselves",
+    "requireComment": "Require a comment when deploying",
     "dutiesSaved": "Saved"
   },
   "report": {
@@ -2587,6 +2620,11 @@
     "keepPassword": "leave empty to keep unchanged"
   },
   "logs": {
+    "srcFilter": "Source IP",
+    "dstFilter": "Destination IP",
+    "portFilter": "Port (source or destination)",
+    "filterBy": "Filter by “{value}”",
+    "clearFilters": "Clear address and port filters",
     "preset": {
       "1h": "Last hour",
       "24h": "Last 24 hours",
@@ -2652,6 +2690,16 @@
     "unavailable": "unavailable"
   },
   "audit": {
+    "detail": {
+      "comment": "Comment",
+      "changes": "Changes",
+      "field": "Field",
+      "before": "Before",
+      "after": "After",
+      "empty": "empty",
+      "noChange": "No field change in this entry.",
+      "technical": "Technical details"
+    },
     "kind": {
       "rule": "Rules",
       "rule_cleanup": "Rule cleanup",

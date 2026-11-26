@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +20,7 @@ const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 
 
 export default function OverlayPage() {
   const { t, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const notAdmin = useNotAdmin();
   const toast = useToast();
   const [settings, setSettings] = useState<OverlaySettings | null>(null);
@@ -79,7 +81,7 @@ export default function OverlayPage() {
   }
 
   async function remove(peer: OverlayPeer) {
-    if (!confirm(t("overlay.deleteConfirm", { name: peer.name }))) return;
+    if (!(await confirmAction(t("overlay.deleteConfirm", { name: peer.name }), { danger: true }))) return;
     try {
       await api.deleteOverlayPeer(peer.id);
       await load();

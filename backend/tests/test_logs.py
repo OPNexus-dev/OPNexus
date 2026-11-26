@@ -299,3 +299,33 @@ async def test_log_settings_size_limit_default_update_and_usage(client):
 @pytest.mark.asyncio
 async def test_log_settings_rejects_negative_size_limit(client):
     assert (await client.put("/api/logs/settings", json={"max_size_gb": -1})).status_code == 422
+
+
+# ── R7: filter by source address, destination address and port ──────────
+
+@pytest.mark.asyncio
+async def test_filter_by_source_destination_and_port(client, respx_mock):
+    h = await _create_host(client, respx_mock, "fw-a", "https://fw-a.test")
+    hid = uuid.UUID(h["id"])
+    await _add_entry(hid, timestamp=_now(), source_net="10.0.0.1", destination_net="10.0.0.2", destination_port="443", digest="1")
+    await _add_entry(hid, timestamp=_now(), source_net="10.0.0.9", destination_net="10.0.0.2", destination_port="22", digest="2")
+    await _add_entry(hid, timestamp=_now(), source_net="10.0.0.1", destination_net="10.0.0.7", destination_port="443", digest="3")
+    got = lambda **p: client.get("/api/logs", params=p)
+    assert (await got(src="10.0.0.1")).json()["total"] == 2
+    assert (await got(dst="10.0.0.2")).json()["total"] == 2
+    assert (await got(src="10.0.0.1", dst="10.0.0.2")).json()["total"] == 1
+    assert (await got(port=22)).json()["total"] == 1                       # destination port
+    assert (await got(port=5000)).json()["total"] == 3                     # the source port of the test entries
+    assert (await got(src="10.0.0.1", port=443)).json()["total"] == 2
+    assert (await got(src="10.0.0.99")).json()["total"] == 0
+
+
+@pytest.mark.asyncio
+async def test_an_address_filter_is_exact_and_normalised_and_garbage_is_refused(client, respx_mock):
+    h = await _create_host(client, respx_mock, "fw-a", "https://fw-a.test")
+    await _add_entry(uuid.UUID(h["id"]), timestamp=_now(), source_net="2001:db8::1", destination_net="10.0.0.2", digest="v6")
+    assert (await client.get("/api/logs", params={"src": "2001:0db8:0:0:0:0:0:1"})).json()["total"] == 1
+    assert (await client.get("/api/logs", params={"src": "10.0.0"})).status_code == 422
+    bad = await client.get("/api/logs", params={"dst": "10.0.0.0/8"})
+    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "LOG_FILTER_INVALID"
+    assert (await client.get("/api/logs", params={"port": 70000})).status_code == 422

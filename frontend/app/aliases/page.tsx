@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -11,6 +12,7 @@ import {
   Plus,
   Pencil,
   History,
+  Link2,
   Copy,
   Rocket,
   RotateCcw,
@@ -23,6 +25,7 @@ import {
 import { WorkflowBadge, workflowStates } from "@/components/WorkflowBadge";
 import { useLanguage } from "@/components/LanguageProvider";
 import { AliasReview } from "@/components/AliasReview";
+import { AliasUsageModal } from "@/components/AliasUsageModal";
 import { LiveAliasesDrift } from "@/components/LiveAliasesDrift";
 import { AdoptObjectsModal } from "@/components/AdoptObjectsModal";
 import { Button } from "@/components/ui/Button";
@@ -69,10 +72,12 @@ export default function AliasesPage() {
 
 function AliasesContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const typeLabel = (type: string) => (aliasTypes.includes(type as PolicyAliasType) ? t(`aliases.type.${type}`) : type);
   const typeHint = (type: PolicyAliasType) => t(`aliases.hint.${type}`);
   const readOnly = useReadOnly();
   const [showAdopt, setShowAdopt] = useState(false);
+  const [usageFor, setUsageFor] = useState<{ id: string; name: string } | null>(null);
   const toast = useToast();
   const router = useRouter();
   const params = useSearchParams();
@@ -204,7 +209,7 @@ function AliasesContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t("aliases.deleteConfirm"))) return;
+    if (!(await confirmAction(t("aliases.deleteConfirm"), { danger: true }))) return;
     const name = aliases?.find((a) => a.id === id)?.name;
     try {
       await api.deleteAlias(id);
@@ -258,6 +263,7 @@ function AliasesContent() {
         )}
       </div>
 
+      {usageFor && <AliasUsageModal aliasId={usageFor.id} aliasName={usageFor.name} onClose={() => setUsageFor(null)} />}
       {showAdopt && <AdoptObjectsModal kind="aliases" hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
 
       <Tabs
@@ -364,6 +370,7 @@ function AliasesContent() {
                     {t("rules.reviewPush")}
                   </Button>
                   <Tooltip content={t("aliases.historyTitle")}><Button variant="ghost" onClick={() => setReview({ alias, mode: "history" })} aria-label={t("aliases.historyTitle")}><History size={14} /></Button></Tooltip>
+                  <Tooltip content={t("aliases.usage.button")}><Button variant="ghost" onClick={() => setUsageFor({ id: alias.id, name: alias.name })} aria-label={t("aliases.usage.button")}><Link2 size={14} /></Button></Tooltip>
                   <Tooltip content={t("aliases.duplicateTitle")}><Button variant="ghost" onClick={() => openEditor(alias, true)} aria-label={t("aliases.duplicateTitle")}><Copy size={14} /></Button></Tooltip>
                   <Button variant="dangerSubtle" onClick={() => handleDelete(alias.id)}>
                     <Trash2 size={14} />

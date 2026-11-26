@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
 import { Badge } from "@/components/ui/Badge";
@@ -58,6 +59,7 @@ export default function WireguardPage() {
 
 function WireguardContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const router = useRouter();
   const params = useSearchParams();
@@ -121,7 +123,7 @@ function WireguardContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t("wg.deleteConfirm"))) return;
+    if (!(await confirmAction(t("wg.deleteConfirm"), { danger: true }))) return;
     const target = tunnels?.find((tn) => tn.id === id);
     const name = target ? `${target.server_name} → ${target.peer_name}` : t("ipsec.tunnelFallback");
     try { await api.deleteWireguardTunnel(id); toast.show(t("ipsec.deleted", { name }), "success"); await load(); }

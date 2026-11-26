@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +23,7 @@ function RoleBadge({ role }: { role: UserRole }) {
 
 export default function UsersPage() {
   const { t, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useNotAdmin();
   const toast = useToast();
   const [users, setUsers] = useState<User[] | null>(null);
@@ -46,7 +48,7 @@ export default function UsersPage() {
   }, []);
 
   async function handleReset2fa(user: User) {
-    if (!confirm(t("twofa.resetConfirm", { name: user.username }))) return;
+    if (!(await confirmAction(t("twofa.resetConfirm", { name: user.username }), { danger: true }))) return;
     try {
       await api.resetUserTwoFactor(user.id);
       await load();
@@ -57,7 +59,7 @@ export default function UsersPage() {
   }
 
   async function handleDelete(user: User) {
-    if (!confirm(t("users.deleteConfirm", { name: user.username }))) return;
+    if (!(await confirmAction(t("users.deleteConfirm", { name: user.username }), { danger: true }))) return;
     try {
       await api.deleteUser(user.id);
       await load();

@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,7 @@ const SCOPE_TONE: Record<TokenScope, "neutral" | "info" | "warning"> = { read: "
 
 export default function TokensPage() {
   const { t, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const toast = useToast();
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [role, setRole] = useState<string>("read_only");
@@ -41,7 +43,7 @@ export default function TokensPage() {
   }, []);
 
   async function handleRevoke(token: ApiToken) {
-    if (!confirm(t("tokens.revokeConfirm", { name: token.name }))) return;
+    if (!(await confirmAction(t("tokens.revokeConfirm", { name: token.name }), { danger: true }))) return;
     try {
       await api.revokeApiToken(token.id);
       await load();

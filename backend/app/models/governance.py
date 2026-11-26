@@ -12,6 +12,9 @@ class GovernanceSettings(Base):
     # False: an operator prepares changes (edit, preview) but only an admin may deploy them.
     operators_may_deploy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
+    # True: a deploy of a rule needs a comment (kept in the audit entry of every deployment it causes). Default off.
+    require_deploy_comment: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+
     # Rule cleanup (1.31). At most this many rules per cleanup operation (default 10, ceiling 25).
     cleanup_max_rules: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
     # A rule must have been switched off (and confirmed) this many days before it may be deleted (minimum 1).

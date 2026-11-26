@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
 import { Badge } from "@/components/ui/Badge";
@@ -67,6 +68,7 @@ export default function OpenVpnPage() {
 
 function OpenVpnContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const router = useRouter();
   const params = useSearchParams();
@@ -159,7 +161,7 @@ function OpenVpnContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t("ovpn.deleteConfirm"))) return;
+    if (!(await confirmAction(t("ovpn.deleteConfirm"), { danger: true }))) return;
     const name = instances?.find((i) => i.id === id)?.description ?? t("ovpn.instanceFallback");
     try { await api.deleteOpenVpnInstance(id); toast.show(t("ovpn.deleted", { name }), "success"); await load(); }
     catch (e) { setError(errorMessage(e, "common.deleteFailed")); }

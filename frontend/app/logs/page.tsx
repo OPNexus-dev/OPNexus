@@ -98,6 +98,9 @@ export default function LogsPage() {
   const [action, setAction] = useState("");
   const [iface, setIface] = useState("");
   const [protocol, setProtocol] = useState("");
+  const [srcIp, setSrcIp] = useState("");
+  const [dstIp, setDstIp] = useState("");
+  const [port, setPort] = useState("");
   const [preset, setPreset] = useState<Preset>("24h");
   const [customSince, setCustomSince] = useState("");
   const [customUntil, setCustomUntil] = useState("");
@@ -142,21 +145,21 @@ export default function LogsPage() {
   // keystroke doesn't fire a request.
   useEffect(() => {
     setOffset(0);
-  }, [selection, action, iface, protocol, preset, customSince, customUntil]);
+  }, [selection, action, iface, protocol, preset, customSince, customUntil, srcIp, dstIp, port]);
 
   useEffect(() => {
     setLoading(true);
     setError(null);
     const timer = setTimeout(() => {
       api
-        .searchLogs({ host_id: hostId, cluster_name: clusterName, q: search, action, interface: iface, protocol, since, until, offset, limit: LIMIT })
+        .searchLogs({ host_id: hostId, cluster_name: clusterName, q: search, action, interface: iface, protocol, src: srcIp.trim(), dst: dstIp.trim(), port: /^\d+$/.test(port.trim()) ? Number(port) : "", since, until, offset, limit: LIMIT })
         .then(setResult)
         .catch((e) => setError(errorMessage(e, "logs.loadFailed")))
         .finally(() => setLoading(false));
     }, 200);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hostId, clusterName, search, action, iface, protocol, since, until, offset]);
+  }, [hostId, clusterName, search, action, iface, protocol, srcIp, dstIp, port, since, until, offset]);
 
   useEffect(() => {
     api
@@ -283,6 +286,12 @@ export default function LogsPage() {
             <Input aria-label={t("logs.to")} type="datetime-local" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} />
           </div>
         )}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <Input aria-label={t("logs.srcFilter")} placeholder={t("logs.srcFilter")} value={srcIp} onChange={(e) => setSrcIp(e.target.value)} />
+          <Input aria-label={t("logs.dstFilter")} placeholder={t("logs.dstFilter")} value={dstIp} onChange={(e) => setDstIp(e.target.value)} />
+          <Input aria-label={t("logs.portFilter")} placeholder={t("logs.portFilter")} inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} />
+          {(srcIp || dstIp || port) && <Button variant="ghost" onClick={() => { setSrcIp(""); setDstIp(""); setPort(""); }}>{t("logs.clearFilters")}</Button>}
+        </div>
       </Card>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
@@ -331,12 +340,12 @@ export default function LogsPage() {
                   <td className="px-5 py-2.5 text-slate-600">{entry.interface ?? "—"}</td>
                   <td className="px-5 py-2.5 text-slate-600">{entry.protocol ?? "—"}</td>
                   <td className="px-5 py-2.5 text-slate-600">
-                    {entry.source_net ?? "—"}
-                    {entry.source_port ? `:${entry.source_port}` : ""}
+                    <FilterLink value={entry.source_net} onPick={setSrcIp} label={t("logs.filterBy", { value: entry.source_net ?? "" })} />
+                    {entry.source_port ? <>:<FilterLink value={entry.source_port} onPick={setPort} label={t("logs.filterBy", { value: entry.source_port })} /></> : ""}
                   </td>
                   <td className="px-5 py-2.5 text-slate-600">
-                    {entry.destination_net ?? "—"}
-                    {entry.destination_port ? `:${entry.destination_port}` : ""}
+                    <FilterLink value={entry.destination_net} onPick={setDstIp} label={t("logs.filterBy", { value: entry.destination_net ?? "" })} />
+                    {entry.destination_port ? <>:<FilterLink value={entry.destination_port} onPick={setPort} label={t("logs.filterBy", { value: entry.destination_port })} /></> : ""}
                   </td>
                 </tr>
               ))}
@@ -369,5 +378,15 @@ export default function LogsPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+/** An address or port in the table: a click filters the list by it. */
+function FilterLink({ value, onPick, label }: { value: string | null; onPick: (value: string) => void; label: string }) {
+  if (!value) return <>—</>;
+  return (
+    <button type="button" className="rounded px-0.5 text-left hover:bg-slate-100 hover:underline focus-visible:outline focus-visible:outline-2" title={label} aria-label={label} onClick={() => onPick(value)}>
+      {value}
+    </button>
   );
 }

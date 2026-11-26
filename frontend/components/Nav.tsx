@@ -38,6 +38,8 @@ import {
   Waypoints,
   Waves,
   FileCode2,
+  History,
+  ArrowLeftRight,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -74,7 +76,7 @@ export const navGroups: NavGroup[] = [
       { href: "/policy-hierarchy", label: "Policy-Hierarchie", icon: GitBranch, keywords: ["Pre-Rules", "Post-Rules", "Vererbung", "Inheritance", "Hierarchische Policies"] },
       { href: "/groups", label: "Gruppen", icon: FolderTree, keywords: ["Gerätegruppen", "Device Groups"] },
       { href: "/aliases", label: "Aliase", icon: Tags, keywords: ["Netzwerk-Objekte", "Netzwerkgruppen"] },
-      { href: "/nat", label: "NAT", icon: Network, keywords: ["Port Forward", "Portweiterleitung", "1:1 NAT", "Outbound NAT", "Masquerade"] },
+      { href: "/nat", label: "NAT", icon: ArrowLeftRight, keywords: ["Port Forward", "Portweiterleitung", "1:1 NAT", "Outbound NAT", "Masquerade"] },
     ],
   },
   {
@@ -128,7 +130,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { href: "/logs", label: "Logs", icon: ScrollText, keywords: ["Firewall-Logs", "Geblockt", "Blocked", "Top Ports"] },
       { href: "/security", label: "Sicherheitslage", icon: ShieldAlert, keywords: ["Compliance", "Härtung", "Score", "Regel-Hygiene", "Any-Any", "SSH", "Sicherheit", "Prüfung"] },
-      { href: "/audit", label: "Audit", icon: ScrollText, keywords: ["Deploy-Historie", "Protokoll", "Verlauf"] },
+      { href: "/audit", label: "Audit", icon: History, keywords: ["Deploy-Historie", "Protokoll", "Verlauf"] },
     ],
   },
   {

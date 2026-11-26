@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -136,6 +137,7 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: NotificationChann
 
 export function NotificationChannelsSection() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const toast = useToast();
   const readOnly = useNotAdmin();
   const [channels, setChannels] = useState<NotificationChannel[] | null>(null);
@@ -173,7 +175,7 @@ export function NotificationChannelsSection() {
   }
 
   async function remove(c: NotificationChannel) {
-    if (!confirm(t("settings.channels.confirmDelete", { name: c.name }))) return;
+    if (!(await confirmAction(t("settings.channels.confirmDelete", { name: c.name }), { danger: true }))) return;
     setBusy(c.id);
     try {
       await api.deleteNotificationChannel(c.id);

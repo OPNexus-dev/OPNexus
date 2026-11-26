@@ -3,7 +3,7 @@
 # Actions > "Release-Images prüfen" > Run workflow, Eingabe z. B. v1.36.0.
 #
 # Dieser Workflow baut und veröffentlicht NICHTS. Die Images entstehen genau einmal, auf dem Maintainer-Host
-# (scripts/release_all.sh: scripts/build_release_images.sh, dann scripts/copy_release_images.sh), signiert mit dem Projektschlüssel
+# (Maintainer-Pipeline, nicht Teil dieses Repos), signiert mit dem Projektschlüssel
 # und digestgleich in beide Registries kopiert. Ein zweiter Build hier hätte einen anderen Digest und keine Signatur,
 # und `opnexus update` lehnt Images ohne gültige Signatur ab. Darum hat er keinen Schreibzugriff auf Pakete und keinen Tag-Trigger.
 #

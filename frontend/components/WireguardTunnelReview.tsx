@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { api, WireguardPreview, WireguardTunnel, WireguardTunnelBase, WireguardTunnelRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Button } from "@/components/ui/Button";
@@ -39,6 +40,7 @@ export function WireguardTunnelReview({ tunnel, mode, onClose, onDeployed, onRes
   const [armed, setArmed] = useState(false);
   const toast = useToast();
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
 
   useEffect(() => {
     let active = true;
@@ -65,7 +67,7 @@ export function WireguardTunnelReview({ tunnel, mode, onClose, onDeployed, onRes
 
   async function removeTarget(host: WireguardPreview["hosts"][number]) {
     if (!plan) return;
-    if (!confirm(t("review.tunnel.removeConfirm", { name: tunnel.server_name, host: host.host_name }))) return;
+    if (!(await confirmAction(t("review.tunnel.removeConfirm", { name: tunnel.server_name, host: host.host_name }), { danger: true }))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       await api.removeWireguardTunnelPreviousTarget(tunnel.id, host.host_id, plan.token);

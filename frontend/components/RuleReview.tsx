@@ -1,14 +1,17 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { api, Rule, RuleCreate, RulePreview, RuleRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { OverlapHint } from "@/components/OverlapHint";
+import { ManagementGuardHint, ManagementGuardState } from "@/components/ManagementGuardHint";
+import { DeployCommentField, useDeployCommentRequired } from "@/components/DeployCommentField";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { useLanguage } from "@/components/LanguageProvider";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 
 import { Loading } from "@/components/ui/Loading";
@@ -23,8 +26,13 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
   const [reload, setReload] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [guard, setGuard] = useState<ManagementGuardState>({ risk: "none", acknowledged: false });
+  const onGuard = useCallback((state: ManagementGuardState) => setGuard(state), []);
+  const [comment, setComment] = useState("");
+  const commentRequired = useDeployCommentRequired();
   const toast = useToast();
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const fieldLabel = (field: string) => (`fields.${field}` !== t(`fields.${field}`) ? t(`fields.${field}`) : field);
   useEffect(() => {
     let active = true;
@@ -42,7 +50,7 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
   async function push() {
     if (!plan) return;
     setBusy(true); setError(null);
-    try { await api.deployRule(rule.id, plan.token); toast.show(t("review.rule.deployed", { name: rule.description }), "success"); onDeployed(); }
+    try { await api.deployRule(rule.id, plan.token, guard.risk === "blocks" && guard.acknowledged, comment); toast.show(t("review.rule.deployed", { name: rule.description }), "success"); onDeployed(); }
     catch (e) { setError(errorMessage(e, "review.pushFailed")); setPlan(null); }
     finally { setBusy(false); }
   }
@@ -51,7 +59,7 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
     const question = action === "remove"
       ? t("review.rule.removeConfirm", { name: rule.description, host: host.host_name })
       : t("review.rule.rollbackConfirm", { host: host.host_name });
-    if (!confirm(question)) return;
+    if (!(await confirmAction(question))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       if (action === "remove") await api.removePreviousTarget(rule.id, host.host_id, plan.token);
@@ -70,6 +78,7 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
       <p className="text-sm text-slate-500">{ts(plan.basis)}</p>
       {plan.warnings.map(w => <p key={w} className="rounded-lg bg-flame-50 p-3 text-sm text-flame-800">{ts(w)}</p>)}
       {mode === "preview" && plan.hosts.length > 0 && <OverlapHint ruleId={rule.id} />}
+      {mode === "preview" && plan.hosts.length > 0 && plan.can_deploy && <ManagementGuardHint ruleId={rule.id} onChange={onGuard} />}
       {plan.hosts.length === 0 && <div className="space-y-2"><p className="text-sm text-slate-500">{t("review.rule.noTargets")}</p><Button onClick={() => onRestore(rule)}>{t("review.assignTargets")}</Button></div>}
       {plan.hosts.map(h => <div key={h.host_id} className="rounded-xl border border-slate-200 p-3">
         <div className="flex flex-wrap justify-between gap-2 text-sm"><strong>{h.host_name}</strong><span className="text-sky-700">{t(`review.actions.${h.action}`)}</span></div>
@@ -82,7 +91,7 @@ export function RuleReview({ rule, mode, onClose, onDeployed, onRestore, onChang
         </tbody></table>}
       </div>)}
       {!plan.can_deploy && plan.hosts.length > 0 && plan.hosts.every(h => h.action === "unchanged") && <p className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t("review.allInSync")}</p>}
-      {plan.can_deploy && <div className="space-y-2"><Button disabled={busy || loading} onClick={push} loading={busy}>{busy ? t("review.pushing") : t("review.deployNow")}</Button><p className="flex items-center gap-1.5 text-xs text-slate-500">{t("review.pushShort")}<InfoTip text={t("review.pushInfo")} size={13} /></p></div>}
+      {plan.can_deploy && <div className="space-y-2"><DeployCommentField value={comment} onChange={setComment} required={commentRequired} disabled={busy} /><Button disabled={busy || loading || (guard.risk === "blocks" && !guard.acknowledged) || (commentRequired && !comment.trim())} onClick={push} loading={busy}>{busy ? t("review.pushing") : t("review.deployNow")}</Button><p className="flex items-center gap-1.5 text-xs text-slate-500">{t("review.pushShort")}<InfoTip text={t("review.pushInfo")} size={13} /></p></div>}
     </div>}
     {mode === "history" && !loading && <div className="space-y-3">
       <p className="flex items-center gap-1.5 text-sm font-medium text-slate-700">{t("review.historyTitle")}<InfoTip text={t("review.historyHintGroups")} /></p>

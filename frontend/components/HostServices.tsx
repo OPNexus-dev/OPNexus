@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -15,6 +16,7 @@ export function HostServices({ host }: { host: Host }) {
   const readOnly = useReadOnly();
   const toast = useToast();
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const [services, setServices] = useState<OpnsenseService[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -38,12 +40,7 @@ export function HostServices({ host }: { host: Host }) {
   // path segment. A genuine split of name vs. instance id is deferred until
   // this write path gets its first live verification (see README).
   async function act(svc: OpnsenseService, action: "start" | "stop" | "restart") {
-    if (
-      !confirm(
-        t("hostServices.confirm", { name: svc.name, verb: t(`hostServices.verb.${action}`) })
-      )
-    )
-      return;
+    if (!(await confirmAction(t("hostServices.confirm", { name: svc.name, verb: t(`hostServices.verb.${action}`) }), { danger: action === "stop" }))) return;
     setBusy(svc.id);
     try {
       const fn = action === "start" ? api.startService : action === "stop" ? api.stopService : api.restartService;

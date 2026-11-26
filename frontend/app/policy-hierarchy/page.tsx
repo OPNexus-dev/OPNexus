@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { protocolSelect } from "@/lib/protocols";
 import { InfoTip } from "@/components/ui/Tooltip";
 import Link from "next/link";
@@ -92,6 +93,7 @@ export default function PolicyHierarchyPage() {
 
 function PolicyHierarchyContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const router = useRouter();
   const params = useSearchParams();
@@ -180,7 +182,7 @@ function PolicyHierarchyContent() {
   }
 
   async function deleteGroup(group: PolicyHierarchyGroup) {
-    if (!confirm(t("ph.deleteGroupConfirm", { name: group.name }))) return;
+    if (!(await confirmAction(t("ph.deleteGroupConfirm", { name: group.name }), { danger: true }))) return;
     try {
       await api.deletePolicyHierarchyGroup(group.id);
       if (selectedGroupId === group.id) selectGroup("");
@@ -215,7 +217,7 @@ function PolicyHierarchyContent() {
   }
 
   async function deleteRule(rule: PolicyHierarchyRule) {
-    if (!confirm(t("ph.deleteRuleConfirm", { name: rule.description }))) return;
+    if (!(await confirmAction(t("ph.deleteRuleConfirm", { name: rule.description }), { danger: true }))) return;
     try {
       await api.deletePolicyHierarchyRule(rule.id);
       await load();

@@ -85,6 +85,10 @@ class RuleEdit(RuleCreate):
 
 class DeployApproval(BaseModel):
     preview_token: str = Field(min_length=64, max_length=64)
+    # "I know this rule blocks the way OPNexus (or a management source) reaches the firewall" (R11, services/rule_management_guard_service.py)
+    acknowledge_management_risk: bool = False
+    # Why this goes out now (R4): kept in the audit entries; required when the admin switched "comment required" on.
+    comment: str | None = Field(default=None, max_length=500)
 
 
 # Upper bound of one bulk request: every rule is a full deploy with its own firewall round trips.
@@ -94,10 +98,12 @@ BULK_LIMIT = 50
 class BulkDeployItem(BaseModel):
     rule_id: uuid.UUID
     preview_token: str = Field(min_length=64, max_length=64)
+    acknowledge_management_risk: bool = False
 
 
 class BulkDeployRequest(BaseModel):
     items: list[BulkDeployItem] = Field(min_length=1, max_length=BULK_LIMIT)
+    comment: str | None = Field(default=None, max_length=500)   # one comment for the whole bulk deploy
 
 
 class BulkConfirmRequest(BaseModel):

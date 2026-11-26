@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
 import { Badge } from "@/components/ui/Badge";
@@ -55,6 +56,7 @@ export default function IpsecPage() {
 
 function IpsecContent() {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const router = useRouter();
   const params = useSearchParams();
@@ -119,7 +121,7 @@ function IpsecContent() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm(t("ipsec.deleteConfirm"))) return;
+    if (!(await confirmAction(t("ipsec.deleteConfirm"), { danger: true }))) return;
     const name = tunnels?.find((tn) => tn.id === id)?.description ?? t("ipsec.tunnelFallback");
     try { await api.deleteIpsecTunnel(id); toast.show(t("ipsec.deleted", { name }), "success"); await load(); }
     catch (e) { setError(errorMessage(e, "common.deleteFailed")); }

@@ -645,6 +645,26 @@ Danach bestätigt **Alle ausgerollten bestätigen** (oder **Alle offenen bestät
 Das Sammel-Ausrollen zählt bei der Aufgabentrennung als Ausrollen: Operatoren dürfen es nur, wenn sie überhaupt ausrollen dürfen. Jede Regel wird
 einzeln angewendet, die Firewall lädt ihren Filter also einmal je Regel neu.
 
+### Prüfung des Verwaltungswegs
+
+Der automatische Rollback läuft in OPNexus und braucht den Weg von OPNexus zur API der Firewall. Eine Regel, die genau
+diesen Weg sperrt, kann deshalb nicht automatisch zurückgenommen werden. Die Vorschau (und der Dialog für mehrere Regeln)
+fragt darum jede Ziel-Firewall, nur lesend: Wie lautet das Urteil für die Pakete, die OPNexus selbst sendet (seine eigene
+Adresse, wie die Firewall sie sieht), und für jede in den *Einstellungen* eingetragene **Verwaltungsquelle** (dieselbe Liste
+wie bei der Regel-Bereinigung), vorher und nachher? Eine Regel, die ein durchgelassenes Verwaltungspaket in ein Blockieren
+verwandelt, wird mit einer roten Warnung angezeigt und muss ausdrücklich bestätigt werden; ohne Bestätigung wird das
+Ausrollen abgelehnt (auch über die API und für jede Regel eines Sammel-Ausrollens). Geprüft wird die ganze Liste: Eine
+Sperr-Regel am Ende warnt nicht, solange eine frühere Regel den Verwaltungsverkehr noch durchlässt. Lässt sich die eigene
+Adresse von OPNexus nicht bestimmen und ist keine Verwaltungsquelle eingetragen, sagt die Vorschau, dass sie nicht prüfen
+konnte (ein Hinweis, kein Stopp). Geprüft werden Regel-Deployments; NAT, VPN und Aliase haben eigene Abläufe.
+
+### Kommentar beim Ausrollen
+
+Jedes Ausrollen (einzeln und gesammelt) nimmt einen optionalen **Kommentar** entgegen (warum geht das jetzt raus? Ticketnummer).
+Er wird in den Audit-Einträgen des Ausrollens gespeichert und in der Audit-Liste angezeigt. Ein Administrator kann ihn unter
+*Einstellungen › Anmeldung & Zugriff* zur Pflicht machen („Beim Ausrollen einen Kommentar verlangen“, standardmäßig aus); ein
+Ausrollen ohne Kommentar wird dann abgelehnt.
+
 ### Position in der Regelliste
 
 Firewalls prüfen Regeln von oben nach unten, die erste passende gewinnt. OPNsense legt neue Regeln **am Ende** ab; eine Block-Regel hinter einer passenden Erlaubnis-Regel greift deshalb nie.
@@ -837,6 +857,10 @@ verschiebt OPNsense nicht und OPNexus fasst sie nicht an.
 
 **Aliase** (Host, Netz, Port, Gruppe, MAC, ASN) werden zentral gepflegt und
 folgen demselben Ablauf mit Vorschau, Bestätigung und Rollback wie Regeln.
+
+**Wird verwendet von.** Der Knopf *Wird verwendet von …* an einem Alias listet die zentral verwalteten Regeln, Port-Forwards,
+1:1- und Outbound-NAT-Einträge, Hierarchie-Regeln und anderen Aliase, die ihn nutzen (Regeln, die nur auf einer Firewall existieren, fehlen
+dort). Ein Alias, der noch verwendet wird, lässt sich nicht löschen; die Ablehnung nennt, was ihn nutzt.
 
 **NAT** (Regelwerk › NAT) umfasst **Port Forward**, **1:1-NAT** und **Outbound-NAT**
 mit getrennten Formularen. Alle drei haben Entwurf, Vorschau, Push, Bestätigung,
@@ -1369,6 +1393,9 @@ Protokoll), Zeitraum (letzte Stunde/24 Stunden/7 Tage/alles/eigener Bereich) und
 ein Statistik-Panel (Verteilung nach Aktion und Interface, meistgeblockte Quellen,
 häufigste Zielports).
 
+**Adress- und Portfilter.** Neben dem Freitext gibt es Felder für **Quell-IP**, **Ziel-IP** (je genau eine Adresse) und **Port** (trifft
+Quell- oder Zielport). Jede Adresse und jeder Port in der Tabelle ist außerdem ein Link: Ein Klick filtert die Liste danach.
+
 Einstellungen › **Log-Erfassung**:
 
 | Einstellung | Standard | Bedeutung |
@@ -1394,6 +1421,9 @@ Zeitpunkt, Korrelations-ID und Inhalt. Filter, Seitenwechsel und JSON-Export sin
 vorhanden. Einträge bleiben auch nach dem Löschen einer Regel oder eines Hosts
 erhalten; ein Datenbank-Trigger verhindert Änderungen und Löschen. Passwörter,
 API-Secrets und Konfigurationsdateien werden nicht protokolliert.
+
+Ein geöffneter Eintrag zeigt, **was sich geändert hat**, Feld für Feld (vorher und nachher), dazu den beim Ausrollen angegebenen
+Kommentar; der Rohdatensatz bleibt unter *Technische Details* erreichbar.
 
 ### Audit-Export
 

@@ -638,6 +638,26 @@ Afterwards **Confirm all deployed** (or **Confirm all pending** in the bar above
 Deploying in bulk is a deployment in the sense of the separation of duties: operators may only do it if they may deploy at all. Every rule is
 applied on its own, so a firewall reloads its filter once per rule.
 
+### Management path check
+
+The automatic rollback runs inside OPNexus and needs the way from OPNexus to the firewall's API. A rule that blocks
+exactly that way cannot be taken back automatically. So the preview (and the dialog for several rules) now asks every
+target firewall, read-only: for the packets OPNexus itself sends (its own address as the firewall sees it) and for
+every **management source** you configured under *Settings* (the same list the rule cleanup uses), what is the verdict
+before and what after this rule? A rule that would turn a passing management packet into a block is shown with a red
+warning and has to be acknowledged explicitly; without the acknowledgement the deploy is refused (this also holds for the
+API and for every rule of a bulk deploy). The check compares the whole list, so a default-deny at the end does not
+warn while an earlier rule still lets the management traffic through. If OPNexus's own address cannot be determined
+and no management source is set, the preview says it could not check (a hint, no stop). The check covers rule
+deployments; NAT, VPN and alias deployments have their own flows.
+
+### Comment on deploy
+
+Every deploy (single and bulk) takes an optional **comment** (why does this go out now? ticket number). It is kept in
+the audit entries of the deployment and shown in the audit list. An administrator can make the comment mandatory
+under *Settings › Sign-in & access* ("Require a comment when deploying", off by default); a deploy without one is then
+refused.
+
 ### Position in the rule list
 
 Firewalls evaluate rules from top to bottom; the first match wins. OPNsense puts new rules **at the end**; a block rule behind a matching allow rule therefore never takes effect.
@@ -827,6 +847,10 @@ and OPNexus does not touch them.
 
 **Aliases** (host, network, port, group, MAC, ASN) are maintained centrally and
 follow the same flow with preview, confirmation and rollback as rules.
+
+**Used by.** The button *Used by …* on an alias lists the centrally managed rules, port forwards, 1:1 and outbound NAT entries,
+hierarchy rules and other aliases that refer to it (rules that only exist on a firewall are not included). An alias that is still
+used cannot be deleted; the refusal names what uses it.
 
 **NAT** (Rulebase › NAT) comprises **port forward**, **1:1 NAT** and **outbound NAT**
 with separate forms. All three have draft, preview, push, confirmation,
@@ -1357,6 +1381,9 @@ protocol), time range (last hour/24 hours/7 days/all/custom range) and
 a statistics panel (distribution by action and interface, most-blocked sources,
 most frequent destination ports).
 
+**Address and port filters.** Next to the free text there are fields for **source IP**, **destination IP** (one exact address each) and
+**port** (matches source or destination port). Every address and port in the table is also a link: a click filters the list by it.
+
 Settings › **Log collection**:
 
 | Setting | Default | Meaning |
@@ -1382,6 +1409,9 @@ time, correlation ID and content. Filters, paging and JSON export are
 available. Entries remain even after a rule or a host is deleted;
 a database trigger prevents changes and deletion. Passwords,
 API secrets and configuration files are not logged.
+
+Opening an entry shows **what changed**, field by field (before and after), plus the comment given at deploy time; the raw record stays
+available under *Technical details*.
 
 ### Audit export
 

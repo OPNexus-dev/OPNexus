@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { api, OpenVpnPreview, OpenVpnInstance, OpenVpnInstanceBase, OpenVpnInstanceRevision } from "@/lib/api";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Button } from "@/components/ui/Button";
@@ -38,6 +39,7 @@ export function OpenVpnInstanceReview({ instance, mode, onClose, onDeployed, onR
   const [armed, setArmed] = useState(false);
   const toast = useToast();
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
 
   useEffect(() => {
     let active = true;
@@ -64,7 +66,7 @@ export function OpenVpnInstanceReview({ instance, mode, onClose, onDeployed, onR
 
   async function removeTarget(host: OpenVpnPreview["hosts"][number]) {
     if (!plan) return;
-    if (!confirm(t("review.instance.removeConfirm", { name: instance.description, host: host.host_name }))) return;
+    if (!(await confirmAction(t("review.instance.removeConfirm", { name: instance.description, host: host.host_name }), { danger: true }))) return;
     setBusy(true); setError(null); setNotice(null);
     try {
       await api.removeOpenVpnInstancePreviousTarget(instance.id, host.host_id, plan.token);

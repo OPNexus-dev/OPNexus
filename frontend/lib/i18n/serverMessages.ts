@@ -107,6 +107,8 @@ export const serverMessagesEn: Array<[string | RegExp, string]> = [
   ["unzulässige Angaben", "invalid input"],
   [/^(?<p1>[\s\S]*?) ist Primär geworden \((?<p2>[\s\S]*?)\)$/, "{p1} became primary ({p2})"],
   ["Einstellungen der Regel-Bereinigung geändert", "Rule cleanup settings changed"],
+  ["Pflichtkommentar beim Ausrollen eingeschaltet", "Comment required when deploying: switched on"],
+  ["Pflichtkommentar beim Ausrollen ausgeschaltet", "Comment required when deploying: switched off"],
   ["Rohdownload nur für Administratoren", "Raw download for administrators only"],
   [/^Firmware-Rückweg auf (?<p1>[\s\S]*?): Stand auf der Firewall unklar\. Live-Stand prüfen und neu ausrollen\.$/, "Firmware rollback to {p1}: state on the firewall unclear. Check the live state and roll out again."],
   [". Nicht erneut klicken; Rollen zuerst prüfen.", ". Do not click again; check the roles first."],

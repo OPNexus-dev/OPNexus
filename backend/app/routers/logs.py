@@ -1,3 +1,4 @@
+import ipaddress
 import uuid
 from datetime import datetime
 
@@ -5,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.errors import ErrorCode, api_error
 from app.database import get_db
 from app.models.host import OpnsenseHost
 from app.models.log_entry import FirewallLogEntry
@@ -38,6 +40,17 @@ _TOP_N = 10
 _BLOCKED_ACTIONS = ("block", "reject")
 
 
+def _ip(value: str) -> str | None:
+    """An address filter must be one exact IP (any notation of it); anything else is refused, not silently ignored."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        return str(ipaddress.ip_address(value))
+    except ValueError:
+        raise api_error(422, ErrorCode.LOG_FILTER_INVALID, value=value[:64]) from None
+
+
 def _base_filters(
     host_id: uuid.UUID | None,
     action: str | None,
@@ -46,8 +59,17 @@ def _base_filters(
     q: str,
     since: datetime | None,
     until: datetime | None,
+    src: str | None = None,
+    dst: str | None = None,
+    port: int | None = None,
 ) -> list:
     clauses = []
+    if src:
+        clauses.append(FirewallLogEntry.source_net == src)
+    if dst:
+        clauses.append(FirewallLogEntry.destination_net == dst)
+    if port is not None:   # either side: the port a client used or the port it talked to
+        clauses.append(or_(FirewallLogEntry.source_port == str(port), FirewallLogEntry.destination_port == str(port)))
     if host_id is not None:
         clauses.append(FirewallLogEntry.host_id == host_id)
     if action:
@@ -85,11 +107,14 @@ async def search_logs(
     protocol: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    src: str = Query(default="", max_length=64),
+    dst: str = Query(default="", max_length=64),
+    port: int | None = Query(default=None, ge=1, le=65535),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
-    clauses = _base_filters(host_id, action, interface, protocol, q, since, until)
+    clauses = _base_filters(host_id, action, interface, protocol, q, since, until, _ip(src), _ip(dst), port)
     if cluster_name:
         clauses.append(FirewallLogEntry.host_id.in_(await _cluster_host_ids(db, cluster_name)))
 

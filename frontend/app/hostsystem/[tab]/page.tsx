@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { useLanguage } from "@/components/LanguageProvider";
 import { NetworkChangeModal } from "@/components/NetworkChangeModal";
 import { NetworkObjectSection, ObjectChange } from "@/components/NetworkObjectSection";
@@ -118,6 +119,7 @@ export default function HostSystemPage() {
 
 function Snapshots({ hostId, readOnly }: { hostId: string; readOnly: boolean }) {
   const { t, errorMessage } = useLanguage();
+  const confirmAction = useConfirm();
   const toast = useToast();
   const [data, setData] = useState<{ supported: boolean; rows: HostSnapshot[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,7 +154,7 @@ function Snapshots({ hostId, readOnly }: { hostId: string; readOnly: boolean }) 
   }
 
   async function remove(row: HostSnapshot) {
-    if (!confirm(t("hostsystem.snapshots.deleteConfirm", { name: row.name }))) return;
+    if (!(await confirmAction(t("hostsystem.snapshots.deleteConfirm", { name: row.name }), { danger: true }))) return;
     try {
       await api.deleteSnapshot(hostId, row.uuid);
       toast.show(t("hostsystem.snapshots.deleted", { name: row.name }), "success");

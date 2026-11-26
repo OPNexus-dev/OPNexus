@@ -80,6 +80,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
         working-directory: frontend
       - run: python3 scripts/check_server_texts.py
-      - run: for f in opnexus check_version.sh make_release_bundle.sh release_compose.sh release_common.sh build_release_images.sh copy_release_images.sh verify_release_images.sh promote_floating_tags.sh; do bash -n scripts/$f; done
+      - run: for f in opnexus check_version.sh release_common.sh verify_release_images.sh; do bash -n scripts/$f; done
       # Updater-Container (Zustandsübergänge, Ablehnungen, Auth) ohne Docker-Daemon.
       - run: python3 -m unittest discover -s updater -p 'test_*.py'

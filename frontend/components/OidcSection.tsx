@@ -27,6 +27,7 @@ export function OidcSection() {
   const [operator, setOperator] = useState("");
   const [viewer, setViewer] = useState("");
   const [operatorsDeploy, setOperatorsDeploy] = useState(true);
+  const [requireComment, setRequireComment] = useState(false);
 
   function apply(d: OidcSettings) {
     setCfg(d);
@@ -44,7 +45,7 @@ export function OidcSection() {
 
   useEffect(() => {
     api.getOidcSettings().then(apply).catch(() => setHidden(true));
-    api.getGovernance().then((g) => setOperatorsDeploy(g.operators_may_deploy)).catch(() => {});
+    api.getGovernance().then((g) => { setOperatorsDeploy(g.operators_may_deploy); setRequireComment(!!g.require_deploy_comment); }).catch(() => {});
   }, []);
 
   if (hidden) return null;
@@ -88,6 +89,17 @@ export function OidcSection() {
       toast.show(t("sso.dutiesSaved"), "success");
     } catch (err) {
       setOperatorsDeploy(!value);
+      setError(errorMessage(err, "common.saveFailed"));
+    }
+  }
+
+  async function toggleComment(value: boolean) {
+    setRequireComment(value);
+    try {
+      await api.setRequireDeployComment(value);
+      toast.show(t("sso.dutiesSaved"), "success");
+    } catch (err) {
+      setRequireComment(!value);
       setError(errorMessage(err, "common.saveFailed"));
     }
   }
@@ -153,6 +165,10 @@ export function OidcSection() {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={operatorsDeploy} onChange={(e) => toggleDuties(e.target.checked)} />
           {t("sso.operatorsDeploy")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={requireComment} onChange={(e) => toggleComment(e.target.checked)} />
+          {t("sso.requireComment")}
         </label>
       </section>
     </>

@@ -10,6 +10,7 @@ from app.database import get_db
 from app.models.host import OpnsenseHost
 from app.models.policy import DeviceGroup, AliasRevision
 from app.services.policy_service import effective_hosts, policy_lock, ensure_editable
+from app.services import alias_usage_service
 from app.services.alias_policy_service import ALIAS_FIELDS, snapshot, revision, preview, workflow
 from app.models.alias import FirewallAlias
 from app.models.alias_deployment import AliasDeployment
@@ -147,6 +148,10 @@ async def delete_alias(alias_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     alias = await _load_alias(db, alias_id)
     if any(d.status in ("pending", "revert_failed") for d in alias.deployments):
         raise api_error(409, ErrorCode.OFFENES_DEPLOYMENT_ZUERST_KLAEREN)
+    used = await alias_usage_service.usage(db, alias)
+    if used["total"]:
+        names = ", ".join(i["name"] for i in used["items"][:5]) + (" …" if used["total"] > 5 else "")
+        raise api_error(409, ErrorCode.ALIAS_STILL_USED, count=used["total"], names=names)
     try:
         await undeploy_alias(db, alias)
     except OpnsenseAPIError as exc:
@@ -154,6 +159,12 @@ async def delete_alias(alias_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     await db.refresh(alias, attribute_names=["deployments"])
     await db.delete(alias)
     await db.commit()
+
+
+@router.get("/{alias_id}/usage")
+async def alias_usage(alias_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Which centrally managed rules, NAT entries and other aliases use this alias (database only, writes nothing)."""
+    return await alias_usage_service.usage(db, await _load_alias(db, alias_id))
 
 
 @router.put("/{alias_id}", response_model=AliasRead)

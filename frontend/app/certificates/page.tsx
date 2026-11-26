@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { AcmeAccountForm } from "@/components/AcmeAccountForm";
 import { AcmeActionConfirm } from "@/components/AcmeActionConfirm";
@@ -64,6 +65,7 @@ export default function CertificatesPage() {
 
 function CertificatesContent() {
   const { t, ts, errorMessage, locale } = useLanguage();
+  const confirmAction = useConfirm();
   const readOnly = useReadOnly();
   const router = useRouter();
   const params = useSearchParams();
@@ -178,7 +180,7 @@ function CertificatesContent() {
   }
 
   async function deleteManagedCert(cert: ManagedCertificate) {
-    if (!confirm(t("certs.certDeleteConfirm", { name: cert.description }))) return;
+    if (!(await confirmAction(t("certs.certDeleteConfirm", { name: cert.description }), { danger: true }))) return;
     setManagedBusy(cert.id);
     setManagedError(null);
     try {
@@ -207,7 +209,7 @@ function CertificatesContent() {
   }
 
   async function deleteAccount(account: AcmeAccount) {
-    if (!confirm(t("certs.accountDeleteConfirm", { name: account.name }))) return;
+    if (!(await confirmAction(t("certs.accountDeleteConfirm", { name: account.name }), { danger: true }))) return;
     setAcmeBusy(account.id);
     setAcmeError(null);
     try {
@@ -249,7 +251,7 @@ function CertificatesContent() {
   }
 
   async function deleteRequest(req: AcmeCertificateRequest) {
-    if (!confirm(t("certs.requestDeleteConfirm", { name: req.name }))) return;
+    if (!(await confirmAction(t("certs.requestDeleteConfirm", { name: req.name }), { danger: true }))) return;
     setAcmeBusy(req.id);
     setAcmeError(null);
     try {

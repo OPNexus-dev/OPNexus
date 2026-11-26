@@ -1,5 +1,7 @@
 {
   "common": {
+    "confirmTitle": "Bitte bestätigen",
+    "confirm": "Bestätigen",
     "save": "Speichern",
     "actions": "Aktionen",
     "statusOnline": "Online",
@@ -702,6 +704,23 @@
       "disabledTip": "Die Regel ist ausgeschaltet.",
       "partialTip": "Daten von {tracked} von {total} Zielen."
     },
+    "comment": {
+      "label": "Kommentar",
+      "optional": "optional",
+      "required": "Pflicht",
+      "placeholder": "Warum geht das jetzt raus? (z. B. Ticket-Nummer oder Grund)",
+      "needed": "Bitte einen Kommentar eintragen."
+    },
+    "management": {
+      "checking": "Prüfe, ob die Regel den Verwaltungszugriff blockiert …",
+      "blocks": "Achtung: Auf {host} würde diese Regel den Zugriff {who} auf die Firewall blockieren. Der automatische Rollback läuft in OPNexus und könnte dann nicht mehr eingreifen; die Firewall müsste von Hand zurückgesetzt werden.",
+      "whoOpnexus": "von OPNexus",
+      "whoAdmin": "einer Verwaltungsquelle",
+      "whoBoth": "von OPNexus und einer Verwaltungsquelle",
+      "acknowledge": "Ich habe verstanden, dass die Firewall dann von Hand zurückgesetzt werden muss, und will trotzdem ausrollen.",
+      "unknown": "Ob diese Regel den Verwaltungszugriff blockiert, ließ sich nicht prüfen (Adresse von OPNexus oder Verwaltungsquelle unbekannt). Bei einem Fehler kann der automatische Rollback dann nicht eingreifen.",
+      "needsAck": "Bestätige zuerst die Warnung zur Verwaltungsverbindung."
+    },
     "overlap": {
       "checking": "Die Ziel-Firewalls werden auf Überschneidungen geprüft …",
       "shadowed": "Auf {host} entscheidet die frühere Regel „{by}“ schon alles, was diese Regel trifft: Sie würde nie wirken.",
@@ -1198,6 +1217,10 @@
     "UPSTREAM_REJECTED": "Die Firewall hat die Anfrage abgelehnt: {reason}",
     "RULE_LINKS_CHANGED": "Die Zuordnung hat sich seit der Anzeige geändert. Bitte erneut prüfen.",
     "BULK_DEPLOY_UNEXPECTED": "Unerwarteter Fehler beim Sammel-Ausrollen; die übrigen Regeln wurden nicht angefasst. Stand dieser Regel auf der Firewall prüfen.",
+    "LOG_FILTER_INVALID": "„{value}“ ist keine einzelne IP-Adresse. Für Quelle und Ziel bitte genau eine Adresse eintragen.",
+    "DEPLOY_COMMENT_REQUIRED": "Beim Ausrollen ist ein Kommentar Pflicht (Einstellung des Administrators). Bitte kurz eintragen, warum die Änderung nötig ist.",
+    "ALIAS_STILL_USED": "Der Alias wird noch von {count} Objekt(en) verwendet: {names}. Erst die Verwendung entfernen, dann löschen.",
+    "MANAGEMENT_PATH_AT_RISK": "Die Regel würde den Verwaltungszugriff auf {hosts} blockieren. Der automatische Rollback könnte dann nicht mehr eingreifen. Ausrollen nur nach ausdrücklicher Bestätigung.",
     "SERVICE_NOT_FOUND": "{service}: Dienst auf dieser Firewall nicht gefunden",
     "SERVICE_LOCKED": "{service}: Dienst ist gesperrt und kann nicht per API gesteuert werden",
     "OUTBOUND_MODE_BLOCKS_PUSH": "{host}: Outbound-NAT-Modus „{mode}“ erlaubt keinen Push. Modus in OPNsense selbst auf Hybrid/Manuell umstellen. OPNexus ändert diesen Modus nicht.",
@@ -1925,6 +1948,15 @@
     "save": "Gruppe speichern"
   },
   "aliases": {
+    "usage": {
+      "title": "Wird verwendet von",
+      "button": "Wird verwendet von …",
+      "loading": "Suche Verwendungen …",
+      "empty": "Dieser Alias wird von keinem zentral verwalteten Objekt verwendet.",
+      "note": "Es werden nur von OPNexus verwaltete Objekte erfasst. Regeln, die nur auf einer Firewall existieren, fehlen hier.",
+      "more": "Weitere Verwendungen werden nicht aufgelistet.",
+      "kind": { "rule": "Regel", "port_forward": "Port-Forward", "one_to_one": "1:1-NAT", "outbound_nat": "Outbound-NAT", "hierarchy_rule": "Hierarchie-Regel", "alias": "Alias" }
+    },
     "loading": "Aliase werden geladen…",
     "loadFailed": "Aliase konnten nicht geladen werden",
     "createFailed": "Alias konnte nicht angelegt werden",
@@ -2368,6 +2400,7 @@
     "dutiesTitle": "Aufgabentrennung",
     "dutiesIntro": "Ist es ausgeschaltet, können Operatoren Änderungen vorbereiten (bearbeiten, Vorschau), aber nur ein Administrator rollt sie aus: ausrollen, ein Deployment entfernen oder zurückrollen, Wartung ausführen oder planen und Netzwerkänderungen anwenden. Die Ablehnung steht im Audit.",
     "operatorsDeploy": "Operatoren dürfen Änderungen selbst ausrollen",
+    "requireComment": "Beim Ausrollen einen Kommentar verlangen",
     "dutiesSaved": "Gespeichert"
   },
   "report": {
@@ -2587,6 +2620,11 @@
     "keepPassword": "leer lassen, um unverändert zu bleiben"
   },
   "logs": {
+    "srcFilter": "Quell-IP",
+    "dstFilter": "Ziel-IP",
+    "portFilter": "Port (Quelle oder Ziel)",
+    "filterBy": "Nach „{value}“ filtern",
+    "clearFilters": "Adress- und Portfilter löschen",
     "preset": {
       "1h": "Letzte Stunde",
       "24h": "Letzte 24 Stunden",
@@ -2652,6 +2690,16 @@
     "unavailable": "nicht abrufbar"
   },
   "audit": {
+    "detail": {
+      "comment": "Kommentar",
+      "changes": "Änderungen",
+      "field": "Feld",
+      "before": "Vorher",
+      "after": "Nachher",
+      "empty": "leer",
+      "noChange": "Keine Feldänderung in diesem Eintrag.",
+      "technical": "Technische Details"
+    },
     "kind": {
       "rule": "Regeln",
       "rule_cleanup": "Regel-Bereinigung",

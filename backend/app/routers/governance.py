@@ -30,6 +30,7 @@ MAX_MANAGEMENT_PORTS = 20
 
 class GovernanceRead(BaseModel):
     operators_may_deploy: bool
+    require_deploy_comment: bool = False
     cleanup_max_rules: int = 10
     cleanup_delete_min_days: int = 7
     # The list itself is shown to admins only; everybody else sees just whether it is set.
@@ -45,6 +46,7 @@ class GovernanceRead(BaseModel):
 
 class GovernanceUpdate(BaseModel):
     operators_may_deploy: bool | None = None
+    require_deploy_comment: bool | None = None
     cleanup_max_rules: int | None = None
     cleanup_delete_min_days: int | None = None
     cleanup_management_sources: list[str] | None = None
@@ -92,7 +94,7 @@ def _read(row: GovernanceSettings, user: AdminUser) -> GovernanceRead:
     sources = list(row.cleanup_management_sources or [])
     ports = list(row.cleanup_management_ports or [])
     return GovernanceRead(
-        operators_may_deploy=row.operators_may_deploy, cleanup_max_rules=row.cleanup_max_rules or 10,
+        operators_may_deploy=row.operators_may_deploy, require_deploy_comment=bool(row.require_deploy_comment), cleanup_max_rules=row.cleanup_max_rules or 10,
         cleanup_delete_min_days=row.cleanup_delete_min_days or 7,
         cleanup_management_sources=sources if user.role == "admin" else [],
         cleanup_management_sources_configured=bool(sources),
@@ -140,6 +142,12 @@ async def update(payload: GovernanceUpdate, request: Request, db: AsyncSession =
             setattr(row, field, value)
     if payload.operators_may_deploy is not None:
         row.operators_may_deploy = payload.operators_may_deploy
+    if payload.require_deploy_comment is not None and payload.require_deploy_comment != bool(row.require_deploy_comment):
+        row.require_deploy_comment = payload.require_deploy_comment
+        db.add(audit_service.make_event(
+            kind="settings", action="cleanup_settings", status="accepted", entity_id="governance",
+            message="Pflichtkommentar beim Ausrollen eingeschaltet" if payload.require_deploy_comment else "Pflichtkommentar beim Ausrollen ausgeschaltet",
+            details={"require_deploy_comment": payload.require_deploy_comment}))
     if changes:
         db.add(audit_service.make_event(
             kind="settings", action="cleanup_settings", status="accepted", entity_id="governance",
