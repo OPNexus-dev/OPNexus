@@ -94,6 +94,19 @@ sys.exit(0)
 '''
 
 
+def _openssl_has_not_before():
+    return "-not_before" in subprocess.run(["openssl", "req", "-help"], capture_output=True, text=True).stderr
+
+
+OPENSSL_NOT_BEFORE = _openssl_has_not_before()
+
+
+def norm(subject):
+    """OpenSSL 3.0 prints `CN = a`, newer versions `CN=a`: compare without the spaces around the equals sign."""
+    import re
+    return re.sub(r"\s*=\s*", "=", subject)
+
+
 def openssl(*args, input=None):
     return subprocess.run(["openssl", *args], capture_output=True, text=True, input=input, check=True).stdout
 
@@ -116,6 +129,8 @@ class CertCli(unittest.TestCase):
         openssl("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(key))
         if key_of:
             shutil.copy(self.work / f"{key_of}.key", key)
+        if days <= 0 and not OPENSSL_NOT_BEFORE:
+            self.skipTest("this openssl cannot create a long expired test certificate (req -not_before needs OpenSSL 3.4+)")
         validity = ["-days", str(days)] if days > 0 else ["-not_before", "20200101000000Z", "-not_after", "20200102000000Z"]   # days <= 0: long expired
         openssl("req", "-new", "-x509", "-key", str(key), "-subj", f"/CN={name}", "-addext", f"subjectAltName={sans}", *validity, "-out", str(crt))
         return crt, key
@@ -329,7 +344,7 @@ class CertCli(unittest.TestCase):
         r = self.run_cli("cert", "check", "--cert", str(crt), "--key", str(key))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         d = json.loads(r.stdout)
-        self.assertEqual(d["subject"], "CN=a")
+        self.assertEqual(norm(d["subject"]), "CN=a")
         self.assertEqual(d["names"], ["IP:10.0.0.5"])
         self.assertEqual(d["uncovered"], ["opnexus.lan"])
         self.assertTrue(29 <= d["days_left"] <= 30)
@@ -353,7 +368,8 @@ class CertCli(unittest.TestCase):
         openssl("ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(key))
         openssl("req", "-new", "-x509", "-key", str(key), "-subj", '/CN=a"b\\c', "-addext", "subjectAltName=IP:10.0.0.5,DNS:opnexus.lan", "-days", "30", "-out", str(crt))
         d = json.loads(self.run_cli("cert", "check", "--cert", str(crt), "--key", str(key)).stdout)
-        self.assertIn('a"b', d["subject"])
+        import re
+        self.assertRegex(d["subject"], r'a\\?"b')   # the quote may come back escaped; what matters is that the JSON was valid
 
     def test_check_needs_both_files(self):
         r = self.run_cli("cert", "check", "--cert", "x")
