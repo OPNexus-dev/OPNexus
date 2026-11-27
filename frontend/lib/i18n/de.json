@@ -829,6 +829,7 @@
     "deployResult": "Deploy-Ergebnis",
     "expiresIn": "— läuft ab in {seconds}s, falls nicht bestätigt",
     "revertedNote": "— nicht bestätigt, automatisch zurückgerollt",
+    "autoRolledBack": "„{name}“ wurde nicht rechtzeitig bestätigt und automatisch zurückgenommen auf: {hosts}.",
     "revertFailed": "— Rollback fehlgeschlagen: {message}",
     "confirmed": "Deployment bestätigt",
     "confirmFailed": "Bestätigen fehlgeschlagen",

@@ -63,7 +63,14 @@ docker compose up -d
 ./opnexus password                   # shows the admin password if ADMIN_PASSWORD was empty
 ```
 
-Then open `https://<server-ip>` (locally `https://localhost`); the setup assistant guides you through the first steps.
+Then open `https://localhost` on the same machine; the setup assistant guides you through the first steps.
+**From another machine** the proxy needs to know the server's address first (by default it only answers for `localhost`; a request
+by IP gets an empty page). Set `OPNEXUS_SITES`, `OPNEXUS_DEFAULT_SNI`, `FRONTEND_ORIGIN` and `COOKIE_SECURE=true` in the `.env` (details under
+[Network access and TLS](#network-access-and-tls)) and run `docker compose up -d` again:
+
+```bash
+sed -i 's|^OPNEXUS_SITES=.*|OPNEXUS_SITES=192.168.1.50|; s|^OPNEXUS_DEFAULT_SNI=.*|OPNEXUS_DEFAULT_SNI=192.168.1.50|; s|^FRONTEND_ORIGIN=.*|FRONTEND_ORIGIN=https://192.168.1.50|; s|^COOKIE_SECURE=.*|COOKIE_SECURE=true|' .env && docker compose up -d
+```
 You do not have to remember the database password, it is in the `.env`. More settings (addresses, TLS) are described under
 [Configuration (`.env`)](#configuration-env).
 
@@ -120,6 +127,12 @@ cosign verify --key cosign.pub --insecure-ignore-tlog=true \
   ghcr.io/opnexus-dev/opnexus-backend:<version>
 ```
 
+**This needs cosign 3 or newer.** The signatures are stored in the scheme of cosign 3. With cosign 2.x the same command fails with
+`no signatures found`, even for a validly signed image. Check `cosign version` first; if it shows 2.x, update cosign and run the command again.
+If it shows 3.x or newer and the message stays, the image really has no valid signature: do not use it.
+`opnexus update` runs the same check: with cosign 2.x installed it stops with "signature invalid or missing" and changes nothing. **Do not remove
+cosign to get past the message:** without cosign the tool skips the check, which is exactly what the check is there to prevent.
+
 The images are available in **two registries**: `ghcr.io/opnexus-dev` (default for new installations)
 and `git.opnexus.dev/opnexus` (Gitea, fully supported). They are built only once and copied,
 digest-identical and including the signature, into both registries; the same check with
@@ -157,8 +170,8 @@ It only asks for confirmation if someone has already logged in
 An old password cannot be displayed; only an
 Argon2id hash is stored.
 
-Then open the interface: `https://<server-ip>` (locally also
-`http://localhost:3100`). At first the browser shows a certificate warning, see
+Then open the interface: `https://localhost` on the same machine (also
+`http://localhost:3100`); from another machine use the server's address once it is set in `OPNEXUS_SITES`, see the quick start above. At first the browser shows a certificate warning, see
 [Network access and TLS](#network-access-and-tls).
 
 ### The setup assistant

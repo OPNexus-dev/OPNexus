@@ -13,7 +13,7 @@ interface ToastItem {
 }
 
 interface ToastContextValue {
-  show: (message: string, tone?: ToastTone) => void;
+  show: (message: string, tone?: ToastTone, durationMs?: number) => void;
 }
 
 const ToastContext = createContext<ToastContextValue>({ show: () => {} });
@@ -50,10 +50,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const show = useCallback(
-    (message: string, tone: ToastTone = "info") => {
+    (message: string, tone: ToastTone = "info", durationMs = 5000) => {
       const id = nextId.current++;
       setItems((current) => [...current, { id, tone, message }]);
-      setTimeout(() => dismiss(id), 5000);
+      setTimeout(() => dismiss(id), durationMs);
     },
     [dismiss]
   );

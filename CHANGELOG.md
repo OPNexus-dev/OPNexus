@@ -26,6 +26,22 @@ in the footer of every page, on `/about` and in the settings.
 
 Next codenames (in order, when the next MINOR version is due): Copenhagen, Dublin, Edinburgh, Florence.
 
+## [1.41.1] "Copenhagen" — 2026-11-27
+
+### Documentation
+- **Verifying the images needs cosign 3 or newer.** The signatures use the scheme of cosign 3; with cosign 2.x the check says `no signatures found`. Stated in the handbook (English and German) and on the website; the website command now includes `--insecure-ignore-tlog=true` like the handbook.
+- **Opening OPNexus from another machine.** The quick start (README, handbook, website) said "open `https://<server-ip>`", but by default the proxy only answers for `localhost` and a request by IP gets an empty page. It now says so and shows the `.env` lines to set (`OPNEXUS_SITES`, `OPNEXUS_DEFAULT_SNI`, `FRONTEND_ORIGIN`, plus `COOKIE_SECURE=true` so the session cookie is only sent over HTTPS).
+
+### Fixed
+- **Signature check names the cosign version.** When `opnexus update` cannot verify an image and cosign says `no signatures found`, the message now adds that cosign 3 or newer is required (cosign 2.x cannot read the signatures). The check still stops before anything is changed.
+- **Login: submitting before the page has loaded.** If the Sign in form was submitted (Enter or a click) before the page had finished
+  loading, the browser sent it natively: the page reloaded and what had been typed was lost, and the next try could look like a wrong
+  password. The button now stays disabled until the page is ready, and the form is declared `method="post"` as a backstop.
+- **Rules: automatic rollback is now announced, per firewall.** A change that is not confirmed within the confirm window is rolled back by the
+  server, firewall by firewall; for a new rule nothing on the page said so, the status simply fell back to "Changes pending". The rules page now
+  shows a notice naming the rule and the firewalls ("... was not confirmed in time and has been rolled back automatically on: ..."). It also
+  covers a rule that stays live on one firewall while another one was rolled back. The notice appears only while the rules page is open.
+
 ## [1.41.0] "Copenhagen" — 2026-11-26
 
 - **A redesigned interface.** The whole interface was reworked on shared building blocks (no new function): every page has the same head and margin, tables turn into cards on a phone instead of being cut off, the navigation is labelled from 1024 px wide and becomes a side menu below, filters and row actions follow one pattern, the touch targets are larger on touch screens and text fields no longer make iOS zoom in. The audit page shows **one row per operation** (a request with all its steps; click for the steps and what they changed) instead of one card per step; new read-only API `GET /api/audit?group=operation`. The accessibility check (axe) finds nothing on any page.

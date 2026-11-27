@@ -7,7 +7,7 @@ Zentrale Verwaltung mehrerer [OPNsense](https://opnsense.org)-Firewalls: Regeln,
 
 ![Zentrale Firewall-Regeln](docs/screenshots/readme-rules-de.webp)
 
-> **Stand:** `1.41.0` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
+> **Stand:** `1.41.1` ist die aktuelle stabile Version. Entwickelt und getestet wurde gegen echte OPNsense-Instanzen; eine frische Installation aus dem Release-Bundle sowie Updates und Rollbacks sind durchgängig geprüft. Ecken und Kanten bitte melden.
 
 ## Funktionen
 
@@ -46,15 +46,23 @@ Alle Screenshots zeigen fiktive Beispieldaten.
 Voraussetzung: Docker mit Compose-Plugin (unter Debian 13: `apt install docker.io docker-compose`). Der empfohlene Weg ist das **Release-Bundle** mit fertigen, signierten Images – auf deinem Rechner wird nichts gebaut:
 
 ```bash
-curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.41.0/opnexus-1.41.0.tar.gz
-tar xzf opnexus-1.41.0.tar.gz && cd opnexus-1.41.0
+curl -LO https://github.com/OPNexus-dev/OPNexus/releases/download/v1.41.1/opnexus-1.41.1.tar.gz
+tar xzf opnexus-1.41.1.tar.gz && cd opnexus-1.41.1
 install -m 600 .env.example .env     # nur für dich lesbar
 sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(openssl rand -hex 24)|" .env   # eigenes Datenbank-Passwort erzeugen
 docker compose up -d
 ./opnexus password                   # zeigt das Admin-Passwort
 ```
 
-Dann `https://<server-ip>` öffnen (auf demselben Rechner `https://localhost`) und als `admin` anmelden. Der Browser warnt einmal vor der eigenen Zertifizierungsstelle von OPNexus – das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) zeigt, wie man ihr vertraut und Adressen für den Zugriff von anderen Rechnern einträgt.
+Dann `https://localhost` auf demselben Rechner öffnen und als `admin` anmelden.
+
+**Für den Zugriff von einem anderen Rechner** dem Proxy zuerst die Adresse des Servers nennen (`192.168.1.50` durch deine ersetzen). Standardmäßig antwortet er nur für `localhost`; eine Anfrage per IP liefert eine leere Seite:
+
+```bash
+sed -i 's|^OPNEXUS_SITES=.*|OPNEXUS_SITES=192.168.1.50|; s|^OPNEXUS_DEFAULT_SNI=.*|OPNEXUS_DEFAULT_SNI=192.168.1.50|; s|^FRONTEND_ORIGIN=.*|FRONTEND_ORIGIN=https://192.168.1.50|; s|^COOKIE_SECURE=.*|COOKIE_SECURE=true|' .env && docker compose up -d
+```
+
+Dann `https://192.168.1.50` öffnen. Der Browser warnt einmal vor der eigenen Zertifizierungsstelle von OPNexus – das [Handbuch](docs/HANDBUCH.md#zugriff-aus-dem-netz-und-tls) zeigt, wie man ihr vertraut und Adressen für den Zugriff von anderen Rechnern einträgt.
 
 `POSTGRES_PASSWORD` gilt nur beim **allerersten Start** mit einem leeren Datenbank-Volume. Startest du später mit einem anderen Passwort neu, starten Backend und Sicherungsdienst in einer Schleife neu, und das Log nennt den Grund – entweder das ursprüngliche Passwort wieder eintragen oder, bei einer Installation ohne Daten, die alten Volumes mit `docker compose down -v` entfernen (löscht die Datenbank).
 

@@ -829,6 +829,7 @@
     "deployResult": "Deploy result",
     "expiresIn": "— expires in {seconds}s unless confirmed",
     "revertedNote": "— not confirmed, rolled back automatically",
+    "autoRolledBack": "“{name}” was not confirmed in time and has been rolled back automatically on: {hosts}.",
     "revertFailed": "— rollback failed: {message}",
     "confirmed": "Deployment confirmed",
     "confirmFailed": "Confirmation failed",

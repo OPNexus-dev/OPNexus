@@ -24,6 +24,10 @@ export default function LoginPage() {
   const [code, setCode] = useState("");
   const shakeRef = useRef<HTMLDivElement>(null);
   const [sso, setSso] = useState<{ enabled: boolean; name: string | null } | null>(null);
+  // Set once the page is hydrated: before that the form must not be submittable, otherwise the browser submits it natively,
+  // which reloads the page and throws away what was typed. method="post" on the form is only a backstop for a native submit.
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
 
   useEffect(() => {
     api.oidcConfig().then(setSso).catch(() => setSso(null));
@@ -83,7 +87,7 @@ export default function LoginPage() {
           <div className="login-card login-rise rounded-2xl p-8 shadow-xl">
             <Logo className="login-rise mb-3 h-8 w-auto" />
             <h1 className="login-rise mb-6 text-sm font-normal text-slate-500" style={rise(90)}>{t("login.prompt")}</h1>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form method="post" onSubmit={handleSubmit} className="space-y-4">
               {!needCode ? (
                 <>
                   <div className="login-rise" style={rise(150)}>
@@ -108,7 +112,7 @@ export default function LoginPage() {
               )}
               {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
               <div className="login-rise" style={rise(290)}>
-                <Button type="submit" disabled={loading} className="w-full justify-center">
+                <Button type="submit" disabled={loading || !ready} className="w-full justify-center">
                   {loading && <Spinner size={14} className="text-white" />}
                   {loading ? t("login.signingIn") : t("login.signIn")}
                 </Button>

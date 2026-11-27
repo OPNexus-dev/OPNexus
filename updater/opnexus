@@ -475,6 +475,10 @@ cosign_check() {  # REF BESCHREIBUNG
   if printf '%s' "$out" | grep -qiE 'no such host|dial tcp|i/o timeout|connection refused|connection reset|TLS handshake|temporary failure|server misbehaving|context deadline|network is unreachable|lookup [^ ]+ on'; then
     die "$what: Die Registry war nicht erreichbar, die Signatur konnte nicht geprüft werden (Netz oder Namensauflösung des Updaters prüfen) — nichts wurde verändert.${detail:+ cosign: $detail}" "$what: the registry was not reachable, the signature could not be verified (check network or name resolution of the updater) — nothing was changed.${detail:+ cosign: $detail}"
   fi
+  if printf '%s' "$out" | grep -qi 'no signatures found'; then
+    # Die Signaturen von OPNexus liegen im Schema von cosign 3; cosign 2.x findet sie nicht und meldet dasselbe wie bei einem unsignierten Image.
+    die "$what ist ungültig oder fehlt — nichts wurde verändert. Hinweis: Die Prüfung braucht cosign 3 oder neuer (mit cosign 2.x kommt „no signatures found“ auch bei gültig signierten Images). Zeigt \`cosign version\` 2.x, cosign aktualisieren; bei 3.x oder neuer ist das Image wirklich nicht gültig signiert und wird nicht verwendet.${detail:+ cosign: $detail}" "$what is invalid or missing — nothing was changed. Note: verification needs cosign 3 or newer (with cosign 2.x \"no signatures found\" also appears for validly signed images). If \`cosign version\` shows 2.x, update cosign; with 3.x or newer the image really is not validly signed and will not be used.${detail:+ cosign: $detail}"
+  fi
   die "$what ist ungültig oder fehlt — nichts wurde verändert.${detail:+ cosign: $detail}" "$what is invalid or missing — nothing was changed.${detail:+ cosign: $detail}"
 }
 

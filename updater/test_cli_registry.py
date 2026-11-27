@@ -142,6 +142,25 @@ class RegistryBehaviour(unittest.TestCase):
         self.assertEqual(self.env_value("OPNEXUS_VERSION"), "1.35.0")
         self.assertFalse([c for c in self.calls() if c.startswith("docker compose up")])
 
+    def test_no_signatures_found_points_to_cosign_3(self):
+        # cosign 2.x kennt das Signaturschema von cosign 3 nicht und meldet bei gültig signierten Images „no signatures found“.
+        self.install(GHCR)
+        err = "Error: no signatures found\n"
+        for lang, hint in (("de", "cosign 3 oder neuer"), ("en", "cosign 3 or newer")):
+            r = self.cli("update", "1.36.0", env={"FAKE_COSIGN_RC": "1", "FAKE_COSIGN_ERR": err, "OPNEXUS_LANG": lang})
+            self.assertNotEqual(r.returncode, 0)
+            self.assertIn(hint, r.stderr)
+            self.assertIn("no signatures found", r.stderr)  # cosigns Ausgabe bleibt sichtbar
+            self.assertEqual(self.env_value("OPNEXUS_VERSION"), "1.35.0")  # bleibt fail-closed
+            self.assertFalse([c for c in self.calls() if c.startswith("docker compose up")])
+
+    def test_other_signature_failures_get_no_cosign_3_hint(self):
+        self.install(GHCR)
+        r = self.cli("update", "1.36.0", env={"FAKE_COSIGN_RC": "1", "FAKE_COSIGN_ERR": "Error: no matching signatures\n"})
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("no matching signatures", r.stderr)  # cosigns Ausgabe bleibt sichtbar, der Lauf kam wirklich bis zur Prüfung
+        self.assertNotIn("cosign 3", r.stderr)
+
     def test_a_real_signature_failure_still_says_so_and_shows_cosign_output(self):
         self.install(GHCR)
         r = self.cli("update", "1.36.0", env={"FAKE_COSIGN_RC": "1", "FAKE_COSIGN_ERR": "Error: no matching signatures\n"})

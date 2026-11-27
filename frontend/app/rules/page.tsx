@@ -24,6 +24,7 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { StatChip } from "@/components/ui/StatChip";
 import { useBreakpoint } from "@/lib/useBreakpoint";
 import { useToast } from "@/components/ui/Toast";
+import { pendingRules, rolledBackRules, type PendingRules } from "@/lib/rollbackNotice";
 import { LiveRulesDrift } from "@/components/LiveRulesDrift";
 import { AdoptRulesModal } from "@/components/AdoptRulesModal";
 import { HostLocalRules } from "@/components/HostLocalRules";
@@ -202,9 +203,14 @@ function RulesContent() {
 
   const hostsById = useMemo(() => new Map(hosts.map((h) => [h.id, h])), [hosts]);
 
+  // Loads can overlap (poll, confirm, bulk actions). Only the newest one may write the state: an older answer arriving late
+  // would show rules as "pending" again and could make the rollback notice fire twice.
+  const loadSeq = useRef(0);
   async function load() {
+    const seq = ++loadSeq.current;
     try {
       const [ruleList, hostList, groupList] = await Promise.all([api.listRules(), api.listHosts(), api.listGroups()]);
+      if (seq !== loadSeq.current) return;
       setGroups(groupList);
       setRules(ruleList);
       setHosts(hostList);
@@ -329,6 +335,16 @@ function RulesContent() {
     }, 5000);
     return () => clearInterval(t);
   }, []);
+
+  // A rule that was waiting for confirmation and is gone from "pending" without a confirmation has been rolled back by the
+  // server. For a new rule no deployment row remains, so say it once here (otherwise the status just falls back unnoticed).
+  const pendingBeforeRef = useRef<PendingRules>(new Map());
+  useEffect(() => {
+    if (!rules) return;
+    for (const r of rolledBackRules(pendingBeforeRef.current, rules)) toast.show(t("rules.autoRolledBack", { name: r.description, hosts: r.hosts.join(", ") }), "danger", 15000);
+    pendingBeforeRef.current = pendingRules(rules);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rules]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

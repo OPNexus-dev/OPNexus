@@ -65,7 +65,14 @@ docker compose up -d
 ./opnexus password                   # zeigt das Admin-Passwort, wenn ADMIN_PASSWORD leer war
 ```
 
-Danach `https://<server-ip>` öffnen (lokal `https://localhost`); der Einrichtungsassistent führt durch die ersten Schritte.
+Danach auf demselben Rechner `https://localhost` öffnen; der Einrichtungsassistent führt durch die ersten Schritte.
+**Von einem anderen Rechner** muss der Proxy erst die Adresse des Servers kennen (standardmäßig antwortet er nur auf `localhost`; eine
+Anfrage per IP liefert eine leere Seite). Dafür `OPNEXUS_SITES`, `OPNEXUS_DEFAULT_SNI`, `FRONTEND_ORIGIN` und `COOKIE_SECURE=true` in der `.env` setzen (Einzelheiten
+unter [Zugriff aus dem Netz und TLS](#zugriff-aus-dem-netz-und-tls)) und `docker compose up -d` erneut ausführen:
+
+```bash
+sed -i 's|^OPNEXUS_SITES=.*|OPNEXUS_SITES=192.168.1.50|; s|^OPNEXUS_DEFAULT_SNI=.*|OPNEXUS_DEFAULT_SNI=192.168.1.50|; s|^FRONTEND_ORIGIN=.*|FRONTEND_ORIGIN=https://192.168.1.50|; s|^COOKIE_SECURE=.*|COOKIE_SECURE=true|' .env && docker compose up -d
+```
 Das Datenbank-Passwort musst du dir nicht merken, es steht in der `.env`. Weitere Einstellungen (Adressen, TLS) stehen unter
 [Konfiguration (`.env`)](#konfiguration-env).
 
@@ -122,6 +129,12 @@ cosign verify --key cosign.pub --insecure-ignore-tlog=true \
   ghcr.io/opnexus-dev/opnexus-backend:<version>
 ```
 
+**Dafür braucht es cosign 3 oder neuer.** Die Signaturen liegen im Schema von cosign 3. Mit cosign 2.x scheitert derselbe Befehl mit
+`no signatures found`, auch bei einem gültig signierten Image. Zuerst `cosign version` prüfen; zeigt es 2.x, cosign aktualisieren und den Befehl
+wiederholen. Zeigt es 3.x oder neuer und die Meldung bleibt, hat das Image wirklich keine gültige Signatur: nicht verwenden.
+`opnexus update` führt dieselbe Prüfung aus: Ist cosign 2.x installiert, bricht es mit „Signatur ungültig oder fehlt“ ab und ändert nichts.
+**cosign nicht entfernen, um die Meldung loszuwerden:** ohne cosign überspringt das Werkzeug die Prüfung, und genau davor soll sie schützen.
+
 Die Images liegen in **zwei Registries**: `ghcr.io/opnexus-dev` (Standard für neue Installationen)
 und `git.opnexus.dev/opnexus` (Gitea, vollständig weiter unterstützt). Sie werden nur einmal
 gebaut und digestgleich samt Signatur in beide Registries kopiert; dieselbe Prüfung mit
@@ -159,8 +172,8 @@ wurde. Eine Rückfrage kommt nur, wenn sich schon jemand angemeldet hat
 Ein altes Passwort lässt sich nicht anzeigen, gespeichert wird nur ein
 Argon2id-Hash.
 
-Danach die Oberfläche öffnen: `https://<server-ip>` (lokal auch
-`http://localhost:3100`). Der Browser zeigt anfangs eine Zertifikatswarnung, siehe
+Danach die Oberfläche öffnen: `https://localhost` auf demselben Rechner (auch
+`http://localhost:3100`); von einem anderen Rechner mit der Adresse des Servers, sobald sie in `OPNEXUS_SITES` steht, siehe Schnellstart oben. Der Browser zeigt anfangs eine Zertifikatswarnung, siehe
 [Zugriff aus dem Netz und TLS](#zugriff-aus-dem-netz-und-tls).
 
 ### Der Einrichtungsassistent
