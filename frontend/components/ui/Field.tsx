@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { InfoTip } from "@/components/ui/Tooltip";
-import { createContext, useContext, useId, InputHTMLAttributes, LabelHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import { ComponentProps, createContext, useContext, useId, LabelHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
 
 const FieldLabel = createContext<string | undefined>(undefined);
 
@@ -13,7 +13,8 @@ export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElem
 const controlClass =
   "min-h-[2.5rem] [@media(pointer:coarse)]:min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+// ComponentProps (not InputHTMLAttributes) so that `ref` is accepted: React 19 passes it down as an ordinary prop.
+export function Input({ className, ...props }: ComponentProps<"input">) {
   const labelId = useContext(FieldLabel);
   return <input aria-labelledby={props["aria-label"] ? undefined : labelId} {...props} className={clsx(controlClass, className)} />;
 }

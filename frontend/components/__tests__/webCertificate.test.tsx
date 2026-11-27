@@ -50,7 +50,7 @@ describe("Web certificate section", () => {
   it("explains how to proceed without the updater and offers no buttons", async () => {
     webCert = vi.fn(() => Promise.resolve({ available: false, reason: "not_enabled" }));
     await shown();
-    expect(screen.getByText("webCert.unavailable")).toBeInTheDocument();
+    expect(await screen.findByText("webCert.unavailable")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /webCert\.(install|remove)/ })).toBeNull();
   });
 

@@ -21,7 +21,12 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [needCode, setNeedCode] = useState(false);
-  const [code, setCode] = useState("");
+  // The three fields are uncontrolled on purpose: React resets a controlled field to its (empty) state while it hydrates, which threw away
+  // whatever was typed, or filled in by a password manager, before the JavaScript started. The state below only remembers the values for
+  // the next step and for a field that is shown again; what is submitted is read from the fields themselves, so it is always what is on screen.
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const codeRef = useRef<HTMLInputElement>(null);
   const shakeRef = useRef<HTMLDivElement>(null);
   const [sso, setSso] = useState<{ enabled: boolean; name: string | null } | null>(null);
   // Set once the page is hydrated: before that the form must not be submittable, otherwise the browser submits it natively,
@@ -49,10 +54,15 @@ export default function LoginPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const user = needCode ? username : usernameRef.current?.value ?? username;
+    const pass = needCode ? password : passwordRef.current?.value ?? password;
+    const totp = needCode ? (codeRef.current?.value ?? "").trim() : undefined;
+    setUsername(user);
+    setPassword(pass);
     setLoading(true);
     setError(null);
     try {
-      const result = await api.login(username, password, needCode ? code.trim() : undefined);
+      const result = await api.login(user, pass, totp);
       try {
         sessionStorage.setItem(LOGIN_INFO_STORAGE_KEY, JSON.stringify(result));
       } catch {
@@ -92,22 +102,22 @@ export default function LoginPage() {
                 <>
                   <div className="login-rise" style={rise(150)}>
                     <FieldGroup label={t("login.username")}>
-                      <Input required autoFocus autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} />
+                      <Input ref={usernameRef} required autoFocus autoComplete="username" autoCapitalize="none" spellCheck={false} defaultValue={username} />
                     </FieldGroup>
                   </div>
                   <div className="login-rise" style={rise(220)}>
                     <FieldGroup label={t("login.password")}>
-                      <Input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+                      <Input ref={passwordRef} required type="password" autoComplete="current-password" />
                     </FieldGroup>
                   </div>
                 </>
               ) : (
                 <div className="space-y-2">
                   <FieldGroup label={t("login.code")}>
-                    <Input required autoFocus autoComplete="one-time-code" autoCapitalize="none" spellCheck={false} inputMode="text" maxLength={32} value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
+                    <Input ref={codeRef} required autoFocus autoComplete="one-time-code" autoCapitalize="none" spellCheck={false} inputMode="text" maxLength={32} placeholder="123456" />
                   </FieldGroup>
                   <p className="text-xs text-slate-500">{t("login.codeHint")}</p>
-                  <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => { setNeedCode(false); setCode(""); setPassword(""); setError(null); }}>{t("login.back")}</button>
+                  <button type="button" className="text-xs text-brand-600 hover:underline" onClick={() => { setNeedCode(false); setPassword(""); setError(null); }}>{t("login.back")}</button>
                 </div>
               )}
               {error && <p role="alert" className="text-sm text-red-600">{error}</p>}

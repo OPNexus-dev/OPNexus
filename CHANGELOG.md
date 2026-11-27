@@ -26,6 +26,12 @@ in the footer of every page, on `/about` and in the settings.
 
 Next codenames (in order, when the next MINOR version is due): Copenhagen, Dublin, Edinburgh, Florence.
 
+## [1.41.2] "Copenhagen" — 2026-11-27
+
+### Fixed
+- **Login: what you type before the page has finished loading is kept.** Text typed into the Sign in form (or filled in by a password manager) while the page was still loading was wiped the moment the page's JavaScript started, so you had to type it again. The fields are no longer reset when the page starts, and signing in uses what is in them.
+- **No flash of the wrong theme while a page loads.** With a chosen theme that differs from the operating system's (for example Dark chosen, system set to light), every page load showed one frame in the other theme before switching to the chosen one. The chosen theme is now applied from the first frame on. Switching the theme in Settings and the sync between browser tabs work as before.
+
 ## [1.41.1] "Copenhagen" — 2026-11-27
 
 ### Documentation
