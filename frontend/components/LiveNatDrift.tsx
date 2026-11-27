@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -156,7 +157,7 @@ export function LiveNatDrift() {
                 ) : state.driftedRows.length === 0 ? (
                   <p className="text-sm text-emerald-600">{t("drift.noDiffs")}</p>
                 ) : (
-                  <Card className="overflow-x-auto">
+                  <ScrollCard>
                     <table className="w-full text-left text-sm">
                       <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
@@ -179,7 +180,7 @@ export function LiveNatDrift() {
                         ))}
                       </tbody>
                     </table>
-                  </Card>
+                  </ScrollCard>
                 )}
               </div>
             );

@@ -1,5 +1,6 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
 import { useConfirm } from "@/components/ui/Confirm";
 import { protocolSelect } from "@/lib/protocols";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
@@ -8,7 +9,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { WorkflowBadge, workflowStates } from "@/components/WorkflowBadge";
 import { RuleReview } from "@/components/RuleReview";
 import { ActionBadge, DeploymentIcon } from "@/components/RuleBits";
-import { RulesTable, SortKey, SortState } from "@/components/RulesTable";
+import { RulesTable, SortState } from "@/components/RulesTable";
 import { BulkDeployModal } from "@/components/BulkDeployModal";
 
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Tabs } from "@/components/ui/Tabs";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { StatChip } from "@/components/ui/StatChip";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { useToast } from "@/components/ui/Toast";
 import { LiveRulesDrift } from "@/components/LiveRulesDrift";
 import { AdoptRulesModal } from "@/components/AdoptRulesModal";
@@ -144,6 +150,10 @@ function RulesContent() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Rule | null>(null);
+  // One editor session per opening: editing an existing item, "Save" stays grey until the form differs from what the editor opened with.
+  // A restored older revision opens different from the stored item, so it is savable at once.
+  const [session, setSession] = useState<{ restored: boolean } | null>(null);
+  const dirty = useDirty(form, session);
   const [groups, setGroups] = useState<DeviceGroup[]>([]);
   const [review, setReview] = useState<{ rule: Rule; mode: "preview" | "history" } | null>(null);
   const [search, setSearch] = useState("");
@@ -151,6 +161,9 @@ function RulesContent() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulk, setShowBulk] = useState(false);
   const [view, setViewState] = useState<"table" | "cards">("table");
+  // On a phone the table is shown as cards by the table itself; the old card layout (a wide card per rule) is only offered on larger screens.
+  const phoneScreen = useBreakpoint() === "phone";
+  const effectiveView = phoneScreen ? "table" : view;
   const [usageList, setUsageList] = useState<RuleUsage[]>([]);
   const [usageFilter, setUsageFilter] = useState("");
   const [sort, setSort] = useState<SortState>({ key: "description", dir: "asc" });
@@ -336,6 +349,7 @@ function RulesContent() {
 
   function openEditor(rule: Rule | null, copy = false, restored?: RuleCreate) {
     setEditing(copy ? null : rule);
+    setSession({ restored: !!restored });
     const candidate = restored ?? (rule ? { ...rule, description: copy ? `${rule.description.slice(0, 247)}${t("rules.copySuffix")}` : rule.description } : { ...emptyForm, target_group_ids: groupFilter && groups.some(g => g.id === groupFilter) ? [groupFilter] : [] });
     const available = restored ? {
       ...candidate,
@@ -456,16 +470,13 @@ function RulesContent() {
       default: return rule.description.toLowerCase();
     }
   };
-  const shownRules = view === "table"
+  const shownRules = effectiveView === "table"
     ? [...filteredByUsage].sort((a, b) => {
         const x = sortValue(a), y = sortValue(b);
         const order = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true });
         return sort.dir === "asc" ? order : -order;
       })
     : filteredByUsage;
-  function toggleSort(key: SortKey) {
-    setSort((current) => current.key === key ? { key, dir: current.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "lastHit" ? "desc" : "asc" });
-  }
   // Only what is on screen can be selected for a bulk deploy: nothing hidden by a filter is deployed by accident.
   const selectedRules = shownRules.filter((rule) => selected.has(rule.id));
   const allShownSelected = shownRules.length > 0 && selectedRules.length === shownRules.length;
@@ -473,10 +484,11 @@ function RulesContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("rules.groupTitle", { name: selectedGroup.name }) : t("rules.title")}<InfoTip text={t("rules.subtitle")} size={18} /></h1>
-        {activeTab === "managed" && (
-          <div className="flex flex-wrap gap-2">
+      <PageHeader
+        title={selectedGroup ? t("rules.groupTitle", { name: selectedGroup.name }) : t("rules.title")}
+        info={t("rules.subtitle")}
+        actions={activeTab === "managed" ? (
+          <>
             <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
               <Download size={16} />
               {t("rules.adopt.button")}
@@ -485,18 +497,18 @@ function RulesContent() {
               <Plus size={16} />
               {t("rules.new")}
             </Button>
-          </div>
-        )}
-      </div>
-
-      <Tabs
-        className="mb-6"
-        items={[
-          { key: "managed", label: t("rules.managed") },
-          { key: "live", label: t("rules.live") },
-        ]}
-        active={activeTab}
-        onChange={(key) => setActiveTab(key as "managed" | "live")}
+          </>
+        ) : undefined}
+        tabs={
+          <Tabs
+            items={[
+              { key: "managed", label: t("rules.managed") },
+              { key: "live", label: t("rules.live") },
+            ]}
+            active={activeTab}
+            onChange={(key) => setActiveTab(key as "managed" | "live")}
+          />
+        }
       />
 
       {activeTab === "live" ? (
@@ -505,32 +517,41 @@ function RulesContent() {
         <>
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Input aria-label={t("rules.searchLabel")} placeholder={t("rules.searchPlaceholder")} value={search} onChange={e => setSearch(e.target.value)} />
-        <Select aria-label={t("rules.groupFilter")} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}><option value="">{t("rules.allGroups")}</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
-        <Select aria-label={t("rules.stateFilter")} value={stateFilter} onChange={e => setStateFilter(e.target.value)}><option value="">{t("rules.allStates")}</option>{workflowStates.map((value) => <option key={value} value={value}>{t(`workflow.${value}`)}</option>)}</Select>
-        <Select aria-label={t("rules.usage.filter")} value={usageFilter} onChange={e => setUsageFilter(e.target.value)}><option value="">{t("rules.usage.all")}</option>{["used", "unused", "collecting", "unknown"].map((value) => <option key={value} value={value}>{t(`rules.usage.${value}`)}</option>)}</Select>
-      </div>
+      <FilterBar
+        className="mb-4"
+        search={{ value: search, onChange: setSearch, placeholder: t("rules.searchPlaceholder"), label: t("rules.searchLabel") }}
+        filters={[
+          { key: "group", label: t("rules.groupFilter"), value: groupFilter, onChange: setGroupFilter, allLabel: t("rules.allGroups"), options: groups.map((g) => ({ value: g.id, label: g.name })) },
+          { key: "state", label: t("rules.stateFilter"), value: stateFilter, onChange: setStateFilter, allLabel: t("rules.allStates"), options: workflowStates.map((value) => ({ value, label: t(`workflow.${value}`) })) },
+          { key: "usage", label: t("rules.usage.filter"), value: usageFilter, onChange: setUsageFilter, allLabel: t("rules.usage.all"), options: ["used", "unused", "collecting", "unknown"].map((value) => ({ value, label: t(`rules.usage.${value}`) })) },
+        ]}
+        onReset={() => { setSearch(""); setStateFilter(""); setUsageFilter(""); setGroupFilter(selectedGroup ? groupFilter : ""); }}
+        segment={!phoneScreen && shownRules.length > 0 ? (
+          <SegmentedControl
+            label={t("rules.view.label")}
+            value={view}
+            onChange={setView}
+            options={[{ value: "table", label: t("rules.view.table") }, { value: "cards", label: t("rules.view.cards") }]}
+          />
+        ) : undefined}
+        trailing={rules ? (
+          <>
+            <StatChip tone="warning" count={groupRules.filter((r) => r.workflow_state === "draft").length} label={t("rules.chip.draft")} />
+            <StatChip tone="info" count={groupRules.filter((r) => ["attention", "cleanup", "pending"].includes(r.workflow_state)).length} label={t("rules.chip.review")} />
+            <StatChip tone="success" count={groupRules.filter((r) => r.workflow_state === "synced").length} label={t("rules.chip.synced")} />
+          </>
+        ) : undefined}
+      />
       {selectedGroup && <p className="mb-3 text-sm text-slate-500">{t("rules.groupSummary", { members: selectedGroup.host_ids.length, rules: groupRules.length })}<Link href="/groups" className="text-sky-700 underline">{t("rules.manageMembers")}</Link></p>}
       {ruleFilter && <Button variant="ghost" onClick={() => setGroupFilter(groupFilter)}>{selectedGroup ? t("rules.showAllInGroup") : t("rules.showAll")}</Button>}
-      {rules && <div className="mb-4 flex flex-wrap gap-4 text-sm text-slate-600"><span>{t("rules.countDraft", { count: groupRules.filter(r => r.workflow_state === "draft").length })}</span><span>{t("rules.countReview", { count: groupRules.filter(r => ["attention", "cleanup", "pending"].includes(r.workflow_state)).length })}</span><span>{t("rules.countSynced", { count: groupRules.filter(r => r.workflow_state === "synced").length })}</span></div>}
-      {shownRules.length > 0 && (
-        <div className="mb-2 flex justify-end" role="group" aria-label={t("rules.view.label")}>
-          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200 text-sm">
-            {(["table", "cards"] as const).map((value) => (
-              <button key={value} type="button" aria-pressed={view === value}
-                className={`px-3 py-1 ${view === value ? "bg-sky-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
-                onClick={() => setView(value)}>{t(`rules.view.${value}`)}</button>
-            ))}
-          </div>
-        </div>
-      )}
-      {shownRules.length > 0 && !readOnly && (
+      {shownRules.length > 0 && !readOnly && (selectedRules.length > 0 || pendingRuleIds.length > 0 || effectiveView === "cards") && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())} />
-            {t("rules.bulk.selectAll")}
-          </label>
+          {effectiveView === "cards" && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={allShownSelected} onChange={(e) => setSelected(e.target.checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())} />
+              {t("rules.bulk.selectAll")}
+            </label>
+          )}
           {selectedRules.length > 0 && <>
             <span className="text-slate-600">{t("rules.bulk.selected", { count: selectedRules.length })}</span>
             <Button disabled={selectedRules.length > BULK_RULE_LIMIT} onClick={() => setShowBulk(true)}><Rocket size={14} />{t("rules.bulk.review", { count: selectedRules.length })}</Button>
@@ -555,19 +576,20 @@ function RulesContent() {
               : <Button variant="ghost" onClick={() => { setSearch(""); setStateFilter(""); setUsageFilter(""); setGroupFilter(selectedGroup ? groupFilter : ""); }}>{t("rules.resetSelection")}</Button>}
           />
         )}
-        {view === "table" && shownRules.length > 0 && (
+        {effectiveView === "table" && shownRules.length > 0 && (
           <div>
           <RulesTable
             rules={shownRules} hostsById={hostsById} usage={usageById} selected={selected}
-            onToggle={toggleSelected} onToggleAll={(checked) => setSelected(checked ? new Set(shownRules.slice(0, BULK_RULE_LIMIT).map((r) => r.id)) : new Set())}
-            sort={sort} onSort={toggleSort} secondsLeft={secondsLeft} confirmingId={confirmingId} readOnly={readOnly}
+            onSelectionChange={(next) => setSelected(next)}
+            sort={sort} onSortChange={(next) => setSort(next ? (next as SortState) : { key: "description", dir: "asc" })}
+            secondsLeft={secondsLeft} confirmingId={confirmingId} readOnly={readOnly}
             onEdit={(rule) => openEditor(rule)} onPreview={(rule) => setReview({ rule, mode: "preview" })} onHistory={(rule) => setReview({ rule, mode: "history" })}
             onDuplicate={(rule) => openEditor(rule, true)} onDelete={handleDelete} onConfirm={handleConfirm}
           />
           </div>
         )}
         <fieldset disabled={readOnly} className="contents">
-        {view === "cards" && shownRules.map((rule) => {
+        {effectiveView === "cards" && shownRules.map((rule) => {
           const hasPending = rule.deployments.some((d) => d.status === "pending");
           return (
             <Card key={rule.id} className="p-5">
@@ -837,7 +859,7 @@ function RulesContent() {
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>
                 {t("common.cancel")}
               </Button>
-              <Button type="submit" disabled={saving} loading={saving}>
+              <Button type="submit" disabled={saving || (!!editing && !session?.restored && !dirty)} loading={saving}>
                 {saving ? t("common.saving") : t("rules.saveDraft")}
               </Button>
             </div>

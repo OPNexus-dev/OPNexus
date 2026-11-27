@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { RuleLinkRepairModal } from "@/components/RuleLinkRepairModal";
 import { HistoryTarget, RuleHistoryModal } from "@/components/RuleHistoryModal";
 import { Badge } from "@/components/ui/Badge";
@@ -342,7 +343,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
             ) : visible.length === 0 ? (
               <p className="mb-4 text-sm text-emerald-600">{onlyDrift ? t("drift.noDiffs") : t("drift.noRules")}</p>
             ) : (
-              <Card className="overflow-x-auto">
+              <ScrollCard>
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
@@ -467,7 +468,7 @@ export function LiveRulesDrift({ onEditRule, onRulesChanged }: Props = {}) {
                     )}
                   </tbody>
                 </table>
-              </Card>
+              </ScrollCard>
             )}
           </div>
         );

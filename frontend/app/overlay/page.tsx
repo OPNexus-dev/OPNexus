@@ -1,7 +1,10 @@
 "use client";
 
+import { useChanged, useDirty } from "@/lib/useDirty";
+import { DataTable } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
-import { InfoTip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -12,7 +15,7 @@ import { useToast } from "@/components/ui/Toast";
 import { api, Host, OverlayInstructions, OverlayPeer, OverlaySettings } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useNotAdmin } from "@/lib/useReadOnly";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, FileText, Link2, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -31,20 +34,27 @@ export default function OverlayPage() {
   const [endpoint, setEndpoint] = useState("");
   const [port, setPort] = useState(51820);
   const [subnet, setSubnet] = useState("10.99.0.0/24");
+  const [applied, setApplied] = useState<OverlaySettings | null>(null);   // the settings the form was last filled from
+  const dirty = useDirty({ enabled, endpoint, port, subnet }, applied);
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
   const [showing, setShowing] = useState<{ name: string; ip: string; instructions: OverlayInstructions } | null>(null);
   const [editing, setEditing] = useState<OverlayPeer | null>(null);
 
-  async function load() {
+  // The poll refreshes the status (peers, hub state) but must NOT overwrite what the user is typing: the form fields are filled from the
+  // server only on the first load and after a save (applyForm).
+  async function load(applyForm = false) {
     try {
       const data = await api.getOverlay();
       setSettings(data.settings);
       setPeers(data.peers);
-      setEnabled(data.settings.enabled);
-      setEndpoint(data.settings.endpoint ?? "");
-      setPort(data.settings.listen_port);
-      setSubnet(data.settings.subnet);
+      if (applyForm) {
+        setApplied(data.settings);
+        setEnabled(data.settings.enabled);
+        setEndpoint(data.settings.endpoint ?? "");
+        setPort(data.settings.listen_port);
+        setSubnet(data.settings.subnet);
+      }
       setError(null);
     } catch (e) {
       setError(errorMessage(e, "overlay.loadFailed"));
@@ -52,9 +62,9 @@ export default function OverlayPage() {
   }
 
   useEffect(() => {
-    load();
+    load(true);
     api.listHosts().then(setHosts).catch(() => {});
-    const timer = window.setInterval(load, 10000);
+    const timer = window.setInterval(() => load(), 10000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -63,7 +73,7 @@ export default function OverlayPage() {
     setSaving(true);
     try {
       await api.updateOverlay({ enabled, endpoint, listen_port: port, subnet });
-      await load();
+      await load(true);
       toast.show(t("overlay.saved"), "success");
     } catch (err) {
       setError(errorMessage(err, "common.saveFailed"));
@@ -95,18 +105,16 @@ export default function OverlayPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-          {t("overlay.title")}
-          <InfoTip text={t("overlay.intro")} size={18} />
-        </h1>
-        <fieldset disabled={notAdmin} className="contents">
-          <Button onClick={() => setAdding(true)} disabled={!settings?.enabled}>
+      <PageHeader
+        title={t("overlay.title")}
+        info={t("overlay.intro")}
+        actions={
+          <Button onClick={() => setAdding(true)} disabled={notAdmin || !settings?.enabled}>
             <Plus size={16} />
             {t("overlay.addPeer")}
           </Button>
-        </fieldset>
-      </div>
+        }
+      />
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <Card className="p-5">
@@ -136,57 +144,39 @@ export default function OverlayPage() {
                 {t("overlay.hubKey")} <code className="break-all font-mono">{settings.hub_public_key}</code> · {t("overlay.hubAddress")} <code className="font-mono">{settings.hub_address}</code>
               </p>
             )}
-            <Button type="submit" disabled={saving || notAdmin} loading={saving}>{t("common.save")}</Button>
+            <Button type="submit" disabled={saving || notAdmin || !dirty} loading={saving}>{t("common.save")}</Button>
           </form>
         )}
       </Card>
 
-      <Card className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">{t("overlay.colName")}</th>
-              <th className="px-5 py-3 font-medium">{t("overlay.colAddress")}</th>
-              <th className="px-5 py-3 font-medium">{t("overlay.colStatus")}</th>
-              <th className="px-5 py-3 font-medium">{t("overlay.colHost")}</th>
-              <th className="px-5 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {peers.length === 0 && (
-              <tr><td colSpan={5} className="px-5 py-8 text-center text-slate-500">{t("overlay.empty")}</td></tr>
-            )}
-            {peers.map((peer) => (
-              <tr key={peer.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-5 py-3 font-medium text-slate-900">{peer.name}</td>
-                <td className="px-5 py-3 font-mono text-xs text-slate-600">{peer.ip}</td>
-                <td className="px-5 py-3">
-                  {!peer.public_key ? <Badge tone="warning">{t("overlay.needsKey")}</Badge> : peer.connected ? (
-                    <span className="flex flex-col gap-0.5">
-                      <Badge tone="success">{t("overlay.connected")}</Badge>
-                      <span className="text-xs text-slate-500">
-                        {peer.last_handshake_at ? new Date(peer.last_handshake_at).toLocaleTimeString(locale) : ""} · ↓{formatBytes(peer.rx_bytes)} ↑{formatBytes(peer.tx_bytes)}
-                      </span>
-                    </span>
-                  ) : <Badge tone="neutral">{t("overlay.waiting")}</Badge>}
-                </td>
-                <td className="px-5 py-3">
-                  {peer.host_id ? <Link className="text-brand-600 hover:underline" href={`/hosts/${peer.host_id}`}>{peer.host_name}</Link> : <span className="text-slate-300">—</span>}
-                </td>
-                <td className="px-5 py-3 text-right">
-                  <fieldset disabled={notAdmin} className="contents">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" onClick={() => showInstructions(peer)}>{t("overlay.instructions")}</Button>
-                      <Button variant="outline" onClick={() => setEditing(peer)}>{t("overlay.link")}</Button>
-                      <Button variant="dangerSubtle" onClick={() => remove(peer)}><Trash2 size={14} />{t("rules.delete")}</Button>
-                    </div>
-                  </fieldset>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <DataTable
+        label={t("overlay.title")}
+        rows={peers}
+        rowKey={(peer) => peer.id}
+        empty={<EmptyState icon={Link2} title={t("overlay.empty")} />}
+        columns={[
+          { key: "name", header: t("overlay.colName"), priority: "primary", isTitle: true, cell: (peer) => peer.name },
+          {
+            key: "status", header: t("overlay.colStatus"), priority: "primary",
+            cell: (peer) => !peer.public_key ? <Badge tone="warning">{t("overlay.needsKey")}</Badge> : peer.connected ? (
+              <span className="flex flex-col gap-0.5">
+                <Badge tone="success">{t("overlay.connected")}</Badge>
+                <span className="text-xs font-normal text-slate-500">
+                  {peer.last_handshake_at ? new Date(peer.last_handshake_at).toLocaleTimeString(locale) : ""} · ↓{formatBytes(peer.rx_bytes)} ↑{formatBytes(peer.tx_bytes)}
+                </span>
+              </span>
+            ) : <Badge tone="neutral">{t("overlay.waiting")}</Badge>,
+          },
+          { key: "ip", header: t("overlay.colAddress"), priority: "high", mono: true, cell: (peer) => peer.ip },
+          { key: "host", header: t("overlay.colHost"), priority: "high", cell: (peer) => peer.host_id ? <Link className="text-brand-600 hover:underline" href={`/hosts/${peer.host_id}`}>{peer.host_name}</Link> : <span className="text-slate-300">—</span> },
+        ]}
+        // Write actions are disabled one by one (the menu is rendered outside any fieldset).
+        actions={(peer) => [
+          { key: "instructions", label: t("overlay.instructions"), icon: FileText, onSelect: () => showInstructions(peer) },
+          { key: "link", label: t("overlay.link"), icon: Link2, disabled: notAdmin, onSelect: () => setEditing(peer) },
+          { key: "delete", label: t("rules.delete"), icon: Trash2, tone: "danger", disabled: notAdmin, onSelect: () => remove(peer) },
+        ]}
+      />
 
       {adding && (
         <AddPeerModal
@@ -295,6 +285,7 @@ function LinkModal({ peer, hosts, onClose, onSaved }: { peer: OverlayPeer; hosts
   const { t, errorMessage } = useLanguage();
   const [key, setKey] = useState(peer.public_key ?? "");
   const [hostId, setHostId] = useState(peer.host_id ?? "");
+  const changed = useChanged({ key, hostId });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   async function submit(e: React.FormEvent) {
@@ -325,7 +316,7 @@ function LinkModal({ peer, hosts, onClose, onSaved }: { peer: OverlayPeer; hosts
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={busy} loading={busy}>{t("common.save")}</Button>
+          <Button type="submit" disabled={busy || !changed} loading={busy}>{t("common.save")}</Button>
         </div>
       </form>
     </Modal>

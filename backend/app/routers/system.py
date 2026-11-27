@@ -8,7 +8,7 @@ from app.database import get_db
 from app.errors import ErrorCode, api_error
 from app.models.user import AdminUser
 from app.routers.auth import current_user
-from app.services import ha_service, rollout_engine
+from app.services import audit_service, ha_service, rollout_engine
 from app.services import update_check_service, updater_client
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -220,3 +220,76 @@ async def ha_status(db: AsyncSession = Depends(get_db), user: AdminUser = Depend
         "peer": {"reachable": view is not None, "role": view[0] if view else None, "epoch": view[1] if view else None},
         "agent": agent,
     }
+
+
+# --- Own web certificate -------------------------------------------------------------------------------------------------------
+class WebCertPayload(BaseModel):
+    cert: str = Field(min_length=1, max_length=40000)
+    key: str = Field(min_length=1, max_length=40000)
+
+
+_CERT_REJECTIONS = {
+    "invalid_certificate": (400, ErrorCode.WEB_CERT_INVALID), "not_pem": (400, ErrorCode.WEB_CERT_NOT_PEM), "bad_request": (400, ErrorCode.WEB_CERT_NOT_PEM),
+    "too_large": (413, ErrorCode.WEB_CERT_TOO_LARGE), "ha_standby": (409, ErrorCode.WEB_CERT_STANDBY), "busy": (409, ErrorCode.WEB_CERT_BUSY),
+    "not_release_mode": (409, ErrorCode.WEB_CERT_NOT_RELEASE),
+}
+
+
+async def _cert_forward(call) -> dict:
+    try:
+        return await call
+    except updater_client.UpdaterUnavailable:
+        raise api_error(503, ErrorCode.UPDATER_UNAVAILABLE)
+    except updater_client.UpdaterRejected as rejected:
+        status, code = _CERT_REJECTIONS.get(rejected.code, (409, ErrorCode.UPDATER_REJECTED))
+        if code is ErrorCode.WEB_CERT_INVALID:
+            raise api_error(status, code, reason=rejected.detail or "")
+        if code is ErrorCode.UPDATER_REJECTED:
+            raise api_error(status, code, reason=rejected.code)
+        raise api_error(status, code)
+
+
+@router.get("/web-certificate")
+async def web_certificate(user: AdminUser = Depends(current_user)) -> dict:
+    """The certificate the proxy serves right now (source, addresses, expiry) and the last change job. Without the updater this is
+    "not available": the backend cannot reach the proxy's volume itself."""
+    _admin(user)
+    try:
+        result = await updater_client.cert_status()
+    except updater_client.UpdaterUnavailable as exc:
+        return {"available": False, "reason": str(exc)}
+    except updater_client.UpdaterRejected as rejected:
+        return {"available": False, "reason": rejected.code}
+    return {"available": True, **result}
+
+
+@router.post("/web-certificate/check")
+async def web_certificate_check(payload: WebCertPayload, user: AdminUser = Depends(current_user)) -> dict:
+    """Checks certificate and key without changing anything (what would be installed, which addresses it does not cover)."""
+    _admin(user)
+    return await _cert_forward(updater_client.cert_check(payload.cert, payload.key))
+
+
+async def _cert_audit(db: AsyncSession, action: str, message: str, details: dict) -> None:
+    db.add(audit_service.make_event(kind="settings", action=action, status="accepted", entity_id="web-certificate", message=message, details=details))
+    await db.commit()
+
+
+@router.post("/web-certificate", status_code=202)
+async def web_certificate_install(payload: WebCertPayload, db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)) -> dict:
+    """Installs an own certificate for the web interface (background job: the proxy is recreated). Never audited with the key."""
+    _admin(user)
+    info = await _cert_forward(updater_client.cert_check(payload.cert, payload.key))   # also yields what the audit entry records
+    result = await _cert_forward(updater_client.cert_install(payload.cert, payload.key))
+    cert = info.get("certificate") or {}
+    await _cert_audit(db, "web_certificate_install", "Webzertifikat von OPNexus eingespielt",
+                      {"subject": cert.get("subject"), "not_after": cert.get("not_after"), "fingerprint": cert.get("fingerprint"), "not_covered": cert.get("uncovered") or []})
+    return result
+
+
+@router.delete("/web-certificate", status_code=202)
+async def web_certificate_remove(db: AsyncSession = Depends(get_db), user: AdminUser = Depends(current_user)) -> dict:
+    _admin(user)
+    result = await _cert_forward(updater_client.cert_remove())
+    await _cert_audit(db, "web_certificate_remove", "Webzertifikat von OPNexus entfernt", {})
+    return result

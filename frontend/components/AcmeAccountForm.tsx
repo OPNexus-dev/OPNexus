@@ -1,5 +1,6 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -30,6 +31,7 @@ export function AcmeAccountForm({ hosts, editing, onClose, onSaved }: {
   const [form, setForm] = useState<AcmeAccountCreate>(editing ? { ...editing, eab_hmac: "" } : emptyForm(hosts[0]?.id ?? ""));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const changed = useChanged(form);   // editing: Save stays grey until something changed
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -89,7 +91,7 @@ export function AcmeAccountForm({ hosts, editing, onClose, onSaved }: {
         </label>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={saving} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          <Button type="submit" disabled={saving || (!!editing && !changed)} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

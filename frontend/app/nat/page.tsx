@@ -5,6 +5,7 @@ import PortForwardPanel from "@/components/PortForwardPanel";
 import OneToOnePanel from "@/components/OneToOnePanel";
 import OutboundNatPanel from "@/components/OutboundNatPanel";
 import { LiveNatDrift } from "@/components/LiveNatDrift";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Tabs } from "@/components/ui/Tabs";
 import { useLanguage } from "@/components/LanguageProvider";
 
@@ -38,16 +39,19 @@ function NatContent() {
   const [visited, setVisited] = useState([initialTab]);
   return (
     <div>
-      <h1 className="mb-4 text-2xl font-semibold">NAT</h1>
-      <Tabs
-        className="mb-6"
-        items={TABS.map((name) => ({ key: name, label: name === "Live-Drift" ? t("nat.liveDrift") : name }))}
-        active={tab}
-        onChange={(key) => {
-          const next = key as (typeof TABS)[number];
-          setTab(next);
-          setVisited((v) => (v.includes(next) ? v : [...v, next]));
-        }}
+      <PageHeader
+        title="NAT"
+        tabs={
+          <Tabs
+            items={TABS.map((name) => ({ key: name, label: name === "Live-Drift" ? t("nat.liveDrift") : name }))}
+            active={tab}
+            onChange={(key) => {
+              const next = key as (typeof TABS)[number];
+              setTab(next);
+              setVisited((v) => (v.includes(next) ? v : [...v, next]));
+            }}
+          />
+        }
       />
       {visited.includes("Port Forward") && (
         <div role="tabpanel" hidden={tab !== "Port Forward"}>

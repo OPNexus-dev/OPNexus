@@ -1,5 +1,6 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
 import { useConfirm } from "@/components/ui/Confirm";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -48,6 +49,8 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: NotificationChann
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const secretRequired = type !== "ntfy";
+  // Editing an existing channel: nothing to save until something changed (a new channel is always savable).
+  const dirty = useDirty({ type, name, enabled, config, secret, clearSecret }, channel);
 
   function changeType(next: ChannelType) {
     setType(next);
@@ -128,7 +131,7 @@ function ChannelForm({ channel, onClose, onSaved }: { channel: NotificationChann
         {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
           <Button type="button" variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" loading={saving}>{t("common.save")}</Button>
+          <Button type="submit" loading={saving} disabled={saving || (channel !== null && !dirty)}>{t("common.save")}</Button>
         </div>
       </form>
     </Modal>

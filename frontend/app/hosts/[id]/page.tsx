@@ -1,5 +1,8 @@
 "use client";
 
+import { Badge } from "@/components/ui/Badge";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { HostMaintenance } from "@/components/HostMaintenance";
 import { HostResourceUsage } from "@/components/HostResourceUsage";
 import { HostGateways } from "@/components/GatewayStatus";
@@ -106,11 +109,6 @@ export default function HostDetailPage() {
 
   return (
     <div>
-      <Link href="/hosts" className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
-        <ArrowLeft size={14} />
-        {t("hostDetail.backToHosts")}
-      </Link>
-
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
       {!host && !error && (
@@ -126,25 +124,16 @@ export default function HostDetailPage() {
 
       {host && (
         <>
-          <div className="mb-6 flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-900">{host.name}</h1>
-            {host.carp_status && (
-              <span
-                className={
-                  host.carp_status === "MASTER"
-                    ? "rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
-                    : "rounded-full bg-flame-100 px-2.5 py-0.5 text-xs font-medium text-flame-700"
-                }
-              >
-                {host.carp_status}
+          <PageHeader
+            back={{ href: "/hosts", label: t("hostDetail.backToHosts") }}
+            title={
+              <span className="inline-flex flex-wrap items-center gap-2">
+                {host.name}
+                {host.carp_status && <Badge tone={host.carp_status === "MASTER" ? "success" : "warning"}>{host.carp_status}</Badge>}
+                {host.cluster_name && <Badge tone="neutral">{host.cluster_name}</Badge>}
               </span>
-            )}
-            {host.cluster_name && (
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-                {host.cluster_name}
-              </span>
-            )}
-          </div>
+            }
+          />
           <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
             <span>{host.base_url}</span>
             <StatusDot status={host.status} />
@@ -162,7 +151,7 @@ export default function HostDetailPage() {
           <HostMaintenance host={host} />
 
           <h2 className="mb-3 text-lg font-semibold text-slate-900">{t("hostDetail.managedRules")}</h2>
-          <Card className="mb-8 overflow-x-auto">
+          <ScrollCard className="mb-8">
             {!rules ? (
               <div className="space-y-3 p-5">
                 <Skeleton className="h-4 w-full" />
@@ -206,7 +195,7 @@ export default function HostDetailPage() {
                 </tbody>
               </table>
             )}
-          </Card>
+          </ScrollCard>
 
           <Collapsible title={t("hostDetail.liveRulesTitle")} count={liveRules?.length ?? null} className="mb-8">
             <Card className="max-h-[70vh] overflow-auto">
@@ -282,7 +271,7 @@ export default function HostDetailPage() {
           </Collapsible>
 
           <h2 className="mb-3 mt-8 text-lg font-semibold text-slate-900">{t("hostDetail.managedAliases")}</h2>
-          <Card className="mb-8 overflow-x-auto">
+          <ScrollCard className="mb-8">
             {!aliases ? (
               <div className="space-y-3 p-5">
                 <Skeleton className="h-4 w-full" />
@@ -322,7 +311,7 @@ export default function HostDetailPage() {
                 </tbody>
               </table>
             )}
-          </Card>
+          </ScrollCard>
 
           <Collapsible title={t("hostDetail.liveAliasesTitle")} count={liveAliases?.length ?? null} className="mb-8">
             <Card className="max-h-[70vh] overflow-auto">
@@ -378,7 +367,7 @@ export default function HostDetailPage() {
               {t("hostDetail.backupNow")}
             </Button>
           </div>
-          <Card className="overflow-x-auto">
+          <ScrollCard>
             {backupsError && <p className="px-5 py-4 text-sm text-red-600">{backupsError}</p>}
             {!backupsError && !backups && (
               <div className="space-y-3 p-5">
@@ -428,7 +417,7 @@ export default function HostDetailPage() {
                 </tbody>
               </table>
             )}
-          </Card>
+          </ScrollCard>
 
           <HostServices host={host} />
 
@@ -437,7 +426,7 @@ export default function HostDetailPage() {
           {restoreHistory && restoreHistory.length > 0 && (
             <>
               <h2 className="mb-3 mt-8 text-lg font-semibold text-slate-900">{t("hostDetail.restoreHistory")}</h2>
-              <Card className="overflow-x-auto">
+              <ScrollCard>
                 <table className="w-full text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
@@ -460,7 +449,7 @@ export default function HostDetailPage() {
                     ))}
                   </tbody>
                 </table>
-              </Card>
+              </ScrollCard>
             </>
           )}
         </>

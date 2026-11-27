@@ -1,5 +1,6 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -28,6 +29,7 @@ export function HostVariables({ host }: { host: Host }) {
   const [interfaces, setInterfaces] = useState<InterfaceOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const dirty = useDirty({ values, added }, rows);   // Save stays grey until a value or a new name differs from what was loaded or saved
 
   function apply(list: HostVariable[]) {
     setRows(list);
@@ -107,7 +109,7 @@ export function HostVariables({ host }: { host: Host }) {
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Input className="max-w-[14rem]" value={newName} onChange={(e) => setNewName(e.target.value.toUpperCase())} placeholder="LAN_NET" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addName(); } }} aria-label={t("variables.newName")} />
             <Button type="button" variant="outline" onClick={addName}><Plus size={14} />{t("variables.add")}</Button>
-            <Button type="button" onClick={save} disabled={saving} loading={saving}>{t("common.save")}</Button>
+            <Button type="button" onClick={save} disabled={saving || !dirty} loading={saving}>{t("common.save")}</Button>
           </div>
         </fieldset>
       </Card>
@@ -143,7 +145,7 @@ export function HostVariables({ host }: { host: Host }) {
           <div className="flex flex-wrap items-center gap-2 pt-2">
             <Input className="max-w-[14rem]" value={newRole} onChange={(e) => setNewRole(e.target.value.toUpperCase())} placeholder="GUEST" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRole(); } }} aria-label={t("roles.newName")} />
             <Button type="button" variant="outline" onClick={addRole}><Plus size={14} />{t("roles.add")}</Button>
-            <Button type="button" onClick={save} disabled={saving} loading={saving}>{t("common.save")}</Button>
+            <Button type="button" onClick={save} disabled={saving || !dirty} loading={saving}>{t("common.save")}</Button>
           </div>
         </fieldset>
       </Card>

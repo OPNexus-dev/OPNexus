@@ -5,28 +5,29 @@ import { ActionBadge, DeploymentIcon } from "@/components/RuleBits";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
+import { Column, DataTable, Sort } from "@/components/ui/DataTable";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useLanguage } from "@/components/LanguageProvider";
-import { ArrowDown, ArrowUp, ArrowUpDown, Copy, History, Pencil, Rocket, ShieldCheck, Trash2 } from "lucide-react";
+import { Copy, History, Pencil, Rocket, ShieldCheck, Trash2 } from "lucide-react";
 
 export type SortKey = "description" | "action" | "source" | "destination" | "state" | "lastHit";
 export interface SortState { key: SortKey; dir: "asc" | "desc" }
 
 const endpoint = (net: string, port: string | null) => (port ? `${net}:${port}` : net);
 
-/** The compact list of the rules page: one line per rule, with when it last matched something. */
-export function RulesTable({ rules, hostsById, usage, selected, onToggle, onToggleAll, sort, onSort, secondsLeft, confirmingId, readOnly,
+/**
+ * The compact list of the rules page: one row per rule on a desktop and tablet, one card per rule on a phone (DataTable), with when it last matched
+ * something. Sorting is done by the page (`sort` is controlled), so the order also applies to the cards view and the bulk selection.
+ */
+export function RulesTable({ rules, hostsById, usage, selected, onSelectionChange, sort, onSortChange, secondsLeft, confirmingId, readOnly,
   onEdit, onPreview, onHistory, onDuplicate, onDelete, onConfirm }: {
   rules: Rule[]; hostsById: Map<string, Host>; usage: Map<string, RuleUsage>; selected: Set<string>;
-  onToggle: (id: string) => void; onToggleAll: (checked: boolean) => void; sort: SortState; onSort: (key: SortKey) => void;
+  onSelectionChange: (next: Set<string>) => void; sort: SortState; onSortChange: (sort: SortState | null) => void;
   secondsLeft: (deadline: string) => number; confirmingId: string | null; readOnly: boolean;
   onEdit: (rule: Rule) => void; onPreview: (rule: Rule) => void; onHistory: (rule: Rule) => void; onDuplicate: (rule: Rule) => void;
   onDelete: (id: string) => void; onConfirm: (id: string) => void;
 }) {
   const { t, locale } = useLanguage();
-  const all = rules.length > 0 && rules.every((r) => selected.has(r.id));
 
   function ago(iso: string): string {
     const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
@@ -55,86 +56,78 @@ export function RulesTable({ rules, hostsById, usage, selected, onToggle, onTogg
     }
   }
 
-  function header(key: SortKey, labelKey: string) {
-    const column = t(labelKey);
-    const active = sort.key === key;
-    const Icon = !active ? ArrowUpDown : sort.dir === "asc" ? ArrowUp : ArrowDown;
-    return (
-      <TH className="whitespace-nowrap px-2 py-2" aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-        <button type="button" className="inline-flex items-center gap-1 uppercase tracking-wide hover:text-slate-800" aria-label={t("rules.table.sortBy", { column })} onClick={() => onSort(key)}>
-          {column}<Icon size={12} className={active ? "text-sky-600" : "text-slate-300"} aria-hidden="true" />
-        </button>
-      </TH>
-    );
-  }
+
+  const columns: Column<Rule>[] = [
+    { key: "action", header: t("rules.table.col.action"), priority: "primary", cell: (rule) => <ActionBadge action={rule.action} /> },
+    {
+      key: "description", header: t("rules.table.col.name"), priority: "primary", isTitle: true, className: "max-w-[16rem]",
+      cell: (rule) => {
+        const hostNames = rule.effective_host_ids.map((id) => hostsById.get(id)?.name ?? id.slice(0, 8)).join(", ");
+        return (
+          <>
+            <span className="block break-words font-medium text-slate-900 sm:truncate" title={rule.description}>{rule.description}</span>
+            <span className="block break-words text-xs font-normal text-slate-500 sm:truncate" title={hostNames}>
+              {rule.interface} · {rule.direction === "in" ? t("rules.dirIn") : t("rules.dirOut")} · {rule.protocol} · {t("rules.table.col.targets")} {rule.workflow_counts.active_targets}/{rule.workflow_counts.targets}
+              {!rule.enabled ? t("rules.disabledSuffix") : ""}
+            </span>
+          </>
+        );
+      },
+    },
+    { key: "source", header: t("rules.table.col.source"), priority: "high", mono: true, className: "max-w-[9rem]", cell: (rule) => <span className="block break-all sm:truncate" title={endpoint(rule.source_net, rule.source_port)}>{endpoint(rule.source_net, rule.source_port)}</span> },
+    { key: "destination", header: t("rules.table.col.destination"), priority: "high", mono: true, className: "max-w-[10rem]", cell: (rule) => <span className="block break-all sm:truncate" title={endpoint(rule.destination_net, rule.destination_port)}>{endpoint(rule.destination_net, rule.destination_port)}</span> },
+    {
+      key: "state", header: t("rules.table.col.state"), priority: "high",
+      cell: (rule) => {
+        const pending = rule.deployments.some((d) => d.status === "pending");
+        return (
+          <div className="flex flex-wrap items-center gap-1.5 [&_span]:whitespace-nowrap">
+            <WorkflowBadge state={rule.workflow_state} />
+            {rule.deployments.map((d) => (
+              <Tooltip key={d.host_id} content={`${d.host_name}${d.status === "pending" && d.revert_deadline ? ` ${t("rules.expiresIn", { seconds: secondsLeft(d.revert_deadline) })}` : ""}`}>
+                <span><DeploymentIcon status={d.status} /></span>
+              </Tooltip>
+            ))}
+            {pending && !readOnly && (
+              <Button variant="secondary" disabled={confirmingId === rule.id} onClick={() => onConfirm(rule.id)}>
+                <ShieldCheck size={13} />{t("rules.table.confirmShort")}
+              </Button>
+            )}
+          </div>
+        );
+      },
+    },
+    { key: "lastHit", header: t("rules.table.col.lastHit"), priority: "medium", className: "whitespace-nowrap text-slate-600", cell: lastHit },
+  ];
+  // Every column is sortable through the page (the page sorts, the table shows the state).
+  const sortable = columns.map((c) => ({ ...c, sortable: true }));
 
   return (
-    <Card className="overflow-x-auto p-0">
-      <Table>
-        <THead>
-          <tr>
-            <TH className="w-8 px-2 py-2">
-              {!readOnly && <input type="checkbox" checked={all} aria-label={t("rules.bulk.selectAll")} onChange={(e) => onToggleAll(e.target.checked)} />}
-            </TH>
-            {header("action", "rules.table.col.action")}
-            {header("description", "rules.table.col.name")}
-            {header("source", "rules.table.col.source")}
-            {header("destination", "rules.table.col.destination")}
-            {header("state", "rules.table.col.state")}
-            {header("lastHit", "rules.table.col.lastHit")}
-            <TH className="px-1 py-2 text-right"><span className="sr-only">{t("rules.table.col.actions")}</span></TH>
-          </tr>
-        </THead>
-        <TBody>
-          {rules.map((rule) => {
-            const pending = rule.deployments.some((d) => d.status === "pending");
-            const locked = rule.deployments.some((d) => ["pending", "revert_failed"].includes(d.status));
-            const hostNames = rule.effective_host_ids.map((id) => hostsById.get(id)?.name ?? id.slice(0, 8)).join(", ");
-            return (
-              <TRow key={rule.id} className={selected.has(rule.id) ? "bg-sky-50/40" : undefined}>
-                <TD className="px-2 py-2">
-                  {!readOnly && <input type="checkbox" checked={selected.has(rule.id)} aria-label={t("rules.bulk.selectRule", { name: rule.description })} onChange={() => onToggle(rule.id)} />}
-                </TD>
-                <TD className="px-2 py-2"><ActionBadge action={rule.action} /></TD>
-                <TD className="max-w-[16rem] px-2 py-2">
-                  <span className="block truncate font-medium text-slate-900" title={rule.description}>{rule.description}</span>
-                  <span className="block truncate text-xs text-slate-500" title={hostNames}>
-                    {rule.interface} · {rule.direction === "in" ? t("rules.dirIn") : t("rules.dirOut")} · {rule.protocol} · {t("rules.table.col.targets")} {rule.workflow_counts.active_targets}/{rule.workflow_counts.targets}
-                    {!rule.enabled ? t("rules.disabledSuffix") : ""}
-                  </span>
-                </TD>
-                <TD className="max-w-[9rem] px-2 py-2 font-mono text-xs text-slate-600"><span className="block truncate" title={endpoint(rule.source_net, rule.source_port)}>{endpoint(rule.source_net, rule.source_port)}</span></TD>
-                <TD className="max-w-[10rem] px-2 py-2 font-mono text-xs text-slate-600"><span className="block truncate" title={endpoint(rule.destination_net, rule.destination_port)}>{endpoint(rule.destination_net, rule.destination_port)}</span></TD>
-                <TD className="px-2 py-2">
-                  <div className="flex flex-wrap items-center gap-1.5 [&_span]:whitespace-nowrap">
-                    <WorkflowBadge state={rule.workflow_state} />
-                    {rule.deployments.map((d) => (
-                      <Tooltip key={d.host_id} content={`${d.host_name}${d.status === "pending" && d.revert_deadline ? ` ${t("rules.expiresIn", { seconds: secondsLeft(d.revert_deadline) })}` : ""}`}>
-                        <span><DeploymentIcon status={d.status} /></span>
-                      </Tooltip>
-                    ))}
-                    {pending && !readOnly && (
-                      <Button variant="secondary" disabled={confirmingId === rule.id} onClick={() => onConfirm(rule.id)}>
-                        <ShieldCheck size={13} />{t("rules.table.confirmShort")}
-                      </Button>
-                    )}
-                  </div>
-                </TD>
-                <TD className="whitespace-nowrap px-2 py-2 text-slate-600">{lastHit(rule)}</TD>
-                <TD className="px-1 py-2">
-                  <div className="flex justify-end">
-                    <Tooltip content={t("rules.edit")}><Button variant="ghost" className="!px-1.5" disabled={readOnly || locked} aria-label={t("rules.edit")} onClick={() => onEdit(rule)}><Pencil size={14} /></Button></Tooltip>
-                    <Tooltip content={t("rules.reviewPush")}><Button variant="ghost" className="!px-1.5" disabled={readOnly} aria-label={t("rules.reviewPush")} onClick={() => onPreview(rule)}><Rocket size={14} /></Button></Tooltip>
-                    <Tooltip content={t("rules.historyTitle")}><Button variant="ghost" className="!px-1.5" aria-label={t("rules.historyTitle")} onClick={() => onHistory(rule)}><History size={14} /></Button></Tooltip>
-                    <Tooltip content={t("rules.duplicateTitle")}><Button variant="ghost" className="!px-1.5" disabled={readOnly} aria-label={t("rules.duplicateTitle")} onClick={() => onDuplicate(rule)}><Copy size={14} /></Button></Tooltip>
-                    <Tooltip content={t("rules.delete")}><Button variant="dangerSubtle" className="!px-1.5" disabled={readOnly} aria-label={t("rules.delete")} onClick={() => onDelete(rule.id)}><Trash2 size={14} /></Button></Tooltip>
-                  </div>
-                </TD>
-              </TRow>
-            );
-          })}
-        </TBody>
-      </Table>
-    </Card>
+    <DataTable
+      label={t("rules.title")}
+      rows={rules}
+      rowKey={(rule) => rule.id}
+      columns={sortable}
+      sortMode="server"
+      sort={sort as Sort}
+      onSortChange={(next) => onSortChange(next as SortState | null)}
+      selection={readOnly ? undefined : {
+        selected,
+        onChange: onSelectionChange,
+        rowLabel: (rule) => t("rules.bulk.selectRule", { name: rule.description }),
+        selectAllLabel: t("rules.bulk.selectAll"),
+      }}
+      rowClassName={(rule) => (selected.has(rule.id) ? "bg-brand-50/40" : undefined)}
+      actions={(rule) => {
+        const locked = rule.deployments.some((d) => ["pending", "revert_failed"].includes(d.status));
+        return [
+          { key: "edit", label: t("rules.edit"), icon: Pencil, onSelect: () => onEdit(rule), disabled: readOnly || locked },
+          { key: "deploy", label: t("rules.reviewPush"), icon: Rocket, onSelect: () => onPreview(rule), disabled: readOnly },
+          { key: "history", label: t("rules.historyTitle"), icon: History, onSelect: () => onHistory(rule) },
+          { key: "duplicate", label: t("rules.duplicateTitle"), icon: Copy, onSelect: () => onDuplicate(rule), disabled: readOnly },
+          { key: "delete", label: t("rules.delete"), icon: Trash2, tone: "danger", onSelect: () => onDelete(rule.id), disabled: readOnly },
+        ];
+      }}
+    />
   );
 }

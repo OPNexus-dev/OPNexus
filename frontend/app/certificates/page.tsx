@@ -1,7 +1,8 @@
 "use client";
 
+import { DataTable } from "@/components/ui/DataTable";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
-import { InfoTip } from "@/components/ui/Tooltip";
 import { AcmeAccountForm } from "@/components/AcmeAccountForm";
 import { AcmeActionConfirm } from "@/components/AcmeActionConfirm";
 import { AcmeCertificateForm } from "@/components/AcmeCertificateForm";
@@ -267,21 +268,20 @@ function CertificatesContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900 flex items-center gap-2">{t("certs.title")}<InfoTip text={t("certs.subtitle")} size={18} /></h1>
-        </div>
-      </div>
-
-      <Tabs
-        className="mb-6"
-        items={[
-          { key: "live", label: t("certs.tabLive") },
-          { key: "trust", label: t("certs.tabTrust") },
-          { key: "acme", label: t("certs.tabAcme") },
-        ]}
-        active={tab}
-        onChange={(key) => setTab(key as Tab)}
+      <PageHeader
+        title={t("certs.title")}
+        info={t("certs.subtitle")}
+        tabs={
+          <Tabs
+            items={[
+              { key: "live", label: t("certs.tabLive") },
+              { key: "trust", label: t("certs.tabTrust") },
+              { key: "acme", label: t("certs.tabAcme") },
+            ]}
+            active={tab}
+            onChange={(key) => setTab(key as Tab)}
+          />
+        }
       />
 
       {tab === "live" && (
@@ -298,58 +298,26 @@ function CertificatesContent() {
               {t(attentionCount === 1 ? "certs.attentionOne" : "certs.attentionMany", { count: attentionCount })}
             </Card>
           )}
-          <Card className="overflow-x-auto" tabIndex={0}>
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-medium">{t("certs.colHost")}</th>
-                  <th className="px-5 py-3 font-medium">{t("certs.colName")}</th>
-                  <th className="px-5 py-3 font-medium">{t("certs.colIssuer")}</th>
-                  <th className="px-5 py-3 font-medium">{t("certs.colValidTo")}</th>
-                  <th className="px-5 py-3 font-medium">{t("certs.colStatus")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hosts === null && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-4">
-                      <span className="inline-flex items-center gap-2 text-slate-400">
-                        <Spinner size={13} />
-                        {t("common.loading")}
-                      </span>
-                    </td>
-                  </tr>
-                )}
-                {hosts?.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
-                      {t("drift.noHosts")}
-                    </td>
-                  </tr>
-                )}
-                {hosts !== null && hosts.length > 0 && rows.length === 0 && pendingHosts.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
-                      {t("certs.noneFound")}
-                    </td>
-                  </tr>
-                )}
-                {rows.map(({ host, cert }) => (
-                  <tr key={`${host.id}-${cert.uuid}`} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-3 text-slate-500">{host.name}</td>
-                    <td className="px-5 py-3 font-medium text-slate-900">{cert.common_name ?? cert.descr}</td>
-                    <td className="px-5 py-3 text-slate-600">{cert.issuer}</td>
-                    <td className="px-5 py-3 text-slate-600">
-                      {cert.valid_to ? new Date(cert.valid_to).toLocaleDateString(locale) : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-5 py-3">
-                      <CertStatusBadge status={cert.status} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+          {hosts === null && (
+            <Card className="p-5" aria-busy="true"><span className="inline-flex items-center gap-2 text-slate-400"><Spinner size={13} />{t("common.loading")}</span></Card>
+          )}
+          {hosts !== null && (
+            <DataTable
+              label={t("certs.tabLive")}
+              rows={rows}
+              rowKey={({ host, cert }) => `${host.id}-${cert.uuid}`}
+              empty={hosts.length === 0
+                ? <EmptyState icon={ShieldCheck} title={t("drift.noHosts")} />
+                : pendingHosts.length === 0 ? <EmptyState icon={ShieldCheck} title={t("certs.noneFound")} /> : null}
+              columns={[
+                { key: "name", header: t("certs.colName"), priority: "primary", isTitle: true, className: "text-slate-900", cell: ({ cert }) => cert.common_name ?? cert.descr },
+                { key: "status", header: t("certs.colStatus"), priority: "primary", cell: ({ cert }) => <CertStatusBadge status={cert.status} /> },
+                { key: "host", header: t("certs.colHost"), priority: "high", className: "text-slate-500", cell: ({ host }) => host.name },
+                { key: "validTo", header: t("certs.colValidTo"), priority: "high", className: "text-slate-600", cell: ({ cert }) => cert.valid_to ? new Date(cert.valid_to).toLocaleDateString(locale) : <span className="text-slate-300">—</span> },
+                { key: "issuer", header: t("certs.colIssuer"), priority: "medium", className: "text-slate-600", cell: ({ cert }) => cert.issuer },
+              ]}
+            />
+          )}
           {erroredHosts.length > 0 && (
             <div className="mt-3 space-y-1">
               {erroredHosts.map((host) => (

@@ -36,6 +36,13 @@
 #   opnexus ha update [VERSION]
 #                             Beide Knoten in der richtigen Reihenfolge aktualisieren (erst Standby, dann Primär)
 #   Siehe docs/HANDBUCH.md, "Hochverfügbarkeit".
+#   opnexus cert status [--json]  Webzertifikat des Proxys: Quelle, Adressen, Ablauf
+#   opnexus cert check --cert DATEI --key DATEI   prüfen, ohne etwas zu ändern (JSON)
+#   opnexus cert install --cert DATEI --key DATEI [--yes]
+#                             Eigenes Zertifikat (PEM, Schlüssel ohne Passphrase) prüfen, einspielen, Proxy neu
+#                             starten; liefert der Proxy es nicht aus, wird alles zurückgenommen
+#   opnexus cert remove [--yes]
+#                             Eigenes Zertifikat entfernen (zurück zur internen CA)
 #   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
 #                             anzeigen (--yes: ohne Rückfrage)
 #   opnexus export [--out VERZEICHNIS] [--kinds a,b]
@@ -356,7 +363,7 @@ cmd_backup_full() {
 # Schlüssel der .env, die beim Zurückspielen NIE aus der Sicherung übernommen werden: die Datenbank dieses Servers
 # (ihr Passwort wurde bei seiner Installation gesetzt, die Sicherung ändert es nicht), die installierte Version und
 # die Adressen, unter denen DIESER Server erreichbar ist.
-ENV_KEEP_KEYS="POSTGRES_PASSWORD POSTGRES_USER POSTGRES_DB OPNEXUS_VERSION OPNEXUS_IMAGE_REPO OPNEXUS_SITES OPNEXUS_DEFAULT_SNI FRONTEND_ORIGIN BIND_ADDRESS PROXY_BIND_ADDRESS GUI_BIND_ADDRESS OPNEXUS_GUI_SITES"
+ENV_KEEP_KEYS="POSTGRES_PASSWORD POSTGRES_USER POSTGRES_DB OPNEXUS_VERSION OPNEXUS_IMAGE_REPO OPNEXUS_SITES OPNEXUS_DEFAULT_SNI OPNEXUS_WEB_CERT FRONTEND_ORIGIN BIND_ADDRESS PROXY_BIND_ADDRESS GUI_BIND_ADDRESS OPNEXUS_GUI_SITES"
 
 # Übernimmt die übrigen Schlüssel aus der gesicherten .env ($1). Schreibt die gesicherte Datei vollständig als
 # .env.from-backup daneben (zum Nachsehen) und die bisherige als .env.before-restore.
@@ -1057,7 +1064,7 @@ HA_CRON="${OPNEXUS_HA_CRON:-/etc/cron.d/opnexus-ha}"
 HA_NODE_KEYS="HA_ROLE HA_NODE HA_NODE_IP HA_PEER HA_PEER_IP HA_PEER_PORT HA_PEER_DIR HA_PEER_CLI HA_VIP_DEV COMPOSE_FILE"
 # Die einzigen .env-Schlüssel, die `ha sync` überträgt und `ha receive env` annimmt (Erlaubnisliste, keine Sperrliste: alles andere,
 # also auch COMPOSE_PROFILES, OPNEXUS_IMAGE_REPO, Ports und Adressen, bleibt Sache des jeweiligen Knotens).
-HA_SYNC_KEYS="ADMIN_USERNAME ADMIN_PASSWORD ALLOW_INSECURE_FIREWALL_URLS ALLOW_INSECURE_SMTP_AUTH COOKIE_SECURE TRUST_PROXY_HEADERS HEARTBEAT_URL SMTP_CA_FILE UPDATE_CHECK_INTERVAL_HOURS UPDATE_CHECK_URL GUI_GATEWAY_TOKEN GUI_PORTS OVERLAY_PORT HA_SYNC_PROFILES"
+HA_SYNC_KEYS="OPNEXUS_WEB_CERT ADMIN_USERNAME ADMIN_PASSWORD ALLOW_INSECURE_FIREWALL_URLS ALLOW_INSECURE_SMTP_AUTH COOKIE_SECURE TRUST_PROXY_HEADERS HEARTBEAT_URL SMTP_CA_FILE UPDATE_CHECK_INTERVAL_HOURS UPDATE_CHECK_URL GUI_GATEWAY_TOKEN GUI_PORTS OVERLAY_PORT HA_SYNC_PROFILES"
 # HA_SYNC_PROFILES ist kein Schlüssel der .env, sondern die Profile overlay/gui aus COMPOSE_PROFILES: sie müssen auf dem Partner ebenfalls laufen (wg-hub, gui-gateway
 # nach einem Wechsel); updater und ha entscheidet jeder Knoten selbst.
 # Verzeichnisse unter /data im Backend-Container, die `ha sync` überträgt (Geheimnisse und Überlagerung; die
@@ -1166,6 +1173,9 @@ ha_peer_agent() {
     "ha receive data"|"ha receive env"|"ha receive env-init"|"ha receive ha-ca") ha_agent_py call "receive/$3" ;;
     "ha receive ca "*) ha_agent_py call receive/ca --param "$4" ;;
     "ha receive ca-sum") ha_agent_py call receive/ca-sum ;;
+    "ha receive web-cert "*) ha_agent_py call receive/web-cert --param "$4" ;;
+    "ha receive web-cert-clear") ha_agent_py call receive/web-cert-clear ;;
+    "ha receive web-cert-sum") ha_agent_py call receive/web-cert-sum ;;
     "ha receive stamp "*) ha_agent_py call receive/stamp --param "$4" ;;
     *) die "Interner Fehler: '$*' ist über den Agenten nicht erlaubt." "Internal error: '$*' is not allowed through the agent." ;;
   esac
@@ -1519,6 +1529,7 @@ cmd_ha_sync() {
   now=$(date +%s); last=$(cat "$HA_SYNC_FILE" 2>/dev/null || echo 0); [[ "$last" =~ ^[0-9]+$ ]] || last=0
   ha_sync_data "$last" || { echo "$(date -u +%FT%TZ) Abgleich der Geheimnisse fehlgeschlagen" >&2; exit 1; }
   ha_sync_ca || { echo "$(date -u +%FT%TZ) Abgleich der Proxy-CA fehlgeschlagen" >&2; exit 1; }
+  ( ha_sync_webcert ) || echo "$(date -u +%FT%TZ) Abgleich des Webzertifikats fehlgeschlagen (ein älterer Partner kennt ihn nicht?)" >&2
   ha_sync_env || { echo "$(date -u +%FT%TZ) Abgleich der .env fehlgeschlagen" >&2; exit 1; }
   echo "$now" > "$HA_SYNC_FILE"
   ha_peer ha receive stamp "$now" >/dev/null || true
@@ -1555,6 +1566,23 @@ ha_sync_ca() {
   have=$(ha_peer ha receive ca-sum 2>/dev/null || true)
   [ "$have" != "$sum" ] || return 0
   ha_ca_tar | ha_peer ha receive ca "$sum"
+}
+
+# Eigenes Webzertifikat (opnexus cert install): der Primär gibt Zertifikat und Schlüssel an den Standby weiter, damit beide Knoten dasselbe ausliefern.
+# Prüfsumme über Zertifikat + Schlüssel (leer: kein eigenes Zertifikat im Volume des Proxys).
+ha_webcert_sum() {
+  c run --rm --no-deps -T --entrypoint sh proxy -c 'cd /data/opnexus-web 2>/dev/null && [ -s custom.crt ] && [ -s custom.key ] && cat custom.crt custom.key | sha256sum | cut -d" " -f1' </dev/null 2>/dev/null || true
+}
+ha_sync_webcert() {
+  local mine have
+  mine=$(ha_webcert_sum | tail -n1); [[ "$mine" =~ ^[0-9a-f]{64}$ ]] || mine=""
+  have=$(ha_peer ha receive web-cert-sum 2>/dev/null | tail -n1 || true); [[ "$have" =~ ^[0-9a-f]{64}$ ]] || have=""
+  if [ -n "$mine" ]; then
+    [ "$mine" != "$have" ] || return 0
+    c run --rm --no-deps -T --entrypoint tar proxy -C /data/opnexus-web -cf - custom.crt custom.key 2>/dev/null | ha_peer ha receive web-cert "$mine"
+  elif [ -n "$have" ]; then
+    ha_peer ha receive web-cert-clear >/dev/null   # am Primär gibt es kein eigenes Zertifikat (mehr): der Standby soll auch keins behalten
+  fi
 }
 
 # Die .env-Zeilen, die zum Partner gehen: nur Schlüssel aus HA_SYNC_KEYS.
@@ -1613,6 +1641,33 @@ cmd_ha_receive() {
            restore_ca "$tmp/ca" >/dev/null && echo "$sum" > "$HA_DIR/ca-sum"; rm -rf "$tmp"
            # Läuft der Proxy (der Standby betreibt ihn), liest er die neue CA erst nach einem Neustart.
            if [ -n "$(c ps -q proxy 2>/dev/null)" ]; then c restart proxy >/dev/null 2>&1 || true; fi ;;
+    web-cert)  # eigenes Webzertifikat des Primärs (Tar mit custom.crt und custom.key), Prüfsumme als Parameter
+           local sum="${1:-}"; [[ "$sum" =~ ^[0-9a-f]{64}$ ]] || die "Prüfsumme fehlt." "Checksum missing."
+           cert_need_openssl
+           local tmp; tmp=$(mktemp -d); chmod 700 "$tmp"; mkdir -m 700 "$tmp/w"
+           head -c 262145 > "$tmp/in.tar"
+           if [ "$(stat -c %s "$tmp/in.tar")" -gt 262144 ] || ! tar -tf "$tmp/in.tar" >"$tmp/names" 2>/dev/null \
+              || [ "$(sort "$tmp/names" | tr '\n' ' ')" != "custom.crt custom.key " ] || tar -tvf "$tmp/in.tar" 2>/dev/null | grep -qv '^-'; then
+             rm -rf "$tmp"; die "Das Zertifikatsarchiv ist unzulässig (nur custom.crt und custom.key als Dateien, höchstens 256 KiB)." "The certificate archive is not permitted (only custom.crt and custom.key as files, 256 KiB at most)."
+           fi
+           tar -x -C "$tmp/w" -f "$tmp/in.tar" || { rm -rf "$tmp"; die "Das Zertifikatsarchiv ist nicht lesbar." "The certificate archive is not readable."; }
+           [ "$(cat "$tmp/w/custom.crt" "$tmp/w/custom.key" | sha256sum | cut -d' ' -f1)" = "$sum" ] || { rm -rf "$tmp"; die "Die Prüfsumme stimmt nicht (Übertragung unvollständig?)." "The checksum does not match (incomplete transfer?)."; }
+           local a b
+           a=$(openssl x509 -in "$tmp/w/custom.crt" -noout -pubkey 2>/dev/null | openssl sha256 2>/dev/null) || a=""
+           b=$(openssl pkey -in "$tmp/w/custom.key" -pubout -passin pass: 2>/dev/null | openssl sha256 2>/dev/null) || b=""
+           [ -n "$a" ] && [ "$a" = "$b" ] || { rm -rf "$tmp"; die "Zertifikat und Schlüssel passen nicht zusammen." "The certificate and the key do not match."; }
+           tar -C "$tmp/w" -cf - custom.crt custom.key | c run --rm --no-deps -T --entrypoint sh proxy -c \
+             "mkdir -p $CERT_DIR && tar -x -C $CERT_DIR -f - && chmod 600 $CERT_DIR/custom.key && chmod 644 $CERT_DIR/custom.crt" \
+             || { rm -rf "$tmp"; die "Das Zertifikat ließ sich nicht in das Volume des Proxys schreiben." "The certificate could not be written to the proxy's volume."; }
+           rm -rf "$tmp"
+           env_set_literal OPNEXUS_WEB_CERT custom
+           # Der Standby betreibt den Proxy: die Einstellung kommt erst nach dem Neuerstellen an.
+           if [ -n "$(c ps -q proxy 2>/dev/null)" ]; then c up -d --no-deps proxy >/dev/null 2>&1 || true; fi ;;
+    web-cert-clear)
+           c run --rm --no-deps -T --entrypoint sh proxy -c "rm -f $CERT_DIR/custom.crt $CERT_DIR/custom.key" </dev/null >/dev/null 2>&1 || true
+           env_set_literal OPNEXUS_WEB_CERT auto
+           if [ -n "$(c ps -q proxy 2>/dev/null)" ]; then c up -d --no-deps proxy >/dev/null 2>&1 || true; fi ;;
+    web-cert-sum) ha_webcert_sum ;;
     ca-sum) cat "$HA_DIR/ca-sum" 2>/dev/null || true ;;
     stamp) [[ "${1:-}" =~ ^[0-9]+$ ]] || die "Zeitstempel ungültig." "Timestamp invalid."; echo "$1" > "$HA_SYNC_FILE" ;;
     env)   local line key value
@@ -1659,7 +1714,7 @@ cmd_ha_receive() {
              env_set_literal COMPOSE_FILE "$(ha_compose_file_var)"
              ha_compose_text "$(ha_state_get HA_NODE_IP)" "$(ha_state_get HA_NODE)" "$(ha_state_get HA_PEER_IP)" "$(ha_state_get HA_PEER_PORT)" "$(ha_state_get HA_VIP)" > docker-compose.ha.yml
            fi ;;
-    *) die "Interner Befehl: ha receive data|ca|ca-sum|stamp|env|env-init|ha-ca" "Internal command: ha receive data|ca|ca-sum|stamp|env|env-init|ha-ca" ;;
+    *) die "Interner Befehl: ha receive data|ca|ca-sum|web-cert|web-cert-sum|web-cert-clear|stamp|env|env-init|ha-ca" "Internal command: ha receive data|ca|ca-sum|web-cert|web-cert-sum|web-cert-clear|stamp|env|env-init|ha-ca" ;;
   esac
 }
 
@@ -2439,6 +2494,244 @@ cmd_ha() {
   esac
 }
 
+# ── Webzertifikat des Proxys ──────────────────────────────────────────────────
+# `opnexus cert status|install|remove`. Standard (OPNEXUS_WEB_CERT=auto): der Proxy stellt EIN Zertifikat für alle Adressen aus der internen CA aus
+# (proxy/docker-entrypoint.sh). Ein eigenes Zertifikat (OPNEXUS_WEB_CERT=custom) liegt als custom.crt/custom.key im Volume des Proxys
+# (/data/opnexus-web); `install` prüft es, spielt es ein, startet den Proxy neu und nimmt alles zurück, wenn der Proxy es nicht ausliefert.
+CERT_DIR=/data/opnexus-web
+
+cert_need_openssl() {
+  command -v openssl >/dev/null 2>&1 || die "openssl fehlt auf diesem Server (apt install openssl)." "openssl is missing on this server (apt install openssl)."
+}
+
+# Das Zertifikat, wie es ein Browser für eine nackte IP sieht (kein Servername), aus dem laufenden Proxy. Leer, wenn der Proxy keins liefert.
+cert_served_info() {
+  c exec -T proxy sh -c 'echo | openssl s_client -connect 127.0.0.1:443 2>/dev/null | openssl x509 -noout -fingerprint -sha256 -subject -issuer -enddate -ext subjectAltName 2>/dev/null' </dev/null 2>/dev/null || true
+}
+cert_served_fp() { cert_served_info | sed -n 's/^.*Fingerprint=//p' | head -n1; }
+cert_file_fp() { openssl x509 -in "$1" -noout -fingerprint -sha256 2>/dev/null | sed -n 's/^.*Fingerprint=//p' | head -n1; }
+
+# Alle Adressen, unter denen OPNexus laufen soll (OPNEXUS_SITES und die Standard-Adresse): Adresse ohne Schema, Pfad, Klammern und Port.
+cert_wanted_names() {
+  { printf '%s\n' "$(env_get OPNEXUS_SITES)" | tr ',' '\n'; printf '%s\n' "$(env_get OPNEXUS_DEFAULT_SNI)"; } \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's#^https\{0,1\}://##' -e 's#/.*$##' \
+          -e 's/^\[\(.*\)\]\(:[0-9]\{1,5\}\)\{0,1\}$/\1/' -e 's/^\([^:]*\):[0-9]\{1,5\}$/\1/' \
+    | grep -v '^$' | grep -v '[*]' | sort -u
+}
+
+# Prüft Zertifikat und Schlüssel, bevor etwas angefasst wird. Setzt CERT_UNCOVERED (Adressen, die das Zertifikat nicht abdeckt).
+cert_validate() {  # CERT KEY
+  local cert="$1" key="$2" a b name
+  [ -r "$cert" ] || die "Die Zertifikatsdatei ist nicht lesbar: $cert" "The certificate file cannot be read: $cert"
+  [ -r "$key" ] || die "Die Schlüsseldatei ist nicht lesbar: $key" "The key file cannot be read: $key"
+  openssl x509 -in "$cert" -noout >/dev/null 2>&1 || die "$cert enthält kein Zertifikat im PEM-Format." "$cert holds no certificate in PEM format."
+  # -passin pass: (leer) lässt einen verschlüsselten Schlüssel scheitern statt nach einer Passphrase zu fragen.
+  openssl pkey -in "$key" -noout -passin pass: >/dev/null 2>&1 || die "$key ist kein lesbarer privater Schlüssel (PEM, ohne Passphrase; ein verschlüsselter Schlüssel lässt sich nicht automatisch laden)." "$key is not a readable private key (PEM, without a passphrase; an encrypted key cannot be loaded automatically)."
+  a=$(openssl x509 -in "$cert" -noout -pubkey 2>/dev/null | openssl sha256 2>/dev/null)
+  b=$(openssl pkey -in "$key" -pubout -passin pass: 2>/dev/null | openssl sha256 2>/dev/null)
+  [ -n "$a" ] && [ "$a" = "$b" ] || die "Der Schlüssel gehört nicht zu diesem Zertifikat." "The key does not belong to this certificate."
+  openssl x509 -in "$cert" -noout -checkend 0 >/dev/null 2>&1 || die "Das Zertifikat ist abgelaufen." "The certificate has expired."
+  CERT_UNCOVERED=""
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    local verdict
+    if [[ "$name" == *:* || "$name" =~ ^[0-9.]+$ ]]; then verdict=$(openssl x509 -in "$cert" -noout -checkip "$name" 2>/dev/null || true)
+    else verdict=$(openssl x509 -in "$cert" -noout -checkhost "$name" 2>/dev/null || true); fi
+    [[ "$verdict" == *"does match"* ]] || CERT_UNCOVERED="$CERT_UNCOVERED $name"
+  done < <(cert_wanted_names)
+  CERT_UNCOVERED="${CERT_UNCOVERED# }"
+  if [ -n "$CERT_UNCOVERED" ] && [ "$(cert_wanted_names | wc -l)" -le "$(wc -w <<<"$CERT_UNCOVERED")" ]; then
+    die "Das Zertifikat gilt für keine Adresse aus OPNEXUS_SITES ($CERT_UNCOVERED)." "The certificate is valid for none of the addresses in OPNEXUS_SITES ($CERT_UNCOVERED)."
+  fi
+  return 0
+}
+
+# Die Compose-Datei dieser Installation muss OPNEXUS_WEB_CERT an den Proxy durchreichen (ab 1.41); sonst käme die Einstellung dort nie an.
+cert_compose_ready() {
+  # Erst einlesen: `grep -q` in einer Pipe beendet den Befehl davor mit SIGPIPE, unter pipefail zählt das als Fehlschlag (die Ausgabe ist lang).
+  local cfg; cfg=$(c config </dev/null 2>/dev/null) || true
+  [[ "$cfg" == *OPNEXUS_WEB_CERT* ]] \
+    || die "Die docker-compose.yml dieser Installation reicht OPNEXUS_WEB_CERT nicht an den Proxy weiter (Version vor 1.41). Zuerst auf 1.41 aktualisieren (opnexus update)." "This installation's docker-compose.yml does not pass OPNEXUS_WEB_CERT to the proxy (a version before 1.41). Update to 1.41 first (opnexus update)."
+}
+
+# JSON für Weboberfläche und Updater: Texte ohne Steuerzeichen, Anführungszeichen und Backslashes maskiert.
+cert_json_str() { printf '"%s"' "$(printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+cert_json_list() { local out="" w; for w in "$@"; do out="$out${out:+,}$(cert_json_str "$w")"; done; printf '[%s]' "$out"; }
+# Sekunden seit 1970 für ein openssl-Datum ("Nov  5 10:57:17 2028 GMT"). GNU date versteht es; BusyBox date (Updater-Container) nur mit -D.
+cert_epoch() {
+  date -d "$1" +%s 2>/dev/null || date -u -D "%b %e %H:%M:%S %Y GMT" -d "$1" +%s 2>/dev/null
+}
+# Die Felder eines Zertifikats aus der Ausgabe von `openssl x509 -fingerprint -sha256 -subject -issuer -enddate -ext subjectAltName`.
+# Setzt CERT_FP, CERT_SUBJECT, CERT_ISSUER, CERT_END, CERT_DAYS (leer: unbekannt), CERT_SAN (Zeile) und das Feld CERT_NAMES.
+cert_parse_info() {  # INFO
+  local info="$1" now_s end_s part
+  CERT_FP=$(sed -n 's/^.*Fingerprint=//p' <<<"$info" | head -n1)
+  CERT_SUBJECT=$(sed -n 's/^subject=//p' <<<"$info" | head -n1); CERT_ISSUER=$(sed -n 's/^issuer=//p' <<<"$info" | head -n1)
+  CERT_END=$(sed -n 's/^notAfter=//p' <<<"$info" | head -n1)
+  CERT_SAN=$(sed -n '/Subject Alternative Name/{n;p;}' <<<"$info" | sed 's/^ *//; s/IP Address:/IP:/g')
+  CERT_DAYS=""
+  if now_s=$(date +%s) && end_s=$(cert_epoch "$CERT_END"); then CERT_DAYS=$(( (end_s - now_s) / 86400 )); fi
+  CERT_NAMES=()
+  while IFS= read -r part; do part="${part#"${part%%[![:space:]]*}"}"; [ -n "$part" ] && CERT_NAMES+=("$part"); done < <(tr ',' '\n' <<<"$CERT_SAN")
+}
+cert_info_json() {
+  printf '"subject":%s,"issuer":%s,"not_after":%s,"days_left":%s,"names":%s,"fingerprint":%s' \
+    "$(cert_json_str "$CERT_SUBJECT")" "$(cert_json_str "$CERT_ISSUER")" "$(cert_json_str "$CERT_END")" "${CERT_DAYS:-null}" "$(cert_json_list "${CERT_NAMES[@]}")" "$(cert_json_str "$CERT_FP")"
+}
+
+# opnexus cert check --cert DATEI --key DATEI: prüft wie `install`, ändert aber nichts; gibt die Angaben des Zertifikats als JSON aus (für die Weboberfläche).
+cmd_cert_check() {
+  local cert="" key=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --cert) cert="${2:-}"; shift 2 || true ;;
+      --key) key="${2:-}"; shift 2 || true ;;
+      *) die "Unbekannte Option: $1" "Unknown option: $1" ;;
+    esac
+  done
+  [ -n "$cert" ] && [ -n "$key" ] || die "Aufruf: opnexus cert check --cert DATEI --key DATEI" "Usage: opnexus cert check --cert FILE --key FILE"
+  [[ "$cert" == /* ]] || cert="$START_DIR/$cert"; [[ "$key" == /* ]] || key="$START_DIR/$key"
+  cert_need_openssl
+  cert_validate "$cert" "$key"
+  cert_parse_info "$(openssl x509 -in "$cert" -noout -fingerprint -sha256 -subject -issuer -enddate -ext subjectAltName 2>/dev/null)"
+  local uncovered=(); [ -z "$CERT_UNCOVERED" ] || read -ra uncovered <<<"$CERT_UNCOVERED"
+  printf '{%s,"uncovered":%s}\n' "$(cert_info_json)" "$(cert_json_list "${uncovered[@]}")"
+}
+
+cmd_cert_status() {
+  local as_json=0
+  case "${1:-}" in --json) as_json=1 ;; "") ;; *) die "Unbekannte Option: $1" "Unknown option: $1" ;; esac
+  require_release_mode
+  local mode info fp subj issuer end san files src days now_s end_s
+  mode=$(env_get OPNEXUS_WEB_CERT); mode="${mode:-auto}"
+  [ -n "$(c ps -q proxy 2>/dev/null)" ] || die "Der Proxy läuft nicht." "The proxy is not running."
+  info=$(cert_served_info)
+  [ -n "$info" ] || die "Der Proxy lieferte kein Zertifikat (ältere Proxy-Version ohne openssl? Ab 1.41 verfügbar)." "The proxy returned no certificate (an older proxy version without openssl? Available from 1.41)."
+  fp=$(sed -n 's/^.*Fingerprint=//p' <<<"$info" | head -n1)
+  subj=$(sed -n 's/^subject=//p' <<<"$info" | head -n1); issuer=$(sed -n 's/^issuer=//p' <<<"$info" | head -n1)
+  end=$(sed -n 's/^notAfter=//p' <<<"$info" | head -n1)
+  san=$(sed -n '/Subject Alternative Name/{n;p;}' <<<"$info" | sed 's/^ *//; s/IP Address:/IP:/g; s/DNS:/DNS:/g')
+  files=$(c exec -T proxy sh -c 'for f in custom web; do [ -s /data/opnexus-web/$f.crt ] && echo "$f $(openssl x509 -in /data/opnexus-web/$f.crt -noout -fingerprint -sha256 | sed "s/^.*Fingerprint=//")"; done' 2>/dev/null || true)
+  if grep -q "^custom $fp\$" <<<"$files"; then src="custom"
+  elif grep -q "^web $fp\$" <<<"$files"; then src="all"
+  else src="per-address"; fi
+  days=""
+  if now_s=$(date +%s) && end_s=$(cert_epoch "$end"); then days=$(( (end_s - now_s) / 86400 )); fi
+  local name uncovered_list=()
+  while IFS= read -r name; do [ -n "$name" ] && { grep -q "$name" <<<"$san" || uncovered_list+=("$name"); }; done < <(cert_wanted_names)
+  if [ "$as_json" = 1 ]; then
+    cert_parse_info "$info"
+    local served_other=false; [ "$mode" != custom ] || [ "$src" = custom ] || served_other=true
+    printf '{"mode":%s,"source":%s,"custom_not_served":%s,%s,"uncovered":%s}\n' "$(cert_json_str "$mode")" "$(cert_json_str "$src")" "$served_other" "$(cert_info_json)" "$(cert_json_list "${uncovered_list[@]}")"
+    return 0
+  fi
+  printf '%s\n' "$(T "Webzertifikat von OPNexus" "OPNexus web certificate")"
+  printf '  %-22s %s\n' "$(T Einstellung Setting)" "OPNEXUS_WEB_CERT=$mode"
+  case "$src" in
+    custom) printf '  %-22s %s\n' "$(T Quelle Source)" "$(T "eigenes Zertifikat" "own certificate")" ;;
+    all) printf '  %-22s %s\n' "$(T Quelle Source)" "$(T "interne CA, ein Zertifikat für alle Adressen" "internal CA, one certificate for all addresses")" ;;
+    *) printf '  %-22s %s\n' "$(T Quelle Source)" "$(T "interne CA, ein Zertifikat je Adresse (Caddy)" "internal CA, one certificate per address (Caddy)")" ;;
+  esac
+  [ "$mode" != custom ] || [ "$src" = custom ] || printf '  %s\n' "$(T "ACHTUNG: custom ist eingestellt, ausgeliefert wird aber ein anderes Zertifikat (Dateien fehlen oder ungültig: docker compose logs proxy)." "WARNING: custom is set but another certificate is served (files missing or invalid: docker compose logs proxy).")"
+  printf '  %-22s %s\n' "$(T Adressen Addresses)" "${san:-?}"
+  printf '  %-22s %s\n' "$(T Subjekt Subject)" "${subj:-?}"
+  printf '  %-22s %s\n' "$(T Aussteller Issuer)" "${issuer:-?}"
+  printf '  %-22s %s%s\n' "$(T "Gültig bis" "Valid until")" "$end" "${days:+  ($(T "noch $days Tage" "$days days left"))}"
+  printf '  %-22s %s\n' "$(T Fingerabdruck Fingerprint)" "$fp"
+  [ "${#uncovered_list[@]}" -eq 0 ] || printf '  %s\n' "$(T "ACHTUNG: nicht im Zertifikat: ${uncovered_list[*]}" "WARNING: not in the certificate: ${uncovered_list[*]}")"
+  return 0
+}
+
+cmd_cert_install() {
+  local cert="" key="" yes=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --cert) cert="${2:-}"; shift 2 || true ;;
+      --key) key="${2:-}"; shift 2 || true ;;
+      --yes|-y) yes=1; shift ;;
+      *) die "Unbekannte Option: $1" "Unknown option: $1" ;;
+    esac
+  done
+  [ -n "$cert" ] && [ -n "$key" ] || die "Aufruf: opnexus cert install --cert DATEI --key DATEI [--yes]" "Usage: opnexus cert install --cert FILE --key FILE [--yes]"
+  [[ "$cert" == /* ]] || cert="$START_DIR/$cert"; [[ "$key" == /* ]] || key="$START_DIR/$key"
+  require_release_mode; cert_need_openssl
+  cert_compose_ready
+  cert_validate "$cert" "$key"
+  say "Zertifikat: $(openssl x509 -in "$cert" -noout -subject | sed 's/^subject= *//'), gültig bis $(openssl x509 -in "$cert" -noout -enddate | sed 's/^notAfter=//')" "Certificate: $(openssl x509 -in "$cert" -noout -subject | sed 's/^subject= *//'), valid until $(openssl x509 -in "$cert" -noout -enddate | sed 's/^notAfter=//')"
+  [ -z "$CERT_UNCOVERED" ] || say "ACHTUNG: gilt nicht für: $CERT_UNCOVERED (Aufrufe dieser Adressen zeigen eine Zertifikatswarnung)." "WARNING: not valid for: $CERT_UNCOVERED (opening these addresses shows a certificate warning)."
+  if [ "$yes" != 1 ]; then
+    local reply; read -r -p "$(T "Dieses Zertifikat einspielen und den Proxy neu starten? [j/N] " "Install this certificate and restart the proxy? [y/N] ")" reply
+    [[ "$reply" =~ ^([jJyY])$ ]] || die "Abgebrochen." "Cancelled."
+  fi
+  local tmp prev_mode want i=0 got="" wait_s="${OPNEXUS_CERT_WAIT:-45}"
+  tmp=$(mktemp -d); chmod 700 "$tmp"; mkdir -m 700 "$tmp/prev"
+  prev_mode=$(env_get OPNEXUS_WEB_CERT); prev_mode="${prev_mode:-auto}"
+  want=$(cert_file_fp "$cert")
+  # Was bisher als eigenes Zertifikat im Volume lag, für den Fall, dass der Proxy das neue nicht ausliefert.
+  c run --rm --no-deps -T --entrypoint tar proxy -C "$CERT_DIR" -cf - custom.crt custom.key 2>/dev/null | tar -x -C "$tmp/prev" 2>/dev/null || true
+  cp "$cert" "$tmp/custom.crt"; cp "$key" "$tmp/custom.key"
+  tar -C "$tmp" -cf - custom.crt custom.key | c run --rm --no-deps -T --entrypoint sh proxy -c \
+    "mkdir -p $CERT_DIR && tar -x -C $CERT_DIR -f - && chmod 600 $CERT_DIR/custom.key && chmod 644 $CERT_DIR/custom.crt" \
+    || { rm -rf "$tmp"; die "Das Zertifikat ließ sich nicht in das Volume des Proxys schreiben." "The certificate could not be written to the proxy's volume."; }
+  env_set_literal OPNEXUS_WEB_CERT custom
+  say "Starte den Proxy neu …" "Restarting the proxy …"
+  c up -d --no-deps proxy >/dev/null
+  while [ "$i" -lt "$wait_s" ]; do got=$(cert_served_fp); [ -n "$got" ] && [ "$got" = "$want" ] && break; i=$((i + 1)); sleep 1; done
+  if [ "$got" != "$want" ]; then
+    say "Der Proxy liefert das neue Zertifikat nicht aus: alles wird zurückgenommen." "The proxy does not serve the new certificate: everything is rolled back."
+    if [ -s "$tmp/prev/custom.crt" ] && [ -s "$tmp/prev/custom.key" ]; then
+      tar -C "$tmp/prev" -cf - custom.crt custom.key | c run --rm --no-deps -T --entrypoint sh proxy -c "tar -x -C $CERT_DIR -f - && chmod 600 $CERT_DIR/custom.key" >/dev/null 2>&1 || true
+    else
+      c run --rm --no-deps -T --entrypoint sh proxy -c "rm -f $CERT_DIR/custom.crt $CERT_DIR/custom.key" >/dev/null 2>&1 || true
+    fi
+    env_set_literal OPNEXUS_WEB_CERT "$prev_mode"
+    c up -d --no-deps proxy >/dev/null 2>&1 || true
+    rm -rf "$tmp"
+    die "Das Einspielen schlug fehl (Ursache: docker compose logs proxy). Der vorherige Zustand ist wiederhergestellt." "Installing failed (reason: docker compose logs proxy). The previous state is restored."
+  fi
+  rm -rf "$tmp"
+  say "Eigenes Zertifikat ist aktiv." "The own certificate is active."
+  say "Ein eigenes Zertifikat erneuert sich nicht selbst: vor dem Ablauf erneut 'opnexus cert install' ausführen." "An own certificate does not renew itself: run 'opnexus cert install' again before it expires."
+  cmd_cert_after_change
+}
+
+cmd_cert_remove() {
+  local yes=0
+  [ "${1:-}" != --yes ] && [ "${1:-}" != -y ] || yes=1
+  require_release_mode
+  if [ "$yes" != 1 ]; then
+    local reply; read -r -p "$(T "Das eigene Zertifikat entfernen und zum Zertifikat der internen CA zurückkehren? [j/N] " "Remove the own certificate and go back to the internal CA's certificate? [y/N] ")" reply
+    [[ "$reply" =~ ^([jJyY])$ ]] || die "Abgebrochen." "Cancelled."
+  fi
+  c run --rm --no-deps -T --entrypoint sh proxy -c "rm -f $CERT_DIR/custom.crt $CERT_DIR/custom.key" >/dev/null || die "Die Dateien ließen sich nicht entfernen." "The files could not be removed."
+  env_set_literal OPNEXUS_WEB_CERT auto
+  say "Starte den Proxy neu …" "Restarting the proxy …"
+  c up -d --no-deps proxy >/dev/null
+  local i=0 got="" wait_s="${OPNEXUS_CERT_WAIT:-45}"
+  while [ "$i" -lt "$wait_s" ]; do got=$(cert_served_fp); [ -n "$got" ] && break; i=$((i + 1)); sleep 1; done
+  [ -n "$got" ] || die "Der Proxy antwortet nach dem Neustart nicht (docker compose logs proxy)." "The proxy does not answer after the restart (docker compose logs proxy)."
+  say "Das Zertifikat der internen CA ist wieder aktiv." "The internal CA's certificate is active again."
+  cmd_cert_after_change
+}
+
+# Nach einer Änderung: bei einem HA-Paar geht sie am Primär zum Standby (Abgleich), sonst gibt es nichts weiter zu tun.
+cmd_cert_after_change() {
+  [ "$(env_get HA_ROLE)" = primary ] || return 0
+  say "HA: Zertifikat wird an den Standby übertragen …" "HA: transferring the certificate to the standby …"
+  ( ha_sync_webcert ) || say "WARNUNG: Der Standby ist nicht erreichbar oder lehnte das Zertifikat ab; der nächste Abgleich (ha sync) versucht es erneut." "WARNING: the standby is unreachable or refused the certificate; the next sync (ha sync) will try again."
+}
+
+cmd_cert() {
+  local sub="${1:-}"; shift || true
+  case "$sub" in
+    status) cmd_cert_status "$@" ;;
+    install) cmd_cert_install "$@" ;;
+    remove) cmd_cert_remove "$@" ;;
+    check) cmd_cert_check "$@" ;;
+    *) die "Aufruf: opnexus cert status [--json] | check --cert DATEI --key DATEI | install --cert DATEI --key DATEI [--yes] | remove [--yes]" "Usage: opnexus cert status [--json] | check --cert FILE --key FILE | install --cert FILE --key FILE [--yes] | remove [--yes]" ;;
+  esac
+}
+
 # Interner Neustart durch refresh_cli: Marker setzen und die eigene Temp-Datei aufräumen (bash hat sie offen).
 if [ "${1:-}" = __refreshed ]; then
   CLI_REFRESHED=1; shift
@@ -2493,6 +2786,13 @@ fertigen Release-Images (siehe README, "Release-Images & CI").
   opnexus ha update [VERSION]
                             Beide Knoten in der richtigen Reihenfolge aktualisieren (erst Standby, dann Primär)
   Siehe docs/HANDBUCH.md, "Hochverfügbarkeit".
+  opnexus cert status [--json]  Webzertifikat des Proxys: Quelle, Adressen, Ablauf
+  opnexus cert check --cert DATEI --key DATEI   prüfen, ohne etwas zu ändern (JSON)
+  opnexus cert install --cert DATEI --key DATEI [--yes]
+                            Eigenes Zertifikat (PEM, Schlüssel ohne Passphrase) prüfen, einspielen, Proxy neu
+                            starten; liefert der Proxy es nicht aus, wird alles zurückgenommen
+  opnexus cert remove [--yes]
+                            Eigenes Zertifikat entfernen (zurück zur internen CA)
   opnexus password [NAME]   Neues Zufallspasswort für den Admin setzen und
                             anzeigen (--yes: ohne Rückfrage)
   opnexus export [--out VERZEICHNIS] [--kinds a,b]
@@ -2535,6 +2835,13 @@ ready-made release images (see README, "Release images & CI").
   opnexus ha update [VERSION]
                             Update both nodes in the right order (standby first, then primary)
   See docs/HANDBOOK.md, "High availability".
+  opnexus cert status [--json]  Web certificate of the proxy: source, addresses, expiry
+  opnexus cert check --cert FILE --key FILE   check without changing anything (JSON)
+  opnexus cert install --cert FILE --key FILE [--yes]
+                            Check an own certificate (PEM, key without a passphrase), install it, restart
+                            the proxy; if the proxy does not serve it, everything is rolled back
+  opnexus cert remove [--yes]
+                            Remove the own certificate (back to the internal CA)
   opnexus password [NAME]   Set a new random password for the admin and
                             show it (--yes: without confirmation)
   opnexus export [--out DIRECTORY] [--kinds a,b]
@@ -2563,5 +2870,6 @@ case "${1:-}" in
   restore)  shift; cmd_restore "$@" ;;
   migrate-host) shift; cmd_migrate_host "$@" ;;
   ha)       shift; cmd_ha "$@" ;;
+  cert)     shift; cmd_cert "$@" ;;
   *) usage; exit 1 ;;
 esac

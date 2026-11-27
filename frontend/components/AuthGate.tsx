@@ -58,11 +58,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </a>
       <Nav />
       <CommandPalette />
-      <LoginInfoBanner />
-      <UpdateBanner />
-      <main id="main-content" tabIndex={-1} className="mx-auto max-w-[120rem] px-4 py-6 outline-none sm:px-6 sm:py-8">{children}</main>
+      <main id="main-content" tabIndex={-1} className="mx-auto max-w-[120rem] px-4 py-6 outline-none sm:px-6 sm:py-8">
+        <LoginInfoBanner />
+        <UpdateBanner />
+        {children}
+      </main>
       <footer className="mx-auto max-w-[120rem] px-4 pb-6 text-center text-xs text-slate-400 sm:px-6 print:hidden">
-        <Link href="/about" className="hover:text-slate-500">
+        <Link href="/about" className="touch-link hover:text-slate-500">
           {t("common.versionLabel", { version: APP_VERSION, codename: APP_CODENAME })}
         </Link>
       </footer>

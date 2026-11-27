@@ -1,5 +1,7 @@
 "use client";
 
+import { DataTable } from "@/components/ui/DataTable";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
 import { useLanguage } from "@/components/LanguageProvider";
 import { NetworkChangeModal } from "@/components/NetworkChangeModal";
@@ -11,7 +13,6 @@ import { FieldGroup, Input } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
 import { api, Host, HostSnapshot, NetworkKind } from "@/lib/api";
 import { useReadOnly } from "@/lib/useReadOnly";
 import { HostDiagnostics } from "@/components/HostDiagnostics";
@@ -49,7 +50,7 @@ export default function HostSystemPage() {
   if (hosts && hosts.length === 0) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-slate-900">{t(`nav.items.hostsystem-${section}`)}</h1>
+        <PageHeader title={t(`nav.items.hostsystem-${section}`)} />
         <EmptyState icon={HardDrive} title={t("drift.noHosts")} />
       </div>
     );
@@ -59,9 +60,9 @@ export default function HostSystemPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900">{t(`nav.items.hostsystem-${section}`)}</h1>
-        {hosts && (
+      <PageHeader
+        title={t(`nav.items.hostsystem-${section}`)}
+        actions={hosts ? (
           <label className="flex items-center gap-2 text-sm text-slate-600">
             {t("network.host")}
             <select
@@ -77,13 +78,13 @@ export default function HostSystemPage() {
               ))}
             </select>
           </label>
-        )}
-      </div>
-      <p className="mb-4 text-sm text-slate-600">{t(`hostsystem.intro.${section}`)}</p>
+        ) : undefined}
+      />
+
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       {!hostId && !error && <Skeleton className="h-48 w-full" />}
       {hostId && (
-        <Card className="overflow-x-auto">
+        <Card className="overflow-hidden">
           {kind ? (
             <NetworkObjectSection
               hostId={hostId}
@@ -177,38 +178,23 @@ function Snapshots({ hostId, readOnly }: { hostId: string; readOnly: boolean }) 
       {!data && !error && <p className="px-5 py-4 text-sm text-slate-500">{t("common.loading")}</p>}
       {data && !data.supported && <p className="px-5 py-4 text-sm text-slate-500">{t("hostsystem.snapshots.unsupported")}</p>}
       {data && data.supported && (
-        <Table>
-          <THead>
-            <TRow>
-              <TH>{t("hostsystem.snapshots.name")}</TH>
-              <TH>{t("hostsystem.snapshots.state")}</TH>
-              <TH>{t("hostsystem.snapshots.size")}</TH>
-              <TH>{t("hostsystem.snapshots.createdAt")}</TH>
-              <TH><span className="sr-only">{t("common.actions")}</span></TH>
-            </TRow>
-          </THead>
-          <TBody>
-            {data.rows.map((row) => (
-              <TRow key={row.uuid}>
-                <TD className="font-mono text-xs">{row.name}</TD>
-                <TD>{row.active.includes("N") ? t("hostsystem.snapshots.activeNow") : row.active.includes("R") ? t("hostsystem.snapshots.activeNext") : "–"}</TD>
-                <TD>{row.size || "–"}</TD>
-                <TD>{row.created || "–"}</TD>
-                <TD>
-                  <fieldset disabled={readOnly} className="contents">
-                    <div className="flex justify-end">
-                      {(row.active === "-" || row.active === "") && (
-                        <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => remove(row)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      )}
-                    </div>
-                  </fieldset>
-                </TD>
-              </TRow>
-            ))}
-          </TBody>
-        </Table>
+        <DataTable
+          bare
+          label={t("nav.items.hostsystem-snapshots")}
+          rows={data.rows}
+          rowKey={(row) => row.uuid}
+          empty={<p className="px-5 py-4 text-sm text-slate-500">{t("network.empty")}</p>}
+          columns={[
+            { key: "name", header: t("hostsystem.snapshots.name"), priority: "primary", isTitle: true, mono: true, cell: (row) => row.name },
+            { key: "state", header: t("hostsystem.snapshots.state"), priority: "primary", cell: (row) => (row.active.includes("N") ? t("hostsystem.snapshots.activeNow") : row.active.includes("R") ? t("hostsystem.snapshots.activeNext") : "–") },
+            { key: "size", header: t("hostsystem.snapshots.size"), priority: "high", cell: (row) => row.size || "–" },
+            { key: "created", header: t("hostsystem.snapshots.createdAt"), priority: "high", cell: (row) => row.created || "–" },
+          ]}
+          // Only an inactive snapshot can be deleted; read-only accounts see the action disabled.
+          actions={(row) => (row.active === "-" || row.active === "")
+            ? [{ key: "delete", label: t("network.rowDelete"), icon: Trash2, tone: "danger", disabled: readOnly, onSelect: () => remove(row) }]
+            : []}
+        />
       )}
       {showCreate && (
         <Modal title={t("hostsystem.snapshots.create")} onClose={() => setShowCreate(false)}>

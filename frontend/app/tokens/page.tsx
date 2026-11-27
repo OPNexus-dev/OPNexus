@@ -1,7 +1,9 @@
 "use client";
 
+import { DataTable } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
-import { InfoTip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -11,7 +13,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { api, ApiToken, TokenScope } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 const SCOPE_TONE: Record<TokenScope, "neutral" | "info" | "warning"> = { read: "neutral", deploy: "info", admin: "warning" };
@@ -57,70 +59,39 @@ export default function TokensPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-          {t("tokens.title")}
-          <InfoTip text={t("tokens.intro")} size={18} />
-        </h1>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus size={16} />
-          {t("tokens.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("tokens.title")}
+        info={t("tokens.intro")}
+        actions={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus size={16} />
+            {t("tokens.new")}
+          </Button>
+        }
+      />
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      <Card className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">{t("tokens.colName")}</th>
-              <th className="px-5 py-3 font-medium">{t("tokens.colScope")}</th>
-              {isAdmin && <th className="px-5 py-3 font-medium">{t("tokens.colOwner")}</th>}
-              <th className="px-5 py-3 font-medium">{t("tokens.colExpires")}</th>
-              <th className="px-5 py-3 font-medium">{t("tokens.colLastUsed")}</th>
-              <th className="px-5 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {tokens === null &&
-              [0, 1].map((i) => (
-                <tr key={i} className="border-b border-slate-100 last:border-0">
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-28" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-14 rounded-full" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3" />
-                </tr>
-              ))}
-            {tokens?.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-5 py-8 text-center text-slate-500">{t("tokens.empty")}</td>
-              </tr>
-            )}
-            {tokens?.map((token) => (
-              <tr key={token.id} className="border-b border-slate-100 last:border-0">
-                <td className="px-5 py-3">
-                  <div className="font-medium text-slate-900">{token.name}</div>
-                  <div className="font-mono text-xs text-slate-400">{token.prefix}…</div>
-                </td>
-                <td className="px-5 py-3"><Badge tone={SCOPE_TONE[token.scope]}>{t(`tokens.scope.${token.scope}`)}</Badge></td>
-                {isAdmin && <td className="px-5 py-3 text-slate-600">{token.owner}</td>}
-                <td className="px-5 py-3 text-slate-500">{when(token.expires_at) ?? t("tokens.never")}</td>
-                <td className="px-5 py-3 text-slate-500">
-                  {when(token.last_used_at) ?? <span className="text-slate-300">{t("tokens.neverUsed")}</span>}
-                </td>
-                <td className="px-5 py-3 text-right">
-                  <Button variant="dangerSubtle" onClick={() => handleRevoke(token)}>
-                    <Trash2 size={14} />
-                    {t("tokens.revoke")}
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      {tokens === null && <Card className="space-y-3 p-5" aria-busy="true">{[0, 1].map((i) => <Skeleton key={i} className="h-5 w-full" />)}</Card>}
+      {tokens && (
+        <DataTable
+          label={t("tokens.title")}
+          rows={tokens}
+          rowKey={(token) => token.id}
+          empty={<EmptyState icon={KeyRound} title={t("tokens.empty")} />}
+          columns={[
+            {
+              key: "name", header: t("tokens.colName"), priority: "primary", isTitle: true,
+              cell: (token) => (<><div className="font-medium text-slate-900">{token.name}</div><div className="font-mono text-xs font-normal text-slate-400">{token.prefix}…</div></>),
+            },
+            { key: "scope", header: t("tokens.colScope"), priority: "primary", cell: (token) => <Badge tone={SCOPE_TONE[token.scope]}>{t(`tokens.scope.${token.scope}`)}</Badge> },
+            ...(isAdmin ? [{ key: "owner", header: t("tokens.colOwner"), priority: "high" as const, className: "text-slate-600", cell: (token: ApiToken) => token.owner }] : []),
+            { key: "expires", header: t("tokens.colExpires"), priority: "high", className: "text-slate-500", cell: (token) => when(token.expires_at) ?? t("tokens.never") },
+            { key: "lastUsed", header: t("tokens.colLastUsed"), priority: "medium", className: "text-slate-500", cell: (token) => when(token.last_used_at) ?? <span className="text-slate-300">{t("tokens.neverUsed")}</span> },
+          ]}
+          actions={(token) => [{ key: "revoke", label: t("tokens.revoke"), icon: Trash2, tone: "danger", onSelect: () => handleRevoke(token) }]}
+        />
+      )}
 
       {showCreate && (
         <CreateTokenModal

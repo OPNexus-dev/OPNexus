@@ -1,7 +1,9 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
-import { InfoTip } from "@/components/ui/Tooltip";
 import { Suspense, useEffect, useState } from "react";
 import { api, DeviceGroup, GroupWrite, GroupImpact, Host, PolicyAlias, Rule } from "@/lib/api";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
@@ -50,6 +52,8 @@ function GroupsContent() {
   const [impact, setImpact] = useState<GroupImpact | null>(null);
   const [saved, setSaved] = useState<{ id: string; name: string } | null>(null);
   const [search, setSearch] = useState("");
+  // Editing: nothing to check or save until the group differs from what it was when the dialog opened (a new group is always savable).
+  const dirty = useDirty(form, editing);
   async function load() {
     try {
       const [g, h, r, a] = await Promise.all([api.listGroups(), api.listHosts(), api.listRules(), api.listAliases()]);
@@ -77,14 +81,14 @@ function GroupsContent() {
   const selectedGroup = groups.find(g => g.id === groupFilter);
   const visibleGroups = groups.filter(g => (!groupFilter || g.id === groupFilter) && `${g.name} ${g.description}`.toLowerCase().includes(search.toLowerCase()));
   return <div>
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("groups.titleNamed", { name: selectedGroup.name }) : t("groups.title")}<InfoTip text={t("groups.subtitle")} size={18} /></h1><Button disabled={readOnly} onClick={() => edit(null)}><Plus size={16} />{t("groups.new")}</Button></div>
-    {!loading && !error && <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-4">
+    <PageHeader title={selectedGroup ? t("groups.titleNamed", { name: selectedGroup.name }) : t("groups.title")} info={t("groups.subtitle")} actions={<Button disabled={readOnly} onClick={() => edit(null)}><Plus size={16} />{t("groups.new")}</Button>} />
+    {!loading && !error && <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
       {[ [t("groups.statGroups"), groups.length], [t("groups.statHosts"), new Set(groups.flatMap(g => g.host_ids)).size], [t("groups.statRules"), rules.filter(r => r.target_group_ids.length > 0).length], [t("groups.statAliases"), aliases.filter(a => a.target_group_ids.length > 0).length] ].map(([label, count]) => <Card key={label} className="p-4"><p className="text-sm text-slate-500">{label}</p><p className="mt-1 text-2xl font-semibold text-slate-800">{count}</p></Card>)}
     </div>}
     {saved && <p role="status" className="mb-4 rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{t("groups.savedNote", { name: saved.name })}<Link className="font-medium underline" href={`/rules?group=${saved.id}`}>{t("groups.checkRules")}</Link></p>}
     {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
     {groupFilter && <Button variant="ghost" className="mb-3" onClick={() => router.push("/groups")}>{t("groups.showAll")}</Button>}
-    <Input aria-label={t("groups.searchLabel")} placeholder={t("groups.searchPlaceholder")} value={search} onChange={e => setSearch(e.target.value)} />
+    <FilterBar search={{ value: search, onChange: setSearch, placeholder: t("groups.searchPlaceholder"), label: t("groups.searchLabel") }} onReset={() => setSearch("")} />
     {loading && <Loading className="py-8">{t("groups.loading")}</Loading>}
     {!loading && !error && groups.length === 0 && <Card className="mt-4 p-8 text-center"><Layers className="mx-auto mb-3 text-sky-500" /><p className="font-medium">{t("groups.emptyTitle")}</p><p className="mt-2 text-sm text-slate-500">{t("groups.emptyText")}</p><Button className="mt-4" disabled={readOnly} onClick={() => edit(null)}>{t("groups.createFirst")}</Button></Card>}
     {!loading && !error && groups.length > 0 && visibleGroups.length === 0 && <Card className="mt-4 p-6 text-center"><p className="mb-3 text-sm text-slate-600">{t("groups.noMatch")}</p><Button variant="ghost" onClick={() => setSearch("")}>{t("groups.resetSearch")}</Button></Card>}
@@ -96,15 +100,15 @@ function GroupsContent() {
         return <Card key={group.id} className="p-5">
           <div className="flex items-start justify-between gap-2"><h2 className="text-lg font-semibold text-slate-800">{group.name}</h2><div className="flex gap-1"><Button variant="ghost" disabled={readOnly} onClick={() => edit(group)} aria-label={t("groups.editAria", { name: group.name })}><Pencil size={16} /></Button><Button variant="ghost" disabled={readOnly || inUse} onClick={() => remove(group)} aria-label={t("groups.deleteAria", { name: group.name })} title={inUse ? t("groups.deleteInUse") : t("groups.deleteTitle")}><Trash2 size={16} /></Button></div></div>
           {group.description && <p className="mt-1 text-sm text-slate-500">{group.description}</p>}
-          <div className="my-4 flex flex-wrap gap-2">{group.host_ids.map(id => <Link key={id} href={`/hosts/${id}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">{hosts.find(h => h.id === id)?.name ?? id.slice(0, 8)}</Link>)}{group.host_ids.length === 0 && <Button variant="ghost" disabled={readOnly} onClick={() => edit(group)}>{t("groups.assignHosts")}</Button>}</div>
+          <div className="my-4 flex flex-wrap gap-2">{group.host_ids.map(id => <Link key={id} href={`/hosts/${id}`} className="touch-chip rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">{hosts.find(h => h.id === id)?.name ?? id.slice(0, 8)}</Link>)}{group.host_ids.length === 0 && <Button variant="ghost" disabled={readOnly} onClick={() => edit(group)}>{t("groups.assignHosts")}</Button>}</div>
           <div className="space-y-3 border-t border-slate-100 pt-3">
-            <Link href={`/rules?group=${group.id}`} className="text-sm font-medium text-sky-700">{t("groups.centralRules", { count: assigned.length })}</Link>
+            <Link href={`/rules?group=${group.id}`} className="touch-link text-sm font-medium text-sky-700">{t("groups.centralRules", { count: assigned.length })}</Link>
             {assigned.map(rule => <Link key={rule.id} href={`/rules?group=${group.id}&rule=${rule.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2 text-sm text-slate-700"><span>{rule.description}</span><WorkflowBadge state={rule.workflow_state} /></Link>)}
             {assigned.length === 0 && <p className="text-sm text-slate-500">{t("groups.onlyHosts")}</p>}
-            <Link href={`/rules?group=${group.id}&new=1`} className="inline-flex text-sm font-medium text-sky-700 underline">{t("groups.createRule")}</Link>
-            <Link href={`/aliases?group=${group.id}`} className="block text-sm font-medium text-sky-700">{t("groups.centralAliases", { count: assignedAliases.length })}</Link>
+            <Link href={`/rules?group=${group.id}&new=1`} className="touch-link inline-flex text-sm font-medium text-sky-700 underline">{t("groups.createRule")}</Link>
+            <Link href={`/aliases?group=${group.id}`} className="touch-link block text-sm font-medium text-sky-700">{t("groups.centralAliases", { count: assignedAliases.length })}</Link>
             {assignedAliases.map(alias => <Link key={alias.id} href={`/aliases?group=${group.id}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-2 text-sm text-slate-700"><span className="font-mono">{alias.name}</span><WorkflowBadge state={alias.workflow_state} /></Link>)}
-            <Link href={`/aliases?group=${group.id}&new=1`} className="inline-flex text-sm font-medium text-sky-700 underline">{t("groups.createAlias")}</Link>
+            <Link href={`/aliases?group=${group.id}&new=1`} className="touch-link inline-flex text-sm font-medium text-sky-700 underline">{t("groups.createAlias")}</Link>
           </div>
         </Card>;
       })}
@@ -128,7 +132,7 @@ function GroupsContent() {
         <Button type="button" variant="ghost" onClick={() => setImpact(null)} disabled={busy}>{t("groups.changeSelection")}</Button>
       </div>}
       {formError && <p role="alert" className="text-sm text-red-600">{formError}</p>}
-      <Button type="submit" disabled={busy || readOnly} loading={busy}>{busy ? t("groups.wait") : editing && !impact ? t("groups.checkImpact") : t("groups.save")}</Button>
+      <Button type="submit" disabled={busy || readOnly || (!!editing && !impact && !dirty)} loading={busy}>{busy ? t("groups.wait") : editing && !impact ? t("groups.checkImpact") : t("groups.save")}</Button>
     </form></Modal>}
   </div>;
 }

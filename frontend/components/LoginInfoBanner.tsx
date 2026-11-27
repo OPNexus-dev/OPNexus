@@ -37,7 +37,7 @@ export function LoginInfoBanner() {
   const hasWarning = failedAttempts > 0;
 
   return (
-    <div className="mx-auto max-w-[120rem] px-4 pt-4 sm:px-6">
+    <div className="mb-4">
       <div
         className={
           hasWarning

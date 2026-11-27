@@ -1,5 +1,6 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useLanguage } from "@/components/LanguageProvider";
 import { RuleAnalysisCard } from "@/components/RuleAnalysisCard";
 import { Button } from "@/components/ui/Button";
@@ -66,15 +67,16 @@ function AnalysisShell() {
   const tab = params.get("tab") === "cleanup" ? "cleanup" : "query";
   return (
     <div>
-      <h1 className="mb-4 flex items-center gap-2 text-2xl font-semibold text-slate-900">
-        {t("analysis.title")}
-        <InfoTip text={t("analysis.intro")} size={18} />
-      </h1>
-      <Tabs
-        className="mb-6"
-        items={[{ key: "query", label: t("analysis.tabs.query") }, { key: "cleanup", label: t("analysis.tabs.cleanup") }]}
-        active={tab}
-        onChange={(key) => router.push(key === "cleanup" ? "/analysis?tab=cleanup" : "/analysis")}
+      <PageHeader
+        title={t("analysis.title")}
+        info={t("analysis.intro")}
+        tabs={
+          <Tabs
+            items={[{ key: "query", label: t("analysis.tabs.query") }, { key: "cleanup", label: t("analysis.tabs.cleanup") }]}
+            active={tab}
+            onChange={(key) => router.push(key === "cleanup" ? "/analysis?tab=cleanup" : "/analysis")}
+          />
+        }
       />
       <div role="tabpanel">{tab === "cleanup" ? <RuleCleanup /> : <AnalysisContent />}</div>
     </div>

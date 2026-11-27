@@ -3,9 +3,9 @@
 import { useLanguage } from "@/components/LanguageProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
+import { Column, DataTable } from "@/components/ui/DataTable";
 import { api, NetworkAction, NetworkKind, NetworkObjects } from "@/lib/api";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export interface ObjectChange {
@@ -63,58 +63,29 @@ export function NetworkObjectSection({ hostId, kind, title, reloadKey, readOnly,
       {data && !data.available && <p className="px-5 py-4 text-sm text-slate-500">{t("network.objectsUnavailable")}</p>}
       {data && data.available && data.rows.length === 0 && <p className="px-5 py-4 text-sm text-slate-500">{t("network.empty")}</p>}
       {data && data.available && data.rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <Table>
-            <THead>
-              <TRow>
-                {data.columns.map((c) => (
-                  <TH key={c}>{t(`network.field.${c}`)}</TH>
-                ))}
-                <TH>
-                  <span className="sr-only">{t("common.actions")}</span>
-                </TH>
-              </TRow>
-            </THead>
-            <TBody>
-              {data.rows.map((row) => (
-                <TRow key={row.uuid}>
-                  {data.columns.map((c) => (
-                    <TD key={c} className={c === "description" || c === "descr" ? "" : "font-mono text-xs"}>
-                      {FLAG_COLUMNS.has(c) ? (
-                        <Badge tone={row[c] === "1" ? "success" : "neutral"}>{row[c] === "1" ? t("network.active") : t("common.statusDisabled")}</Badge>
-                      ) : (
-                        row[c] || "–"
-                      )}
-                    </TD>
-                  ))}
-                  <TD>
-                    <fieldset disabled={readOnly} className="contents">
-                      <div className="flex justify-end gap-1">
-                        {isBuiltIn(row.uuid) ? (
-                          <Button
-                            variant="ghost"
-                            onClick={() => onChange({ kind, action: "add", preset: { tunable: row.tunable ?? "", value: row.value ?? "" } })}
-                          >
-                            {t("network.override")}
-                          </Button>
-                        ) : (
-                          <>
-                            <Button variant="ghost" aria-label={t("network.rowEdit")} title={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid: row.uuid })}>
-                              <Pencil size={14} />
-                            </Button>
-                            <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid: row.uuid })}>
-                              <Trash2 size={14} />
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    </fieldset>
-                  </TD>
-                </TRow>
-              ))}
-            </TBody>
-          </Table>
-        </div>
+        <DataTable
+          bare
+          label={title}
+          rows={data.rows}
+          rowKey={(row) => row.uuid}
+          columns={data.columns.map((c, index): Column<(typeof data.rows)[number]> => ({
+            key: c,
+            header: t(`network.field.${c}`),
+            // The first column names the object, the next two stay on a card/tablet row, the rest is behind "Details".
+            priority: index === 0 ? "primary" : index <= 2 ? "high" : "medium",
+            isTitle: index === 0,
+            mono: !(c === "description" || c === "descr"),
+            cell: (row) => FLAG_COLUMNS.has(c)
+              ? <Badge tone={row[c] === "1" ? "success" : "neutral"}>{row[c] === "1" ? t("network.active") : t("common.statusDisabled")}</Badge>
+              : row[c] || "–",
+          }))}
+          actions={(row) => isBuiltIn(row.uuid)
+            ? [{ key: "override", label: t("network.override"), icon: SlidersHorizontal, disabled: readOnly, onSelect: () => onChange({ kind, action: "add", preset: { tunable: row.tunable ?? "", value: row.value ?? "" } }) }]
+            : [
+                { key: "edit", label: t("network.rowEdit"), icon: Pencil, disabled: readOnly, onSelect: () => onChange({ kind, action: "set", uuid: row.uuid }) },
+                { key: "delete", label: t("network.rowDelete"), icon: Trash2, tone: "danger", disabled: readOnly, onSelect: () => onChange({ kind, action: "del", uuid: row.uuid }) },
+              ]}
+        />
       )}
     </div>
   );

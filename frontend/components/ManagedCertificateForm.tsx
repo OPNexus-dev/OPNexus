@@ -1,5 +1,6 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -47,6 +48,7 @@ export function ManagedCertificateForm({ hosts, editing, onClose, onSaved }: {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const changed = useChanged(form);   // editing: Save stays grey until something changed
   // The firewall expects the CA's refid in caref (not its row UUID), so the
   // CAs of the selected host are offered as a list; if that lookup fails the
   // field stays a free text input.
@@ -120,7 +122,7 @@ export function ManagedCertificateForm({ hosts, editing, onClose, onSaved }: {
         )}
 
         {dnActions.includes(form.action) && (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid items-end grid-cols-1 gap-3 sm:grid-cols-3">
             <FieldGroup label={t("certForm.keyType")}>
               <Select value={form.key_type} onChange={(e) => setForm({ ...form, key_type: e.target.value as CertKeyType })}>
                 <option value="2048">RSA 2048</option>
@@ -209,7 +211,7 @@ export function ManagedCertificateForm({ hosts, editing, onClose, onSaved }: {
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={saving} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          <Button type="submit" disabled={saving || (!!editing && !changed)} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

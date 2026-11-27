@@ -1,31 +1,119 @@
 "use client";
-import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { useEffect, useState } from "react";
-import { api, AuditEvent, AuditPage } from "@/lib/api";
+import { ScrollText } from "lucide-react";
+import { api, AuditEvent, AuditOperation, AuditOperationPage } from "@/lib/api";
+import { auditTone, sinceFor } from "@/lib/audit";
+import { AuditOperationDetail } from "@/components/AuditOperationDetail";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Input, Select } from "@/components/ui/Field";
+import { Column, DataTable } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useLanguage } from "@/components/LanguageProvider";
-import { AuditDetail } from "@/components/AuditDetail";
+
 const kindKeys = ["rule","rule_cleanup","alias","port_forward","one_to_one","outbound_nat","host","user","auth","backup","ipsec_tunnel","openvpn_instance","wireguard_tunnel","certificate","acme","notification","gui_access","system"];
-const actionKeys = ["deploy","confirm","rollback","remove","retry-rollback","delete","create","edit","reboot","update","ticket","redeem","end","relink"];
-const statusKeys = ["requested","accepted","rejected","interrupted","success","pending","error","reverted","revert_failed","removed","submitted","acknowledged","starting","unknown","denied"];
+// "requested" and "accepted" are the HTTP steps every operation has; as a filter they would match everything.
+const statusKeys = ["success","pending","error","reverted","revert_failed","removed","rejected","denied","interrupted","submitted","acknowledged","starting","unknown"];
+const PAGE = 50;
+
 export default function AuditHistory() {
-  const {t,ts,errorMessage,locale}=useLanguage();
-  const lbl=(ns:string,key:string)=>{const k=`audit.${ns}.${key}`;const v=t(k);return v===k?key:v;};
-  const kinds:Record<string,string>=Object.fromEntries(kindKeys.map(k=>[k,lbl("kind",k)]));
-  const actions:Record<string,string>=Object.fromEntries(actionKeys.map(k=>[k,lbl("action",k)]));
-  const statuses:Record<string,string>=Object.fromEntries(statusKeys.map(k=>[k,lbl("status",k)]));
-  const [data,setData]=useState<AuditPage | null>(null);
-  const [kind,setKind]=useState("");const [status,setStatus]=useState("");const [search,setSearch]=useState("");
-  const [offset,setOffset]=useState(0);const [error,setError]=useState("");const [reload,setReload]=useState(0);const [exporting,setExporting]=useState(false);
-  const [before,setBefore]=useState(()=>new Date().toISOString());
-  const [selected,setSelected]=useState<AuditEvent | null>(null);
-  useEffect(()=>{let active=true;setData(null);setError("");const timer=setTimeout(()=>{api.audit({kind,status,q:search,offset,limit:50,before}).then(d=>{if(active)setData(d);}).catch(e=>{if(active)setError(errorMessage(e));});},200);return()=>{active=false;clearTimeout(timer);};},[kind,status,search,offset,reload,before]);
+  const { t, ts, errorMessage, locale } = useLanguage();
+  const lbl = (ns: string, key: string) => { const k = `audit.${ns}.${key}`; const v = t(k); return v === k ? key : v; };
+  const [data, setData] = useState<AuditOperationPage | null>(null);
+  const [kind, setKind] = useState(""); const [status, setStatus] = useState(""); const [range, setRange] = useState(""); const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0); const [error, setError] = useState(""); const [reload, setReload] = useState(0); const [exporting, setExporting] = useState(false);
+  const [before, setBefore] = useState(() => new Date().toISOString());
+
+  useEffect(() => {
+    let active = true; setData(null); setError("");
+    const timer = setTimeout(() => {
+      api.auditOperations({ kind, status, q: search, since: sinceFor(range), offset, limit: PAGE, before })
+        .then((d) => { if (active) setData(d); })
+        .catch((e) => { if (active) setError(errorMessage(e)); });
+    }, 200);
+    return () => { active = false; clearTimeout(timer); };
+  }, [kind, status, range, search, offset, reload, before, errorMessage]);
+
+  // The export keeps every step (the raw events), with the same filters; the list above is the summary.
   async function download() {
-    setExporting(true);setError("");
-    try { const all: AuditEvent[]=[];let cursor=0;while(true){const d=await api.audit({kind,status,q:search,offset:cursor,limit:200,before});all.push(...d.items);cursor+=d.items.length;if(cursor>=d.total || !d.items.length)break;}
-      const url=URL.createObjectURL(new Blob([JSON.stringify({exported_at:new Date().toISOString(),through:before,events:all},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='opnexus-audit.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-    }catch(e){setError(errorMessage(e,'audit.exportFailed'));}finally{setExporting(false);}
+    setExporting(true); setError("");
+    try {
+      const all: AuditEvent[] = []; let cursor = 0;
+      while (true) {
+        const d = await api.audit({ kind, status, q: search, since: sinceFor(range), offset: cursor, limit: 200, before });
+        all.push(...d.items); cursor += d.items.length;
+        if (cursor >= d.total || !d.items.length) break;
+      }
+      const url = URL.createObjectURL(new Blob([JSON.stringify({ exported_at: new Date().toISOString(), through: before, events: all }, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a"); a.href = url; a.download = "opnexus-audit.json"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) { setError(errorMessage(e, "audit.exportFailed")); } finally { setExporting(false); }
   }
-  return <div className="space-y-5"><div className="flex flex-wrap justify-between gap-3"><h1 className="flex items-center gap-2 text-2xl font-semibold">{t("audit.title")}<InfoTip text={t("audit.intro")} size={18} /></h1><div className="flex gap-2"><Button variant="ghost" onClick={()=>{setBefore(new Date().toISOString());setOffset(0);setReload(n=>n+1);}}>{t("audit.refresh")}</Button><Button disabled={exporting} onClick={download}>{exporting?t('audit.exporting'):t('audit.exportJson')}</Button></div></div><div className="grid gap-3 sm:grid-cols-3"><Input aria-label={t("audit.searchLabel")} placeholder={t("audit.searchPlaceholder")} value={search} onChange={e=>{setSearch(e.target.value);setOffset(0);}}/><Select aria-label={t("audit.typeLabel")} value={kind} onChange={e=>{setKind(e.target.value);setOffset(0);}}><option value="">{t("audit.allTypes")}</option>{Object.entries(kinds).map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select><Select aria-label={t("audit.resultLabel")} value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="">{t("audit.allResults")}</option>{Object.entries(statuses).map(([v,l])=><option key={v} value={v}>{l}</option>)}</Select></div>{error && <p role="alert" className="text-red-600">{error}</p>}{!data && !error && <p>{t("common.loading")}</p>}{data && <><p className="text-sm text-slate-500">{t("audit.events",{total:data.total,from:data.total?offset+1:0,to:Math.min(offset+50,data.total)})}</p><div className="space-y-2">{data.items.map(e=><button key={e.id} onClick={()=>setSelected(selected?.id===e.id?null:e)} className="block w-full rounded-xl border border-slate-200 bg-white p-4 text-left text-sm"><div className="flex flex-wrap justify-between gap-2"><strong>{actions[e.action]??e.action} · {e.entity_name || kinds[e.kind] || e.kind}{e.host_name?` · ${e.host_name}`:''}</strong><span>{statuses[e.status]??e.status}</span></div><p className="mt-1 text-slate-500">{new Date(e.created_at).toLocaleString(locale)} · {e.actor}</p>{e.message && !/^HTTP 2\d\d$/.test(e.message) && <p className="mt-1 break-words text-slate-600">{ts(e.message)}</p>}{typeof e.details?.comment==="string" && selected?.id!==e.id && <p className="mt-1 break-words text-slate-600">“{String(e.details.comment)}”</p>}{selected?.id===e.id && <AuditDetail event={e} />}</button>)}{!data.items.length && <p className="py-8 text-center text-slate-500">{t("audit.noEvents")}</p>}</div><div className="flex gap-2"><Button variant="ghost" disabled={!offset} onClick={()=>setOffset(n=>Math.max(0,n-50))}>{t("logs.back")}</Button><Button variant="ghost" disabled={offset+50>=data.total} onClick={()=>setOffset(n=>n+50)}>{t("logs.next")}</Button></div></>}</div>;
+
+  const filterChange = (set: (v: string) => void) => (v: string) => { set(v); setOffset(0); };
+  const resetFilters = () => { setKind(""); setStatus(""); setRange(""); setSearch(""); setOffset(0); };
+  const hostsText = (op: AuditOperation) => {
+    const names = op.hosts.map((h) => h.name).filter(Boolean) as string[];
+    return names.length === 0 ? "—" : names.length === 1 ? names[0] : `${names[0]} ${t("audit.moreHosts", { count: names.length - 1 })}`;
+  };
+
+  const columns: Column<AuditOperation>[] = [
+    {
+      key: "operation", header: t("audit.col.operation"), priority: "primary",
+      cell: (op) => (
+        <div className="min-w-0">
+          <span className="font-medium text-slate-900">{lbl("action", op.action)} · {op.entity_name || lbl("kind", op.kind)}{op.entities > 1 && <span className="font-normal text-slate-500"> {t("audit.moreEntities", { count: op.entities - 1 })}</span>}</span>
+          {(op.comment || op.message) && <span className="block break-words text-xs font-normal text-slate-500">{op.comment ? `“${op.comment}”` : ts(op.message!)}</span>}
+        </div>
+      ),
+    },
+    { key: "result", header: t("audit.col.result"), priority: "primary", cell: (op) => <Badge tone={auditTone(op.result)}>{lbl("status", op.result)}</Badge> },
+    { key: "time", header: t("audit.col.time"), priority: "high", tabular: true, className: "whitespace-nowrap", cell: (op) => new Date(op.started_at).toLocaleString(locale) },
+    { key: "host", header: t("audit.col.host"), priority: "high", cell: (op) => hostsText(op) },
+    { key: "actor", header: t("audit.col.user"), priority: "medium", cell: (op) => op.actor },
+    { key: "steps", header: t("audit.col.steps"), priority: "low", tabular: true, align: "right", cell: (op) => op.steps },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title={t("audit.title")}
+        info={t("audit.intro")}
+        actions={<>
+          <Button variant="outline" onClick={() => { setBefore(new Date().toISOString()); setOffset(0); setReload((n) => n + 1); }}>{t("audit.refresh")}</Button>
+          <Button disabled={exporting} onClick={download}>{exporting ? t("audit.exporting") : t("audit.exportJson")}</Button>
+        </>}
+      />
+      <FilterBar
+        className="mb-4"
+        search={{ value: search, onChange: filterChange(setSearch), placeholder: t("audit.searchPlaceholder"), label: t("audit.searchLabel") }}
+        filters={[
+          { key: "kind", label: t("audit.typeLabel"), value: kind, onChange: filterChange(setKind), allLabel: t("audit.allTypes"), options: kindKeys.map((k) => ({ value: k, label: lbl("kind", k) })) },
+          { key: "status", label: t("audit.resultLabel"), value: status, onChange: filterChange(setStatus), allLabel: t("audit.allResults"), options: statusKeys.map((k) => ({ value: k, label: lbl("status", k) })) },
+          { key: "range", label: t("audit.rangeLabel"), value: range, onChange: filterChange(setRange), allLabel: t("audit.allTime"), options: [{ value: "24h", label: t("audit.range24h") }, { value: "7d", label: t("audit.range7d") }, { value: "30d", label: t("audit.range30d") }] },
+        ]}
+        onReset={resetFilters}
+      />
+      {error && <p role="alert" className="mb-3 text-red-600">{error}</p>}
+      {!data && !error && <p className="text-slate-500">{t("common.loading")}</p>}
+      {data && (
+        <>
+          <p className="mb-2 text-sm text-slate-500">{t("audit.events", { total: data.total, from: data.total ? offset + 1 : 0, to: Math.min(offset + PAGE, data.total) })}</p>
+          <DataTable
+            label={t("audit.title")}
+            rows={data.items}
+            rowKey={(op) => op.correlation_id}
+            columns={columns}
+            mobile="list"
+            detail={{ render: (op) => <AuditOperationDetail operation={op} /> }}
+            empty={<EmptyState icon={ScrollText} title={t("audit.noEvents")} />}
+          />
+          <div className="mt-4 flex gap-2">
+            <Button variant="ghost" disabled={!offset} onClick={() => setOffset((n) => Math.max(0, n - PAGE))}>{t("logs.back")}</Button>
+            <Button variant="ghost" disabled={offset + PAGE >= data.total} onClick={() => setOffset((n) => n + PAGE)}>{t("logs.next")}</Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

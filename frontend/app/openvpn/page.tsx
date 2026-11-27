@@ -1,5 +1,7 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
@@ -82,6 +84,10 @@ function OpenVpnContent() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<OpenVpnInstance | null>(null);
+  // One editor session per opening: editing an existing item, "Save" stays grey until the form differs from what the editor opened with.
+  // A restored older revision opens different from the stored item, so it is savable at once.
+  const [session, setSession] = useState<{ restored: boolean } | null>(null);
+  const dirty = useDirty(form, session);
   const [review, setReview] = useState<{ instance: OpenVpnInstance; mode: "preview" | "history" } | null>(null);
   const toast = useToast();
   const [trustStores, setTrustStores] = useState<Record<string, HostTrustStore>>({});
@@ -130,6 +136,7 @@ function OpenVpnContent() {
 
   function openEditor(instance: OpenVpnInstance | null, restored?: OpenVpnInstanceBase) {
     setEditing(instance);
+    setSession({ restored: !!restored });
     const base = restored ?? instance ?? emptyForm;
     setForm({ ...base, tls_key_material: "" });
     setFormError(null);
@@ -176,13 +183,16 @@ function OpenVpnContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{t("ovpn.title")}<InfoTip text={t("ovpn.intro")} size={18} /></h1>
-        <Button disabled={readOnly} onClick={() => openEditor(null)}>
-          <Plus size={16} />
-          {t("ovpn.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("ovpn.title")}
+        info={t("ovpn.intro")}
+        actions={
+          <Button disabled={readOnly} onClick={() => openEditor(null)}>
+            <Plus size={16} />
+            {t("ovpn.new")}
+          </Button>
+        }
+      />
 
 
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
@@ -259,7 +269,7 @@ function OpenVpnContent() {
               <Input required value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("ovpn.descPlaceholder")} />
             </FieldGroup>
 
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="grid items-end grid-cols-1 gap-4 sm:grid-cols-3">
               <FieldGroup label={t("ovpn.role")}>
                 <Select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as OpenVpnRole })}>
                   <option value="server">{t("ovpn.roleServer")}</option>
@@ -394,7 +404,7 @@ function OpenVpnContent() {
             {formError && <p className="text-sm text-red-600">{formError}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>{t("common.cancel")}</Button>
-              <Button type="submit" disabled={saving} loading={saving}>{saving ? t("common.saving") : t("rules.saveDraft")}</Button>
+              <Button type="submit" disabled={saving || (!!editing && !session?.restored && !dirty)} loading={saving}>{saving ? t("common.saving") : t("rules.saveDraft")}</Button>
             </div>
           </form>
         </Modal>

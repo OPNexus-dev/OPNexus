@@ -1,6 +1,6 @@
 "use client";
 
-import { InfoTip } from "@/components/ui/Tooltip";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -22,7 +22,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/components/LanguageProvider";
-import { ApiRightsBadge, GatewayStateBadge, gatewayNumbers } from "@/components/GatewayStatus";
+import { ApiRightsBadge, GatewayStateBadge, gatewayNumbers, isUnmonitored } from "@/components/GatewayStatus";
 import { labelFor, type Language } from "@/lib/i18n";
 
 const PENDING_KIND_LABELS: Record<string, string> = {
@@ -65,25 +65,27 @@ interface FirmwareWarning {
   kind: "update" | "major_update";
 }
 
-function SummaryTile({ label, value, icon: Icon, tone }: { label: string; value: number; icon: typeof Network; tone: string }) {
+function SummaryTile({ label, value, icon: Icon, tone, href }: { label: string; value: number; icon: typeof Network; tone: string; href: string }) {
   return (
-    <Card className="flex items-center gap-3 p-4">
-      <span className={`rounded-xl p-2.5 ${tone}`}>
-        <Icon size={20} />
-      </span>
-      <span>
-        <strong className="block text-xl text-slate-900">{value}</strong>
-        <span className="text-xs text-slate-500">{label}</span>
-      </span>
-    </Card>
+    <Link href={href} className="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
+      <Card className="flex h-full items-center gap-3 p-3 transition-colors hover:border-slate-300 sm:p-4">
+        <span className={`hidden rounded-xl p-2.5 sm:block ${tone}`}>
+          <Icon size={20} aria-hidden="true" />
+        </span>
+        <span className="min-w-0">
+          <strong className="block text-xl tabular-nums text-slate-900">{value}</strong>
+          <span className="block text-xs text-slate-500">{label}</span>
+        </span>
+      </Card>
+    </Link>
   );
 }
 
 function SectionCard({
-  title, icon: Icon, children,
-}: { title: string; icon: typeof Network; children: React.ReactNode }) {
+  title, icon: Icon, children, id,
+}: { title: string; icon: typeof Network; children: React.ReactNode; id?: string }) {
   return (
-    <Card className="min-w-0 p-5">
+    <Card id={id} className="min-w-0 scroll-mt-4 p-5">
       <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">
         <Icon size={16} />
         {title}
@@ -187,6 +189,8 @@ export default function DashboardPage() {
   const gatewayRows = (summary?.hosts ?? [])
     .flatMap((host) => (host.gateways ?? []).map((gateway) => ({ host, gateway })))
     .sort((a, b) => gatewayOrder[a.gateway.state] - gatewayOrder[b.gateway.state]);
+  const monitoredGateways = gatewayRows.filter(({ gateway }) => !isUnmonitored(gateway));
+  const unmonitoredGateways = gatewayRows.length - monitoredGateways.length;
   const securityWarningsLoading = problems === null || firmwareWarnings === null;
   const securityWarningCount = healthProblems.length + (firmwareWarnings?.length ?? 0);
 
@@ -202,32 +206,31 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[120rem] px-4 py-6 sm:px-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">Dashboard<InfoTip text={t("dashboard.subtitle")} size={18} /></h1>
-      </div>
+    <div>
+      <PageHeader title="Dashboard" info={t("dashboard.subtitle")} />
 
       {error && <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
 
       {summary === null ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[68px]" />)}
         </div>
       ) : (
-        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryTile label={t("dashboard.managedHosts")} value={summary.hosts.length} icon={Network} tone="bg-slate-100 text-slate-600" />
+        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SummaryTile label={t("dashboard.managedHosts")} value={summary.hosts.length} icon={Network} tone="bg-slate-100 text-slate-600" href="/hosts" />
           <SummaryTile
             label={t("dashboard.online")}
             value={summary.hosts.filter((h) => h.status === "online").length}
             icon={CheckCircle2}
             tone="bg-emerald-50 text-emerald-700"
+            href="/hosts"
           />
-          <SummaryTile label={t("dashboard.pendingActions")} value={summary.pending_actions.length} icon={ClipboardList} tone="bg-flame-50 text-flame-700" />
-          <SummaryTile label={t("dashboard.securityWarnings")} value={securityWarningsLoading ? 0 : securityWarningCount} icon={ShieldAlert} tone="bg-red-50 text-red-700" />
+          <SummaryTile label={t("dashboard.pendingActions")} value={summary.pending_actions.length} icon={ClipboardList} tone="bg-flame-50 text-flame-700" href="#pending-actions" />
+          <SummaryTile label={t("dashboard.securityWarnings")} value={securityWarningsLoading ? 0 : securityWarningCount} icon={ShieldAlert} tone="bg-red-50 text-red-700" href="#security-warnings" />
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid items-start gap-4 lg:grid-cols-2">
         <SectionCard title={t("dashboard.fleetHealth")} icon={Layers}>
           {summary === null ? (
             <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-10" />)}</div>
@@ -237,7 +240,7 @@ export default function DashboardPage() {
             <ul className="divide-y divide-slate-100">
               {summary.hosts.map((host) => (
                 <li key={host.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <Link href={`/hosts/${host.id}`} className="min-w-0 truncate font-medium text-sky-700 hover:underline">
+                  <Link href={`/hosts/${host.id}`} className="touch-pad min-w-0 truncate font-medium text-sky-700 hover:underline">
                     {host.name}
                   </Link>
                   <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
@@ -259,9 +262,9 @@ export default function DashboardPage() {
             <EmptyState icon={Globe} title={t("dashboard.noGateways")} description={t("dashboard.noGatewaysDescription")} />
           ) : (
             <ul className="divide-y divide-slate-100">
-              {gatewayRows.slice(0, 8).map(({ host, gateway }) => (
+              {monitoredGateways.slice(0, 8).map(({ host, gateway }) => (
                 <li key={`${host.id}-${gateway.name}`} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                  <Link href={`/hosts/${host.id}`} className="min-w-0 truncate font-medium text-sky-700 hover:underline">
+                  <Link href={`/hosts/${host.id}`} className="touch-pad min-w-0 truncate font-medium text-sky-700 hover:underline">
                     {host.name} · {gateway.name}
                   </Link>
                   <span className="flex flex-wrap items-center gap-2">
@@ -271,8 +274,13 @@ export default function DashboardPage() {
                   </span>
                 </li>
               ))}
-              {gatewayRows.length > 8 && (
-                <li className="py-2 text-xs text-slate-500">{t("dashboard.moreGateways", { count: gatewayRows.length - 8 })}</li>
+              {monitoredGateways.length > 8 && (
+                <li className="py-2 text-xs text-slate-500">{t("dashboard.moreGateways", { count: monitoredGateways.length - 8 })}</li>
+              )}
+              {unmonitoredGateways > 0 && (
+                <li className="py-2 text-sm">
+                  <Link href="/network/gateways" className="touch-link text-slate-600 hover:underline">{t("dashboard.unmonitoredGateways", { count: unmonitoredGateways })}</Link>
+                </li>
               )}
             </ul>
           )}
@@ -287,7 +295,7 @@ export default function DashboardPage() {
             <ul className="divide-y divide-slate-100">
               {[...posture].filter((h) => h.score !== null).sort((a, b) => (a.score ?? 0) - (b.score ?? 0)).slice(0, 6).map((h) => (
                 <li key={h.host_id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <Link href="/security" className="min-w-0 truncate font-medium text-sky-700 hover:underline">{h.host_name}</Link>
+                  <Link href="/security" className="touch-pad min-w-0 truncate font-medium text-sky-700 hover:underline">{h.host_name}</Link>
                   <div className="flex items-center gap-2">
                     {h.counts && h.counts.critical > 0 && <Badge tone="danger">{h.counts.critical} {t("security.severity.critical")}</Badge>}
                     <Badge tone={h.grade === "good" ? "success" : h.grade === "fair" ? "warning" : "danger"}>{h.score} / 100</Badge>
@@ -298,7 +306,7 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title={t("dashboard.pendingActions")} icon={ClipboardList}>
+        <SectionCard id="pending-actions" title={t("dashboard.pendingActions")} icon={ClipboardList}>
           {summary === null ? (
             <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-10" />)}</div>
           ) : summary.pending_actions.length === 0 ? (
@@ -307,7 +315,7 @@ export default function DashboardPage() {
             <ul className="divide-y divide-slate-100">
               {summary.pending_actions.map((item, index) => (
                 <li key={index} className="py-2 text-sm">
-                  <Link href={item.link} className="flex items-center justify-between gap-3 hover:underline">
+                  <Link href={item.link} className="touch-pad flex items-center justify-between gap-3 hover:underline">
                     <span className="min-w-0 truncate">
                       <span className="font-medium text-slate-900">{item.entity_name}</span>
                       <span className="text-slate-500"> · {PENDING_KIND_LABELS[item.kind] ? t(`dashboard.kinds.${PENDING_KIND_LABELS[item.kind]}`) : item.kind} · {item.host_name}</span>
@@ -323,7 +331,7 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title={t("dashboard.securityAndExpiryWarnings")} icon={ShieldAlert}>
+        <SectionCard id="security-warnings" title={t("dashboard.securityAndExpiryWarnings")} icon={ShieldAlert}>
           {securityWarningsLoading ? (
             <div className="space-y-2">{[0, 1].map((i) => <Skeleton key={i} className="h-10" />)}</div>
           ) : securityWarningCount === 0 ? (
@@ -333,13 +341,13 @@ export default function DashboardPage() {
               {nonDriftProblems.map((problem) => (
                 <li key={problem.id} className="py-2 text-sm">
                   {problem.problem_type === "host_offline" && (
-                    <Link href="/hosts" className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href="/hosts" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">{t("dashboard.hostIsOffline", { name: String(problem.context.host_name) })}</span>
                       <Badge tone="danger" className="shrink-0">{t("dashboard.hostOffline")}</Badge>
                     </Link>
                   )}
                   {(problem.problem_type === "gateway_down" || problem.problem_type === "resource_threshold" || problem.problem_type === "service_down") && (
-                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">
                         {String(problem.context.host_name)}: {ts(String(problem.context.gateway ?? problem.context.ressource ?? problem.context.dienst))}
                       </span>
@@ -347,7 +355,7 @@ export default function DashboardPage() {
                     </Link>
                   )}
                   {problem.problem_type === "api_rights_missing" && (
-                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href={`/hosts/${String(problem.context.host_id)}`} className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">
                         {t("dashboard.apiRightsLine", { name: String(problem.context.host_name), read: t(`gateway.rights.read.${String(problem.context.lesezugriff)}`) })}
                       </span>
@@ -355,13 +363,13 @@ export default function DashboardPage() {
                     </Link>
                   )}
                   {problem.problem_type.startsWith("ha_") && (
-                    <Link href="/settings#ha" className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href="/settings#ha" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">{t(`dashboard.haLine.${problem.problem_type}`)}</span>
                       <Badge tone="danger" className="shrink-0">{t("dashboard.alert.ha")}</Badge>
                     </Link>
                   )}
                   {problem.problem_type === "server_disk" && (
-                    <Link href="/settings" className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href="/settings" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">
                         {t("dashboard.serverDiskLine", { pct: String(problem.context.belegt_prozent), free: String(problem.context.frei_gb) })}
                       </span>
@@ -369,7 +377,7 @@ export default function DashboardPage() {
                     </Link>
                   )}
                   {problem.problem_type === "cert_expiry" && (
-                    <Link href="/certificates" className="flex items-center justify-between gap-3 hover:underline">
+                    <Link href="/certificates" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                       <span className="min-w-0 truncate font-medium text-slate-900">
                         {String(problem.context.host_name)}: {certProblemLabel(problem.context, t)}
                       </span>
@@ -382,7 +390,7 @@ export default function DashboardPage() {
               ))}
               {[...driftCountByCluster.entries()].map(([cluster, count]) => (
                 <li key={`drift-${cluster}`} className="py-2 text-sm">
-                  <Link href="/cluster" className="flex items-center justify-between gap-3 hover:underline">
+                  <Link href="/cluster" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                     <span className="min-w-0 truncate font-medium text-slate-900">
                       {t("dashboard.driftLine", { cluster, count })}
                     </span>
@@ -392,7 +400,7 @@ export default function DashboardPage() {
               ))}
               {firmwareWarnings?.map((warning) => (
                 <li key={`${warning.hostId}-${warning.kind}`} className="py-2 text-sm">
-                  <Link href="/updates" className="flex items-center justify-between gap-3 hover:underline">
+                  <Link href="/updates" className="touch-pad flex items-center justify-between gap-3 hover:underline">
                     <span className="min-w-0 truncate font-medium text-slate-900">
                       {warning.hostName}: {warning.kind === "major_update" ? t("dashboard.majorAvailable") : t("dashboard.stableAvailable")}
                     </span>
@@ -429,7 +437,7 @@ export default function DashboardPage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/audit" className="mt-3 inline-block text-sm text-sky-700 hover:underline">
+              <Link href="/audit" className="touch-link mt-3 inline-block text-sm text-sky-700 hover:underline">
                 {t("dashboard.viewAudit")}
               </Link>
             </>

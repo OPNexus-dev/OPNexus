@@ -120,6 +120,8 @@ export const serverMessagesEn: Array<[string | RegExp, string]> = [
   ["Dieser Schlüssel gehört schon zu einem anderen Eintrag", "This key already belongs to another entry"],
   ["Plan geändert: automatischer Start deaktiviert", "Plan changed: automatic start disabled"],
   ["Betriebseinstellungen geändert", "Operating settings changed"],
+  ["Webzertifikat von OPNexus eingespielt", "OPNexus web certificate installed"],
+  ["Webzertifikat von OPNexus entfernt", "OPNexus web certificate removed"],
   [/^Name „(?<p1>[\s\S]*?)“: Großbuchstaben, Ziffern und _, beginnend mit einem Buchstaben$/, "Name “{p1}”: uppercase letters, digits and _, starting with a letter"],
   [/^Wert von (?<p1>[\s\S]*?): 1–255 Zeichen aus Buchstaben, Ziffern und \. : \/ , @ \+ - _ Leerzeichen$/, "Value of {p1}: 1–255 characters from letters, digits and . : / , @ + - _ space"],
   [/^Rolle „(?<p1>[\s\S]*?)“: IF_ gefolgt von Großbuchstaben, Ziffern und _ \(höchstens 40 Zeichen\)$/, "Role “{p1}”: IF_ followed by uppercase letters, digits and _ (at most 40 characters)"],

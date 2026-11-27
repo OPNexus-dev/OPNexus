@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/PageHeader";
+import { DataTable } from "@/components/ui/DataTable";
 import { useConfirm } from "@/components/ui/Confirm";
 import { MaintenanceWindowEditor } from "@/components/MaintenanceWindowEditor";
 import { RolloutPlanEditor } from "@/components/RolloutPlanEditor";
@@ -18,7 +20,7 @@ import { useLanguage } from "@/components/LanguageProvider";
 import { api, DeviceGroup, MaintenanceWindow, Occurrence, RolloutPlan, RolloutPreview, RolloutRunSummary } from "@/lib/api";
 import { codeText, RUN_TONE, windowSummary } from "@/lib/rollouts";
 import { useReadOnly } from "@/lib/useReadOnly";
-import { AlertTriangle, CalendarClock, ListOrdered, Pencil, Play, Plus, Power, PowerOff, Trash2, Waves } from "lucide-react";
+import { AlertTriangle, CalendarClock, ChevronRight, ListOrdered, Pencil, Play, Plus, Power, PowerOff, Trash2, Waves } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -93,55 +95,43 @@ export default function RolloutsPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-          {t("rollouts.title")}
-          <InfoTip text={t("rollouts.intro")} size={18} />
-        </h1>
-        {!readOnly && tab === "plans" && <Button onClick={() => setEditPlan("new")}><Plus size={16} />{t("rollouts.plan.new")}</Button>}
-        {!readOnly && tab === "windows" && <Button onClick={() => setEditWindow("new")}><Plus size={16} />{t("mwindows.new")}</Button>}
-      </div>
+      <PageHeader
+        title={t("rollouts.title")}
+        info={t("rollouts.intro")}
+        actions={
+          <>
+            {!readOnly && tab === "plans" && <Button onClick={() => setEditPlan("new")}><Plus size={16} />{t("rollouts.plan.new")}</Button>}
+            {!readOnly && tab === "windows" && <Button onClick={() => setEditWindow("new")}><Plus size={16} />{t("mwindows.new")}</Button>}
+          </>
+        }
+        tabs={
+          <Tabs active={tab} onChange={changeTab} items={[
+                  { key: "runs", label: t("rollouts.tab.runs") },
+                  { key: "plans", label: t("rollouts.tab.plans") },
+                  { key: "windows", label: t("rollouts.tab.windows") },
+                ]} />
+        }
+      />
       <RolloutStatusBanner />
-      <Tabs className="mb-4" active={tab} onChange={changeTab} items={[
-        { key: "runs", label: t("rollouts.tab.runs") },
-        { key: "plans", label: t("rollouts.tab.plans") },
-        { key: "windows", label: t("rollouts.tab.windows") },
-      ]} />
       {error && <p role="alert" className="mb-4 text-sm text-red-600">{error}</p>}
 
       {tab === "runs" && (runs === null ? <Skeleton className="h-32" /> : runs.length === 0 ? (
         <EmptyState icon={Waves} title={t("rollouts.noRuns")} description={t("rollouts.noRunsHint")} />
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.plan")}</th>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.status")}</th>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.wave")}</th>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.target")}</th>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.hosts")}</th>
-                <th className="px-4 py-3 font-medium">{t("rollouts.col.started")}</th>
-                <th className="px-4 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r) => (
-                <tr key={r.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-4 py-3 font-medium text-slate-900">{r.plan_name}<div className="text-xs font-normal text-slate-500">{t(`rollouts.action.${r.action}`)}</div></td>
-                  <td className="px-4 py-3"><Badge tone={RUN_TONE[r.status]}>{t(`rollouts.run.status.${r.status}`)}</Badge></td>
-                  <td className="px-4 py-3 whitespace-nowrap">{t("rollouts.waveOf", { current: Math.min(r.current_wave + 1, r.wave_count), total: r.wave_count })} {r.current_wave_label && <span className="text-slate-500">({r.current_wave_label})</span>}</td>
-                  <td className="px-4 py-3">{r.target_version ?? "–"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs">
-                    {Object.entries(r.host_counts).map(([s, n]) => <span key={s} className="mr-2">{t(`rollouts.host.status.${s}`)}: {n}</span>)}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-600">{when(r.created_at)}<div>{t("rollouts.by", { user: r.started_by })} · {t(`rollouts.trigger.${r.trigger}`)}</div></td>
-                  <td className="px-4 py-3 text-right"><Button variant="outline" href={`/rollouts/runs/${r.id}`}>{t("rollouts.details")}</Button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <DataTable
+          label={t("rollouts.title")}
+          rows={runs}
+          rowKey={(r) => r.id}
+          columns={[
+            { key: "plan", header: t("rollouts.col.plan"), priority: "primary", isTitle: true, cell: (r) => (<>{r.plan_name}<div className="text-xs font-normal text-slate-500">{t(`rollouts.action.${r.action}`)}</div></>) },
+            { key: "status", header: t("rollouts.col.status"), priority: "primary", cell: (r) => <Badge tone={RUN_TONE[r.status]}>{t(`rollouts.run.status.${r.status}`)}</Badge> },
+            { key: "wave", header: t("rollouts.col.wave"), priority: "high", className: "whitespace-nowrap", cell: (r) => (<>{t("rollouts.waveOf", { current: Math.min(r.current_wave + 1, r.wave_count), total: r.wave_count })}{r.current_wave_label && <span className="text-slate-500"> ({r.current_wave_label})</span>}</>) },
+            { key: "target", header: t("rollouts.col.target"), priority: "medium", cell: (r) => r.target_version ?? "–" },
+            { key: "hosts", header: t("rollouts.col.hosts"), priority: "medium", className: "text-xs", cell: (r) => Object.entries(r.host_counts).map(([st, n]) => <span key={st} className="mr-2 whitespace-nowrap">{t(`rollouts.host.status.${st}`)}: {n}</span>) },
+            { key: "started", header: t("rollouts.col.started"), priority: "high", className: "text-xs text-slate-600", cell: (r) => (<>{when(r.created_at)}<div>{t("rollouts.by", { user: r.started_by })} · {t(`rollouts.trigger.${r.trigger}`)}</div></>) },
+          ]}
+          actions={(r) => [{ key: "details", label: t("rollouts.details"), icon: ChevronRight, href: `/rollouts/runs/${r.id}` }]}
+        />
       ))}
 
       {tab === "plans" && (plans === null ? <Skeleton className="h-32" /> : plans.length === 0 ? (

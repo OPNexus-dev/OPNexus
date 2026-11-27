@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -128,7 +129,7 @@ export function LiveAliasesDrift() {
           ) : cluster.rows.length === 0 ? (
             <p className="mb-4 text-sm text-slate-500">{t("drift.noAliases")}</p>
           ) : (
-            <Card className="overflow-x-auto">
+            <ScrollCard>
               {cluster.driftedCount === 0 && (
                 <p className="border-b border-slate-100 px-5 py-2 text-sm text-emerald-600">
                   {t("drift.noDiffs")}
@@ -172,7 +173,7 @@ export function LiveAliasesDrift() {
                   ))}
                 </tbody>
               </table>
-            </Card>
+            </ScrollCard>
           )}
         </div>
       ))}

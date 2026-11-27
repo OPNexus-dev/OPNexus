@@ -30,7 +30,7 @@ PIN_BYTES = 32            # SHA-256 des Gate-Zertifikats (DER)
 
 VERSION_RE = re.compile(r"^[0-9]{1,4}\.[0-9]{1,5}\.[0-9]{1,6}$")  # nur feste Release-Versionen: kein "latest", keine Kandidaten, keine fremden Tags
 # Wie lange der Agent kurze Verben höchstens laufen lässt (Sekunden); der Client wartet etwas länger (ha_cli.py)
-SYNC_TIMEOUTS = {"status": 90, "fence": 240, "receive/stamp": 30, "receive/ca-sum": 30}
+SYNC_TIMEOUTS = {"status": 90, "fence": 240, "receive/stamp": 30, "receive/ca-sum": 30, "receive/web-cert-sum": 60, "receive/web-cert-clear": 180}
 SYNC_TIMEOUT_DEFAULT = 120
 SUM_RE = re.compile(r"^[0-9a-f]{64}$")
 STAMP_RE = re.compile(r"^[0-9]{1,12}$")
@@ -233,6 +233,10 @@ VERBS: dict[str, Verb] = {
     "dissolve": Verb("POST", "job", ("ha", "dissolve", "--partner-side")),
     "receive/stamp": Verb("POST", "sync", ("ha", "receive", "stamp"), "value", STAMP_RE),
     "receive/ca-sum": Verb("GET", "sync", ("ha", "receive", "ca-sum")),
+    # Eigenes Webzertifikat (opnexus cert install): der Primär gibt Zertifikat und Schlüssel an den Standby weiter.
+    "receive/web-cert": Verb("POST", "stream", ("ha", "receive", "web-cert"), "sum", SUM_RE),
+    "receive/web-cert-clear": Verb("POST", "sync", ("ha", "receive", "web-cert-clear")),
+    "receive/web-cert-sum": Verb("GET", "sync", ("ha", "receive", "web-cert-sum")),
 }
 
 

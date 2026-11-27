@@ -1,5 +1,6 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -35,6 +36,7 @@ export function MaintenanceWindowEditor({ window, onClose, onSaved }: {
   } : EMPTY));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const changed = useChanged(form);   // editing a window: Save stays grey until something changed
   const zones = useMemo(timeZones, []);
   const set = (patch: Partial<MaintenanceWindowWrite>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -90,7 +92,7 @@ export function MaintenanceWindowEditor({ window, onClose, onSaved }: {
             </div>
           </fieldset>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="grid items-end gap-4 sm:grid-cols-3">
             <FieldGroup label={t("mwindows.monthMode")}>
               <Select value={form.month_mode ?? "nth_weekday"} onChange={(e) => set({ month_mode: e.target.value as "nth_weekday" | "day" })}>
                 <option value="nth_weekday">{t("mwindows.nthWeekday")}</option>
@@ -117,7 +119,7 @@ export function MaintenanceWindowEditor({ window, onClose, onSaved }: {
             )}
           </div>
         )}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid items-end gap-4 sm:grid-cols-3">
           <FieldGroup label={t("mwindows.startTime")}>
             <Input type="time" value={form.start_time} onChange={(e) => set({ start_time: e.target.value })} />
           </FieldGroup>
@@ -137,7 +139,7 @@ export function MaintenanceWindowEditor({ window, onClose, onSaved }: {
         {error && <p role="alert" className="text-red-600">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>{t("common.cancel")}</Button>
-          <Button onClick={save} loading={busy} disabled={!form.name.trim()}>{t("rollouts.plan.save")}</Button>
+          <Button onClick={save} loading={busy} disabled={!form.name.trim() || (!!window && !changed)}>{t("rollouts.plan.save")}</Button>
         </div>
       </div>
     </Modal>

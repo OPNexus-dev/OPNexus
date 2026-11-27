@@ -125,7 +125,7 @@ export function InfoTip({ text, label, className, size = 15 }: { text: ReactNode
       <button
         type="button"
         aria-label={label ?? (typeof text === "string" ? text : undefined)}
-        className="inline-flex items-center rounded-full text-slate-400 transition-colors hover:text-brand-600 focus-visible:text-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+        className="inline-flex items-center rounded-full text-slate-400 transition-colors [@media(pointer:coarse)]:-m-3.5 [@media(pointer:coarse)]:p-3.5 hover:text-brand-600 focus-visible:text-brand-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
         onClick={(event) => event.preventDefault()}
       >
         <Info size={size} aria-hidden="true" />

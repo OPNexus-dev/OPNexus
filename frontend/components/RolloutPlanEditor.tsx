@@ -1,5 +1,6 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -27,6 +28,7 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
   } : { name: "", description: "", action: "update", window_id: null, auto_start: false, gate_checks: DEFAULT_CHECKS, gate_probes: [], compliance_mode: "warn", waves: [newWave(0)] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const changed = useChanged(form);   // editing a plan: Save stays grey until something changed
   const set = (patch: Partial<RolloutPlanWrite>) => setForm((f) => ({ ...f, ...patch }));
   const setWave = (i: number, patch: Partial<RolloutWaveWrite>) => set({ waves: form.waves.map((w, j) => (j === i ? { ...w, ...patch } : w)) });
   const moveWave = (i: number, dir: -1 | 1) => {
@@ -189,7 +191,7 @@ export function RolloutPlanEditor({ plan, groups, windows, onClose, onSaved }: {
         {error && <p role="alert" className="text-red-600">{error}</p>}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose} disabled={busy}>{t("common.cancel")}</Button>
-          <Button onClick={save} loading={busy} disabled={!valid}>{t("rollouts.plan.save")}</Button>
+          <Button onClick={save} loading={busy} disabled={!valid || (!!plan && !changed)}>{t("rollouts.plan.save")}</Button>
         </div>
       </div>
     </Modal>

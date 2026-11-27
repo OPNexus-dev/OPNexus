@@ -8,9 +8,11 @@ interface ModalProps {
   children: ReactNode;
   /** Wider dialog for lists and tables. */
   wide?: boolean;
+  /** Below 640 px the dialog sits at the bottom edge as a sheet (filters, short choices on a phone). */
+  sheet?: boolean;
 }
 
-export function Modal({ title, onClose, children, wide = false }: ModalProps) {
+export function Modal({ title, onClose, children, wide = false, sheet = false }: ModalProps) {
   const titleId = useId();
   const { t } = useLanguage();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -48,14 +50,14 @@ export function Modal({ title, onClose, children, wide = false }: ModalProps) {
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className={`fixed inset-0 z-50 flex justify-center bg-black/50 ${sheet ? "items-end p-0 sm:items-center sm:p-4" : "items-center p-4"}`}>
       <div
         ref={dialogRef}
         tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`flex max-h-[90vh] outline-none w-full ${wide ? "max-w-2xl" : "max-w-lg"} flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-xl sm:p-6`}
+        className={`flex max-h-[90vh] outline-none w-full ${wide ? "max-w-2xl" : "max-w-lg"} flex-col border border-slate-200 bg-white p-5 shadow-xl sm:p-6 ${sheet ? "max-w-none rounded-t-2xl sm:max-w-lg sm:rounded-2xl" : "rounded-2xl"}`}
       >
         <div className="mb-4 flex shrink-0 items-center justify-between">
           <h2 id={titleId} className="text-lg font-semibold text-slate-900">

@@ -22,6 +22,11 @@ export function GatewayStateBadge({ state }: { state: GatewayState }) {
   return <Badge tone={TONE[state]}>{t(`gateway.state.${state}`)}</Badge>;
 }
 
+/** A gateway OPNsense does not monitor (no monitor IP): no loss, no delay, state unknown. The dashboard folds these into one line. */
+export function isUnmonitored(g: Pick<GatewayHealth, "state" | "loss" | "delay">): boolean {
+  return g.state === "unknown" && g.loss === null && g.delay === null;
+}
+
 export function gatewayNumbers(g: GatewayHealth, t: (key: string, params?: Record<string, string | number>) => string): string {
   if (g.loss === null && g.delay === null) return t("gateway.notMeasured");
   const parts: string[] = [];

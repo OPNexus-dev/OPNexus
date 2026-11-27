@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { api, ClusterNetworkDrift } from "@/lib/api";
 import { CheckCircle2, Layers } from "lucide-react";
 import Link from "next/link";
@@ -53,42 +53,33 @@ export function NetworkCompare() {
             )}
           </div>
           {c.differences.length > 0 && (
-            <div className="overflow-x-auto">
-              <Table>
-                <THead>
-                  <TRow>
-                    <TH>{t("network.compare.category")}</TH>
-                    <TH>{t("network.compare.object")}</TH>
-                    <TH>{t("network.compare.state")}</TH>
-                    {c.compared.map((h) => (
-                      <TH key={h}>{h}</TH>
-                    ))}
-                  </TRow>
-                </THead>
-                <TBody>
-                  {c.differences.map((d) => (
-                    <TRow key={`${d.category}:${d.key}`}>
-                      <TD>
-                        <Link className="text-brand-600 hover:underline" href={`/network/${CATEGORY_TAB[d.category] ?? "interfaces"}`}>
-                          {t(`network.compare.categories.${d.category}`)}
-                        </Link>
-                      </TD>
-                      <TD className="font-mono text-xs">{d.key}</TD>
-                      <TD>
-                        <Badge tone={d.status === "missing" ? "danger" : "warning"}>
-                          {d.status === "missing" ? t("network.compare.missing") : t("network.compare.different")}
-                        </Badge>
-                      </TD>
-                      {c.compared.map((h) => (
-                        <TD key={h} className="font-mono text-xs">
-                          {d.signatures[h] === undefined ? <span className="text-red-600">{t("network.compare.absent")}</span> : d.signatures[h] || "✓"}
-                        </TD>
-                      ))}
-                    </TRow>
-                  ))}
-                </TBody>
-              </Table>
-            </div>
+            // A comparison only makes sense side by side: on a phone the table scrolls (with an edge fade and a fixed first column).
+            <DataTable
+              bare
+              mobile="scroll"
+              label={c.name}
+              rows={c.differences}
+              rowKey={(d) => `${d.category}:${d.key}`}
+              columns={[
+                {
+                  key: "category", header: t("network.compare.category"), priority: "primary", isTitle: true,
+                  cell: (d) => (
+                    <Link className="text-brand-600 hover:underline" href={`/network/${CATEGORY_TAB[d.category] ?? "interfaces"}`}>
+                      {t(`network.compare.categories.${d.category}`)}
+                    </Link>
+                  ),
+                },
+                { key: "object", header: t("network.compare.object"), priority: "primary", mono: true, cell: (d) => d.key },
+                {
+                  key: "state", header: t("network.compare.state"), priority: "primary",
+                  cell: (d) => <Badge tone={d.status === "missing" ? "danger" : "warning"}>{d.status === "missing" ? t("network.compare.missing") : t("network.compare.different")}</Badge>,
+                },
+                ...c.compared.map((h) => ({
+                  key: `host:${h}`, header: h, priority: "primary" as const, mono: true,
+                  cell: (d: (typeof c.differences)[number]) => (d.signatures[h] === undefined ? <span className="text-red-600">{t("network.compare.absent")}</span> : d.signatures[h] || "✓"),
+                })),
+              ]}
+            />
           )}
         </Card>
       ))}

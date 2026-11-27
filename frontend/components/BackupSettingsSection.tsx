@@ -6,6 +6,7 @@ import { InfoTip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { api, BackupSettings } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
+import { useDirty } from "@/lib/useDirty";
 import { useEffect, useState } from "react";
 
 /** Scheduled backups, retention and the encrypted offsite copy. Admin only: renders nothing for other roles. */
@@ -28,6 +29,9 @@ export function BackupSettingsSection() {
   const [pathStyle, setPathStyle] = useState(true);
   const [secretKey, setSecretKey] = useState("");
   const [passphrase, setPassphrase] = useState("");
+
+  // Nothing to save while the form equals the stored settings (secrets are write-only: typing one counts as a change).
+  const dirty = useDirty({ scheduled, interval, keep, offsite, endpoint, region, bucket, prefix, accessKey, pathStyle, secretKey, passphrase }, cfg);
 
   function apply(d: BackupSettings) {
     setCfg(d);
@@ -164,7 +168,7 @@ export function BackupSettingsSection() {
         {cfg?.last_run_at && <p className="text-sm text-slate-500">{t("backupSettings.lastRun", { when: new Date(cfg.last_run_at).toLocaleString(locale) })}</p>}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={busy !== null || !cfg} loading={busy === "save"}>{t("common.save")}</Button>
+          <Button type="submit" disabled={busy !== null || !cfg || !dirty} loading={busy === "save"}>{t("common.save")}</Button>
           <Button type="button" variant="ghost" disabled={busy !== null || !cfg || !offsite} loading={busy === "test"} onClick={test}>{t("backupSettings.test")}</Button>
           <Button type="button" variant="ghost" disabled={busy !== null || !cfg} loading={busy === "run"} onClick={runNow}>{t("backupSettings.runNow")}</Button>
         </div>

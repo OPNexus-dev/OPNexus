@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { useConfirm } from "@/components/ui/Confirm";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -57,7 +58,7 @@ export function HostServices({ host }: { host: Host }) {
   return (
     <>
       <h2 className="mb-3 mt-8 text-lg font-semibold text-slate-900">{t("hostServices.title")}</h2>
-      <Card className="mb-8 overflow-x-auto">
+      <ScrollCard className="mb-8">
         {error && <p className="px-5 py-4 text-sm text-red-600">{error}</p>}
         {!error && !services && (
           <div className="space-y-3 p-5">
@@ -129,7 +130,7 @@ export function HostServices({ host }: { host: Host }) {
             </table>
           </fieldset>
         )}
-      </Card>
+      </ScrollCard>
     </>
   );
 }

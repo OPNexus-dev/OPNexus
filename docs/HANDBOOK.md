@@ -225,6 +225,39 @@ Then `docker compose up -d`. A name without DNS needs an entry in the hosts file
 a proxy sits in front that sets `X-Forwarded-For` itself; the bundled proxy does.
 Otherwise any client could bypass the login lockout with a forged header.
 
+**One certificate for all addresses.** The proxy issues **one** certificate that contains every address from
+`OPNEXUS_SITES` (and `OPNEXUS_DEFAULT_SNI`), signed by the same internal CA. A browser that opens a plain IP address
+sends no name, so a certificate per address would show the one of the default address for every address; with an HA pair
+the shared address (VIP) would then show a warning even with the CA imported. The certificate is valid for two years
+and renews itself 90 days before it expires (the proxy restarts for a moment). Changing `OPNEXUS_SITES` issues a new one at the next
+start of the proxy. The root CA does not change, so nothing has to be imported again. On an HA pair each node issues its own
+certificate for the VIP and its own address, from the CA that the sync keeps identical on both.
+`OPNEXUS_WEB_CERT=internal` in the `.env` brings back one certificate per address.
+
+**Your own certificate.** For a certificate from your company CA, or one issued elsewhere (for example by Let's Encrypt on a
+different machine): in the web interface open **Settings › Access › Web certificate** (needs the updater service, see "One-click updates (optional)"),
+choose **Install own certificate**, paste or pick the certificate chain (PEM, leaf first) and the private key (PEM, **without** a passphrase) and press
+**Check**. The dialog shows what it found (subject, expiry, addresses, and which of your addresses the certificate does not cover); **Install** only becomes
+available for exactly what was checked. The proxy restarts for up to a minute; the page tells you when the certificate is active. A browser that does not trust the
+issuer shows a warning afterwards. **Back to the internal certificate** undoes it. The private key passes through OPNexus once and is stored only in the
+proxy's volume; it appears in no log and not in the audit trail. The same on the command line: put the two files on the server and run
+
+```bash
+./opnexus cert install --cert fullchain.pem --key privkey.pem
+./opnexus cert status        # source, addresses, expiry, fingerprint
+./opnexus cert remove        # back to the certificate of the internal CA
+```
+
+`cert install` checks the files first (readable, the key belongs to the certificate, not expired, valid for which of your addresses),
+writes them into the proxy's volume, restarts the proxy and **looks at what the proxy really serves**. If it does not serve the new
+certificate, everything is rolled back and the previous state is restored. A certificate that is valid for only some of your addresses
+installs with a warning that names the others; one that is valid for none is refused. A custom certificate does not renew itself:
+run `cert install` again before it expires (`cert status` shows the days left). On an HA pair the primary hands the certificate and the
+setting to the standby with the regular sync (every 5 minutes, or at once with `./opnexus ha sync`). The installation needs
+OPNexus 1.41 or newer (the command says so if the compose file is older). `OPNEXUS_WEB_CERT=custom` in the `.env` is what the command sets;
+if the files are missing or invalid at start the proxy falls back to the certificate of the internal CA and says why in
+`docker compose logs proxy`. On an HA pair the interface and the command work on the primary; the standby shows the certificate but leaves changes to the primary.
+
 **Back up:** the key of the internal CA lives in the volume `caddy_data`. If it is
 lost, a new CA is created and all clients have to import it again.
 
@@ -264,6 +297,10 @@ Under **Settings › Operating settings** you configure what used to require the
 Each field shows its default and allowed range; "Reset to default" undoes a change. Changes
 apply immediately (in a second backend after 15 seconds at the latest) and appear in the audit log; the heartbeat
 address and the CA only as "set". Only admins may change them.
+
+**Save stays grey until something changed.** This holds for all settings areas and for every edit dialog in OPNexus: the Save button becomes
+active after your first change and grey again if you undo it. After a failed save it stays active, so your input is not lost. Creating something new is never
+held back, and an older revision you restore can be saved right away.
 
 If a value is **in the `.env`**, that value still applies; the field is then locked and shows "from the server". This keeps
 automatically provisioned servers controllable. Deliberately **only** in the `.env`: the addresses and TLS of OPNexus
@@ -1412,6 +1449,10 @@ API secrets and configuration files are not logged.
 
 Opening an entry shows **what changed**, field by field (before and after), plus the comment given at deploy time; the raw record stays
 available under *Technical details*.
+
+The list shows **one row per operation**: a request together with all its steps (requested, pending, accepted, rolled back, ...), with the
+number of steps and the result. Open a row to see the steps one by one and what each of them changed. The filters decide which operations appear (an operation appears when any of its steps matches); JSON export and
+the API (`GET /api/audit?group=operation`, and `?correlation_id=` for the steps of one operation) read the same records, so nothing is left out.
 
 ### Audit export
 

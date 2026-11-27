@@ -1,5 +1,7 @@
 "use client";
 
+import { ScrollRow } from "@/components/ui/ScrollRow";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -126,12 +128,7 @@ export default function ConfigCodePage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-          {t("configCode.title")}
-          <InfoTip text={t("configCode.intro")} size={18} />
-        </h1>
-      </div>
+      <PageHeader title={t("configCode.title")} info={t("configCode.intro")} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
         <Card className="self-start p-5">
@@ -247,7 +244,7 @@ export default function ConfigCodePage() {
                       ...kinds.map((kind) => ({ key: kind, label: `${t(`configCode.kind.${kind}`)} (${plan.items.filter((i) => i.kind === kind).length})` }))]}
                   />
                 )}
-                <div className="overflow-x-auto">
+                <ScrollRow layout="block" fadeFrom="from-[rgb(var(--slate-50))]">
                   <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                       <tr>
@@ -298,7 +295,7 @@ export default function ConfigCodePage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </ScrollRow>
                 {visible.length > rows.length && (
                   <div className="mt-3 text-center">
                     <Button variant="ghost" onClick={() => setShowAll(true)}>{t("configCode.showAll", { n: visible.length - rows.length })}</Button>

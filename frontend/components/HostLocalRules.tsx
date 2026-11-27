@@ -86,17 +86,20 @@ export function HostLocalRules({ hosts, reloadKey, onAdopt }: { hosts: Host[]; r
 
   return (
     <Card className="mt-8">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-5 py-4 text-left"
-      >
-        {open ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
-        <span className="font-semibold text-slate-900">{t("rules.local.title")}</span>
-        {open && !loading && Object.keys(state).length > 0 && <Badge tone={total ? "warning" : "success"}>{total}</Badge>}
+      {/* The info tip is a button of its own, so it sits next to the toggle, not inside it (axe: nested-interactive). */}
+      <div className="flex items-center gap-2 pr-5">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 px-5 py-4 text-left"
+        >
+          {open ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
+          <span className="font-semibold text-slate-900">{t("rules.local.title")}</span>
+          {open && !loading && Object.keys(state).length > 0 && <Badge tone={total ? "warning" : "success"}>{total}</Badge>}
+        </button>
         <InfoTip text={t("rules.local.info")} size={14} />
-      </button>
+      </div>
       {open && (
         <div className="space-y-5 border-t border-slate-100 px-5 py-4">
           <div className="flex items-center justify-between gap-3">

@@ -1,5 +1,7 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { WorkflowBadge } from "@/components/WorkflowBadge";
@@ -73,6 +75,10 @@ function WireguardContent() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<WireguardTunnel | null>(null);
+  // One editor session per opening: editing an existing item, "Save" stays grey until the form differs from what the editor opened with.
+  // A restored older revision opens different from the stored item, so it is savable at once.
+  const [session, setSession] = useState<{ restored: boolean } | null>(null);
+  const dirty = useDirty(form, session);
   const [review, setReview] = useState<{ tunnel: WireguardTunnel; mode: "preview" | "history" } | null>(null);
   const toast = useToast();
 
@@ -92,6 +98,7 @@ function WireguardContent() {
 
   function openEditor(tunnel: WireguardTunnel | null, restored?: WireguardTunnelBase) {
     setEditing(tunnel);
+    setSession({ restored: !!restored });
     const base = restored ?? tunnel ?? emptyForm;
     setForm({ ...base, server_private_key: "", peer_psk_material: "" });
     setFormError(null);
@@ -139,13 +146,16 @@ function WireguardContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{t("wg.title")}<InfoTip text={t("wg.intro")} size={18} /></h1>
-        <Button disabled={readOnly} onClick={() => openEditor(null)}>
-          <Plus size={16} />
-          {t("ipsec.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("wg.title")}
+        info={t("wg.intro")}
+        actions={
+          <Button disabled={readOnly} onClick={() => openEditor(null)}>
+            <Plus size={16} />
+            {t("ipsec.new")}
+          </Button>
+        }
+      />
 
 
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
@@ -332,7 +342,7 @@ function WireguardContent() {
             {formError && <p className="text-sm text-red-600">{formError}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>{t("common.cancel")}</Button>
-              <Button type="submit" disabled={saving} loading={saving}>{saving ? t("common.saving") : t("rules.saveDraft")}</Button>
+              <Button type="submit" disabled={saving || (!!editing && !session?.restored && !dirty)} loading={saving}>{saving ? t("common.saving") : t("rules.saveDraft")}</Button>
             </div>
           </form>
         </Modal>

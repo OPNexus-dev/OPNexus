@@ -27,6 +27,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -60,6 +61,11 @@ JOB_FILE = STATE_DIR / "job.json"
 LOG_FILE = STATE_DIR / "job.log"
 PHASE_FILE = STATE_DIR / "job.phases"
 HA_JOB_FILE = STATE_DIR / "ha-job.json"
+CERT_JOB_FILE = STATE_DIR / "cert-job.json"      # eigenes Webzertifikat einspielen/entfernen (Hintergrundauftrag: der Proxy, der die Oberfläche ausliefert, wird dabei neu erstellt)
+CERT_LOG_FILE = STATE_DIR / "cert-job.log"
+CERT_IN_PREFIX = "cert-in-"                      # Arbeitsverzeichnisse mit dem Schlüssel (0700), nur für die Dauer des Auftrags
+CERT_MAX_BODY = 80 * 1024
+CERT_PEM_MAX = 32 * 1024
 HA_LOG_FILE = STATE_DIR / "ha-job.log"
 HA_API = 1                       # Version der Partner-Schnittstelle (/ha/pair, /ha/peer), Teil der Vorprüfung
 HA_MAX_STREAM = 4 << 30          # größter Datenstrom eines `receive` (Konfigurationssicherungen der Firewalls können groß werden)
@@ -521,10 +527,159 @@ def ha_local_action(body: dict) -> dict:
     return start_ha_job(action, HA_ACTIONS[action])
 
 
+# --- Eigenes Webzertifikat (opnexus cert ...) -----------------------------------------------------------------------------
+def read_cert_job() -> dict:
+    try:
+        return json.loads(CERT_JOB_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def write_cert_job(job: dict) -> None:
+    tmp = CERT_JOB_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(job), encoding="utf-8")
+    tmp.replace(CERT_JOB_FILE)
+
+
+def cert_log_tail() -> list[str]:
+    try:
+        data = CERT_LOG_FILE.read_bytes()[-LOG_TAIL_BYTES:].decode("utf-8", "replace")
+    except OSError:
+        return []
+    return ANSI_RE.sub("", data).splitlines()[-40:]
+
+
+def cleanup_cert_workdirs() -> None:
+    """Schlüsselmaterial gehört nur für die Dauer eines Auftrags auf die Platte: Reste eines abgebrochenen Auftrags entfernen."""
+    try:
+        for entry in STATE_DIR.iterdir():
+            if entry.name.startswith(CERT_IN_PREFIX) and entry.is_dir():
+                shutil.rmtree(entry, ignore_errors=True)
+    except OSError:
+        pass
+
+
+def _cli_message(proc: subprocess.CompletedProcess) -> str:
+    text = ANSI_RE.sub("", (proc.stderr or "").strip() or (proc.stdout or "").strip())
+    last = text.splitlines()[-1] if text else ""
+    return re.sub(r"^(Fehler|Error):\s*", "", last)[:300]   # the script's own "Error:" label does not belong in a message shown in the web interface
+
+
+def _cert_pems(body: dict) -> tuple[str, str]:
+    cert, key = body.get("cert"), body.get("key")
+    if not isinstance(cert, str) or not isinstance(key, str) or not cert.strip() or not key.strip():
+        raise Reject("bad_request", 400)
+    if len(cert) > CERT_PEM_MAX or len(key) > CERT_PEM_MAX:
+        raise Reject("too_large", 413)
+    if "-----BEGIN CERTIFICATE-----" not in cert or "PRIVATE KEY-----" not in key:
+        raise Reject("not_pem", 400)
+    return cert.strip() + "\n", key.strip() + "\n"
+
+
+def _write_cert_workdir(cert: str, key: str) -> Path:
+    work = Path(tempfile.mkdtemp(prefix=CERT_IN_PREFIX, dir=STATE_DIR))   # 0700
+    (work / "cert.pem").write_text(cert, encoding="utf-8")
+    fd = os.open(work / "key.pem", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(key)
+    return work
+
+
+def cert_check(body: dict) -> dict:
+    """Prüft Zertifikat und Schlüssel mit der CLI (`cert check`), ohne etwas zu ändern. Gibt die Angaben des Zertifikats zurück."""
+    cert, key = _cert_pems(body)
+    work = _write_cert_workdir(cert, key)
+    try:
+        proc = subprocess.run([SCRIPT, "cert", "check", "--cert", str(work / "cert.pem"), "--key", str(work / "key.pem")], cwd=PROJECT_DIR,
+                              env=script_env({"TERM": "dumb"}), capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (subprocess.TimeoutExpired, OSError):
+        raise Reject("script_failed", 500)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+    if proc.returncode != 0:
+        raise Reject("invalid_certificate", 400, _cli_message(proc))
+    try:
+        info = json.loads(proc.stdout)
+    except ValueError:
+        raise Reject("script_failed", 500)
+    return info if isinstance(info, dict) else {}
+
+
+def cert_status() -> dict:
+    job = read_cert_job()
+    payload = {"status": None, "error": None, "job": job or None, "log": cert_log_tail() if job else [], "ha_role": ha_role(read_env_file())}
+    if job.get("state") == "running":
+        return payload   # der Proxy wird gerade neu erstellt: eine Abfrage jetzt scheiterte nur
+    try:
+        proc = subprocess.run([SCRIPT, "cert", "status", "--json"], cwd=PROJECT_DIR, env=script_env({"TERM": "dumb"}), capture_output=True, text=True,
+                              timeout=60, stdin=subprocess.DEVNULL)
+    except (subprocess.TimeoutExpired, OSError):
+        payload["error"] = "script_failed"
+        return payload
+    if proc.returncode == 0:
+        try:
+            payload["status"] = json.loads(proc.stdout)
+        except ValueError:
+            payload["error"] = "script_failed"
+    else:
+        payload["error"] = _cli_message(proc) or "script_failed"
+    return payload
+
+
+def start_cert_job(verb: str, body: dict) -> dict:
+    """verb: install (mit Zertifikat und Schlüssel im Körper) oder remove."""
+    if verb == "install":
+        cert_check(body)   # ungültiges wird vor dem Auftrag abgelehnt, mit der Begründung der CLI
+    if not _lock.acquire(blocking=False):
+        raise Reject("busy")
+    work = None
+    try:
+        if read_job().get("state") == "running" or read_ha_job().get("state") == "running" or read_cert_job().get("state") == "running":
+            raise Reject("busy")
+        if ha_role(read_env_file()) == "standby":
+            raise Reject("ha_standby")   # der Standby bekommt es vom Primär; eine eigene Änderung würde beim nächsten Abgleich überschrieben
+        if live_status()["mode"] != "release":
+            raise Reject("not_release_mode")
+        argv = ["cert", "remove", "--yes"]
+        if verb == "install":
+            cert, key = _cert_pems(body)
+            work = _write_cert_workdir(cert, key)
+            argv = ["cert", "install", "--cert", str(work / "cert.pem"), "--key", str(work / "key.pem"), "--yes"]
+        job = {"id": secrets.token_hex(8), "verb": verb, "state": "running", "started_at": now_iso(), "finished_at": None, "exit_code": None}
+        CERT_LOG_FILE.write_text("", encoding="utf-8")
+        write_cert_job(job)
+    except BaseException:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+        _lock.release()
+        raise
+    threading.Thread(target=_run_cert_job, args=(job, argv, work), daemon=True).start()
+    return job
+
+
+def _run_cert_job(job: dict, argv: list[str], work: Path | None) -> None:
+    try:
+        with CERT_LOG_FILE.open("ab") as log:
+            proc = subprocess.Popen([SCRIPT, *argv], cwd=PROJECT_DIR, env=script_env({"TERM": "dumb"}), stdout=log, stderr=subprocess.STDOUT,
+                                    stdin=subprocess.DEVNULL, start_new_session=True)
+            code = proc.wait()
+    except OSError as exc:
+        code = 127
+        with CERT_LOG_FILE.open("a", encoding="utf-8") as log:
+            log.write(t(f"Updater: Skript konnte nicht gestartet werden: {exc}\n", f"Updater: the script could not be started: {exc}\n"))
+    finally:
+        if work is not None:
+            shutil.rmtree(work, ignore_errors=True)
+    job.update(state="succeeded" if code == 0 else "failed", exit_code=code, finished_at=now_iso())
+    write_cert_job(job)
+    _status_cache["value"] = None
+    _lock.release()
+
+
 class Reject(Exception):
-    def __init__(self, code: str, status: int = 409):
+    def __init__(self, code: str, status: int = 409, detail: str | None = None):
         super().__init__(code)
-        self.code, self.status = code, status
+        self.code, self.status, self.detail = code, status, detail
 
 
 def start_job(action: str, target: str | None) -> dict:
@@ -695,12 +850,12 @@ class Handler(BaseHTTPRequestHandler):
         # Ein leeres Token darf nie "passen" (leerer Header == leeres Token).
         return bool(self.token) and hmac.compare_digest(supplied.encode(), self.token.encode())
 
-    def _body(self) -> dict:
+    def _body(self, limit: int = MAX_BODY) -> dict:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             raise Reject("bad_request", 400)
-        if length > MAX_BODY:
+        if length > limit:
             raise Reject("bad_request", 413)
         if length == 0:
             return {}
@@ -815,6 +970,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, status_payload())
         if path == "/ha/local/status":
             return self._send(200, ha_local_status())
+        if path == "/cert/status":
+            return self._send(200, cert_status())
         self._send(404, {"error": "not_found"})
 
     def do_POST(self):
@@ -824,7 +981,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             return self._send(401, {"error": "unauthorized"})
         try:
-            body = self._body()
+            body = self._body(CERT_MAX_BODY if path.startswith("/cert/") else MAX_BODY)
+            if path == "/cert/check":
+                return self._send(200, {"certificate": cert_check(body)})
+            if path in ("/cert/install", "/cert/remove"):
+                return self._send(202, {"job": start_cert_job(path[len("/cert/"):], body)})
             if path == "/ha/local/promote":
                 return self._send(202, {"job": ha_local_promote(body)})
             if path == "/ha/local/suggest":
@@ -843,7 +1004,7 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 return self._send(404, {"error": "not_found"})
         except Reject as rejected:
-            return self._send(rejected.status, {"error": rejected.code})
+            return self._send(rejected.status, {"error": rejected.code, **({"detail": rejected.detail} if rejected.detail else {})})
         self._send(202, {"job": job})
 
 
@@ -855,6 +1016,13 @@ def mark_interrupted() -> None:
         write_job(job)
         with LOG_FILE.open("a", encoding="utf-8") as log:
             log.write(t("Updater: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus status).\n", "Updater: was restarted during the job — please check the state (opnexus status).\n"))
+    cleanup_cert_workdirs()
+    cert_job = read_cert_job()
+    if cert_job.get("state") == "running":
+        cert_job.update(state="failed", finished_at=now_iso())
+        write_cert_job(cert_job)
+        with CERT_LOG_FILE.open("a", encoding="utf-8") as log:
+            log.write(t("Updater: wurde während des Auftrags neu gestartet — Zustand bitte prüfen (opnexus cert status).\n", "Updater: was restarted during the job — please check the state (opnexus cert status).\n"))
     ha_job = read_ha_job()
     if ha_job.get("state") == "running":
         ha_job.update(state="failed", finished_at=now_iso())

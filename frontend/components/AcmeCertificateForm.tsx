@@ -1,5 +1,6 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
@@ -39,6 +40,7 @@ export function AcmeCertificateForm({ hosts, accounts, editing, onClose, onSaved
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const changed = useChanged(form);   // editing: Save stays grey until something changed
   const accountsForHost = accounts.filter((a) => a.host_id === form.host_id);
 
   async function submit(e: FormEvent) {
@@ -118,7 +120,7 @@ export function AcmeCertificateForm({ hosts, accounts, editing, onClose, onSaved
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>{t("common.cancel")}</Button>
-          <Button type="submit" disabled={saving || accountsForHost.length === 0} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
+          <Button type="submit" disabled={saving || accountsForHost.length === 0 || (!!editing && !changed)} loading={saving}>{saving ? t("common.saving") : t("common.save")}</Button>
         </div>
       </form>
     </Modal>

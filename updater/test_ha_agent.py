@@ -261,6 +261,20 @@ class Verbs(unittest.TestCase):
             self.assertIn(verb.kind, ("sync", "job", "stream", "local"))
             self.assertEqual(verb.param is None, verb.check is None, name)
 
+    def test_the_web_certificate_verbs_are_fixed_and_take_nothing_but_a_checksum(self):
+        verb, argv = agent.build_argv("/ha/peer/receive/web-cert", "POST", {"sum": "c" * 64})
+        self.assertEqual(argv, ["ha", "receive", "web-cert", "c" * 64])
+        self.assertEqual(verb.kind, "stream")
+        for bad in ("", "abc", "g" * 64, "c" * 63, "c" * 64 + ";rm", "../" + "c" * 61):
+            with self.assertRaises(agent.VerbError, msg=repr(bad)):
+                agent.build_argv("/ha/peer/receive/web-cert", "POST", {"sum": bad})
+        self.assertEqual(agent.build_argv("/ha/peer/receive/web-cert-clear", "POST", None)[1], ["ha", "receive", "web-cert-clear"])
+        self.assertEqual(agent.build_argv("/ha/peer/receive/web-cert-sum", "GET", None)[1], ["ha", "receive", "web-cert-sum"])
+        with self.assertRaises(agent.VerbError):
+            agent.build_argv("/ha/peer/receive/web-cert-clear", "GET", None)     # the changing one is POST only
+        with self.assertRaises(agent.VerbError):
+            agent.build_argv("/ha/peer/receive/web-cert-sum", "POST", None)      # the reading one is GET only
+
     def test_nothing_that_wipes_or_starts_is_reachable_without_a_job(self):
         for name in ("promote", "resync", "update-standby", "dissolve"):
             self.assertEqual(agent.VERBS[name].kind, "job")

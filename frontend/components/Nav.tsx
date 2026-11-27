@@ -43,11 +43,16 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
+import { Menu } from "lucide-react";
+import { NavDrawer } from "@/components/NavDrawer";
+import { IconButton } from "@/components/ui/IconButton";
+import { ScrollRow } from "@/components/ui/ScrollRow";
+import { useBreakpoint } from "@/lib/useBreakpoint";
 import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/events";
 import { useLanguage } from "@/components/LanguageProvider";
 
-export type NavItem = { href: string; label: string; icon: typeof Network; keywords?: string[] };
+export type NavItem = { href: string; label: string; icon: typeof Network; keywords?: string[]; /** Reachable by search and from the settings page, but not listed in the menus (docs/DESIGN-UI-2026-11.md E5). */ hideInNav?: boolean };
 export type NavGroup = { key: string; label: string; icon: typeof Network; items: NavItem[] };
 
 // keywords catch searches that use a different word than the page's own
@@ -200,6 +205,7 @@ export const navGroups: NavGroup[] = [
         href: "/setup",
         label: "Einrichtung",
         icon: ListChecks,
+        hideInNav: true,
         keywords: ["Assistent", "Wizard", "Setup", "Erste Schritte", "Onboarding", "Firewall verbinden", "API-Key", "Einführung"],
       },
     ],
@@ -220,13 +226,23 @@ export function Nav() {
   const { t } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
+  const breakpoint = useBreakpoint();
+  const compact = breakpoint !== "desktop";
   const [readOnly, setReadOnly] = useState(false);
+  const [username, setUsername] = useState<string | undefined>();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
 
   const activeGroup = navGroups.find((g) => g.items.some((i) => matchesNav(pathname, i.href))) ?? null;
+  const subItems = activeGroup ? activeGroup.items.filter((i) => !i.hideInNav) : [];
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
 
   useEffect(() => {
-    api.me().then((state) => setReadOnly(state.role === "read_only")).catch(() => {});
+    api.me().then((state) => { setReadOnly(state.role === "read_only"); setUsername(state.username); }).catch(() => {});
   }, []);
+
+  // The menu closes on every navigation and when the screen grows into the desktop layout.
+  useEffect(() => { setMenuOpen(false); }, [pathname, compact]);
 
   async function handleLogout() {
     await api.logout();
@@ -235,31 +251,42 @@ export function Nav() {
 
   return (
     <header className="border-b border-slate-200 bg-white print:hidden">
-      <div className="mx-auto flex max-w-[120rem] flex-wrap items-center gap-x-3 gap-y-2 px-3 py-3 sm:px-6">
-        <Link href="/about" title={t("nav.aboutTitle")} className="shrink-0">
+      <div className="mx-auto flex max-w-[120rem] items-center gap-x-3 px-3 py-2.5 sm:px-6">
+        {compact && (
+          <IconButton
+            icon={Menu}
+            label={t("nav.openMenu")}
+            onClick={() => setMenuOpen(true)}
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            aria-haspopup="dialog"
+            className="-ml-2"
+          />
+        )}
+        <Link href="/about" title={t("nav.aboutTitle")} className="touch-link shrink-0">
           <Logo className="h-6 w-auto sm:h-7" />
         </Link>
-        <nav aria-label={t("nav.mainNavigation")} className="order-3 flex w-full min-w-0 gap-0.5 overflow-x-auto sm:order-none sm:w-auto">
-          {navGroups.map(({ key, icon: Icon, items }) => {
-            const active = activeGroup?.key === key;
-            return (
-              <Link
-                key={key}
-                href={items[0].href}
-                title={t(`nav.groups.${key}`)}
-                aria-label={t(`nav.groups.${key}`)}
-                aria-current={active ? "true" : undefined}
-                className={clsx(
-                  "flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors",
-                  active ? "bg-brand-50 text-brand-600" : "text-slate-600 hover:bg-slate-100"
-                )}
-              >
-                <Icon size={16} aria-hidden="true" />
-                <span className="hidden min-[1150px]:inline">{t(`nav.groups.${key}`)}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        {!compact && (
+          <nav aria-label={t("nav.mainNavigation")} className="flex min-w-0 gap-0.5">
+            {navGroups.map(({ key, icon: Icon, items }) => {
+              const active = activeGroup?.key === key;
+              return (
+                <Link
+                  key={key}
+                  href={items[0].href}
+                  aria-current={active ? "true" : undefined}
+                  className={clsx(
+                    "flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-colors",
+                    active ? "bg-brand-50 text-brand-600" : "text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <Icon size={16} aria-hidden="true" className="hidden min-[1280px]:block" />
+                  {t(`nav.groups.${key}`)}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
         {readOnly && (
           <span
             title={t("nav.readOnlyDescription")}
@@ -273,7 +300,7 @@ export function Nav() {
           title={t("nav.search")}
           aria-label={t("nav.search")}
           className={clsx(
-            "flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:px-3",
+            "flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 sm:px-3 [@media(pointer:coarse)]:min-h-11",
             !readOnly && "ml-auto"
           )}
         >
@@ -284,35 +311,54 @@ export function Nav() {
           onClick={handleLogout}
           title={t("nav.logout")}
           aria-label={t("nav.logout")}
-          className="flex shrink-0 items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          className="flex shrink-0 items-center rounded-lg px-2.5 py-1.5 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 [@media(pointer:coarse)]:min-h-11"
         >
           <LogOut size={16} aria-hidden="true" />
         </button>
       </div>
-      {activeGroup && activeGroup.items.length > 1 && (
+      {activeGroup && subItems.length > 1 && (
         <div className="border-t border-slate-100 bg-slate-50">
-          <nav aria-label={t("nav.subNavigation")} className="mx-auto flex max-w-[120rem] items-center gap-0.5 overflow-x-auto px-3 py-1.5 sm:px-6 sm:gap-1">
-            {activeGroup.items.map(({ href, icon: Icon }) => {
-              const active = matchesNav(pathname, href);
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  title={t(navLabelKey(href))}
-                  aria-label={t(navLabelKey(href))}
-                  aria-current={active ? "page" : undefined}
-                  className={clsx(
-                    "flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors",
-                    active ? "bg-white font-medium text-brand-600 shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"
-                  )}
-                >
-                  <Icon size={14} aria-hidden="true" />
-                  <span className="hidden sm:inline">{t(navLabelKey(href))}</span>
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="mx-auto flex max-w-[120rem] items-center px-3 py-1.5 sm:px-6">
+            {/* The group name stays put; only the pages of the group scroll. */}
+            {compact && (
+              <span className="shrink-0 pr-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t(`nav.groups.${activeGroup.key}`)}</span>
+            )}
+            <div className="min-w-0 flex-1">
+              <ScrollRow activeKey={pathname ?? ""} className="gap-0.5 sm:gap-1">
+                <nav aria-label={t("nav.subNavigation")} className="flex items-center gap-0.5 sm:gap-1">
+                  {subItems.map(({ href, icon: Icon }) => {
+                    const active = matchesNav(pathname, href);
+                    return (
+                      <Link
+                        key={href}
+                        href={href}
+                        aria-current={active ? "page" : undefined}
+                        className={clsx(
+                          "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-sm transition-colors [@media(pointer:coarse)]:min-h-11",
+                          active ? "bg-white font-medium text-brand-600 shadow-sm" : "text-slate-500 hover:bg-white hover:text-slate-700"
+                        )}
+                      >
+                        <Icon size={14} aria-hidden="true" />
+                        {t(navLabelKey(href))}
+                      </Link>
+                    );
+                  })}
+                </nav>
+              </ScrollRow>
+            </div>
+          </div>
         </div>
+      )}
+      {compact && (
+        <NavDrawer
+          id={menuId}
+          open={menuOpen}
+          onClose={closeMenu}
+          pathname={pathname}
+          username={username}
+          roleLabel={readOnly ? t("nav.readOnly") : undefined}
+          onLogout={handleLogout}
+        />
       )}
     </header>
   );

@@ -23,9 +23,10 @@ class UpdaterUnavailable(Exception):
 
 
 class UpdaterRejected(Exception):
-    def __init__(self, code: str):
+    def __init__(self, code: str, detail: str | None = None):
         super().__init__(code)
         self.code = code
+        self.detail = detail  # the reason the updater's script gave (certificate checks), already formatted for a person
 
 
 def _token() -> str:
@@ -54,7 +55,7 @@ async def _call(method: str, path: str, payload: dict | None, timeout: float) ->
         # Token passt nicht (Volume neu angelegt?) — wie "nicht verfügbar" behandeln.
         raise UpdaterUnavailable("unauthorized")
     if response.status_code >= 400:
-        raise UpdaterRejected(str(body.get("error") or "rejected"))
+        raise UpdaterRejected(str(body.get("error") or "rejected"), body.get("detail") if isinstance(body.get("detail"), str) else None)
     return body
 
 
@@ -94,3 +95,21 @@ async def ha_local_action(action: str) -> dict:
 
 async def ha_local_promote(force: bool, actor: str) -> dict:
     return await _call("POST", "/ha/local/promote", {"force": force, "actor": actor}, _ACTION_TIMEOUT)
+
+
+# Own web certificate of the proxy (docs: Handbook, "Own certificate"). The private key passes through here once, in memory, on its way
+# to the updater; it is never stored, logged or put into the audit trail.
+async def cert_status() -> dict:
+    return await _call("GET", "/cert/status", None, _STATUS_TIMEOUT)
+
+
+async def cert_check(cert: str, key: str) -> dict:
+    return await _call("POST", "/cert/check", {"cert": cert, "key": key}, _STATUS_TIMEOUT)
+
+
+async def cert_install(cert: str, key: str) -> dict:
+    return await _call("POST", "/cert/install", {"cert": cert, "key": key}, _STATUS_TIMEOUT)
+
+
+async def cert_remove() -> dict:
+    return await _call("POST", "/cert/remove", {}, _ACTION_TIMEOUT)

@@ -1,5 +1,6 @@
 "use client";
 
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { ConfidenceBadge, KIND_TONE } from "@/components/CleanupBadges";
 import { CleanupPreviewModal, CleanupRequest } from "@/components/CleanupPreviewModal";
 import { CleanupRestoreModal } from "@/components/CleanupRestoreModal";
@@ -354,7 +355,7 @@ export function RuleCleanup() {
                   {selection.uuids.length > 0 && <Button variant="ghost" onClick={() => setSelection({ kind: null, uuids: [] })}>{t("cleanup.select.clear")}</Button>}
                 </div>
               )}
-              <Card className="overflow-x-auto p-0">
+              <ScrollCard className="p-0">
                 <table className="w-full text-left text-sm">
                   <caption className="sr-only">{t("cleanup.tableCaption", { host: result.host_name })}</caption>
                   <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -430,7 +431,7 @@ export function RuleCleanup() {
                     })}
                   </tbody>
                 </table>
-              </Card>
+              </ScrollCard>
             </>
           )}
         </div>

@@ -5,7 +5,9 @@ import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
+import { Column, DataTable } from "@/components/ui/DataTable";
+import { MenuAction } from "@/components/ui/ActionMenu";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { NetworkChangeModal } from "@/components/NetworkChangeModal";
 import { NetworkCompare } from "@/components/NetworkCompare";
 import { NetworkObjectSection } from "@/components/NetworkObjectSection";
@@ -95,7 +97,7 @@ export default function NetworkPage() {
   if (section === "compare") {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-slate-900">{t("nav.items.network-compare")}</h1>
+        <PageHeader title={t("nav.items.network-compare")} />
         <NetworkCompare />
       </div>
     );
@@ -111,7 +113,7 @@ export default function NetworkPage() {
   if (hosts && hosts.length === 0) {
     return (
       <div>
-        <h1 className="mb-6 text-2xl font-semibold text-slate-900">{t(`nav.items.network-${section}`)}</h1>
+        <PageHeader title={t(`nav.items.network-${section}`)} />
         <EmptyState icon={Cable} title={t("drift.noHosts")} />
       </div>
     );
@@ -119,9 +121,9 @@ export default function NetworkPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900">{t(`nav.items.network-${section}`)}</h1>
-        {hosts && (
+      <PageHeader
+        title={t(`nav.items.network-${section}`)}
+        actions={hosts ? (
           <label className="flex items-center gap-2 text-sm text-slate-600">
             {t("network.host")}
             <select
@@ -139,8 +141,8 @@ export default function NetworkPage() {
               ))}
             </select>
           </label>
-        )}
-      </div>
+        ) : undefined}
+      />
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       {!network && !error && <Skeleton className="h-64 w-full" />}
@@ -158,16 +160,15 @@ export default function NetworkPage() {
               </div>
             </fieldset>
           )}
-          <Card className="overflow-x-auto">
-            <fieldset disabled={readOnly} className="contents">
-              {section === "interfaces" && <InterfacesTable network={network} onChange={setChange} />}
-              {section === "vlans" && <VlansTable network={network} onChange={setChange} />}
-              {section === "vips" && <VipsTable network={network} onChange={setChange} />}
-              {section === "gateways" && <GatewaysTable network={network} onChange={setChange} />}
-              {section === "routes" && <RoutesTable network={network} onChange={setChange} />}
-              {section === "dns" && <DnsTable network={network} onChange={setChange} />}
-              {section === "dhcp" && <DhcpSections network={network} onChange={setChange} />}
-            </fieldset>
+          <Card className="overflow-hidden">
+            {/* No fieldset around the tables: their read-only controls must keep working; write actions are disabled one by one. */}
+            {section === "interfaces" && <InterfacesTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "vlans" && <VlansTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "vips" && <VipsTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "gateways" && <GatewaysTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "routes" && <RoutesTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "dns" && <DnsTable network={network} onChange={setChange} readOnly={readOnly} />}
+            {section === "dhcp" && <DhcpSections network={network} onChange={setChange} readOnly={readOnly} />}
             {(EXTRA_SECTIONS[section] ?? []).map((extra) => (
               <NetworkObjectSection
                 key={extra.kind}
@@ -227,261 +228,146 @@ function Notices({ network }: { network: HostNetwork }) {
   );
 }
 
-function RowActions({ kind, uuid, onChange }: { kind: NetworkKind; uuid: string; onChange: OpenChange }) {
-  const { t } = useLanguage();
-  return (
-    <div className="flex justify-end gap-1">
-      <Button variant="ghost" aria-label={t("network.rowEdit")} title={t("network.rowEdit")} onClick={() => onChange({ kind, action: "set", uuid })}>
-        <Pencil size={14} />
-      </Button>
-      <Button variant="dangerSubtle" aria-label={t("network.rowDelete")} title={t("network.rowDelete")} onClick={() => onChange({ kind, action: "del", uuid })}>
-        <Trash2 size={14} />
-      </Button>
-    </div>
-  );
+/** Edit (shown) and delete (in the menu) of one object; write actions are disabled for read-only accounts. */
+function objectActions(kind: NetworkKind, onChange: OpenChange, readOnly: boolean, t: (key: string) => string) {
+  return (uuid: string): MenuAction[] => [
+    { key: "edit", label: t("network.rowEdit"), icon: Pencil, onSelect: () => onChange({ kind, action: "set", uuid }), disabled: readOnly },
+    { key: "delete", label: t("network.rowDelete"), icon: Trash2, tone: "danger", onSelect: () => onChange({ kind, action: "del", uuid }), disabled: readOnly },
+  ];
 }
 
 function Empty({ text }: { text: string }) {
   return <p className="px-5 py-6 text-sm text-slate-500">{text}</p>;
 }
 
-function InterfacesTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+type TableProps = { network: HostNetwork; onChange: OpenChange; readOnly: boolean };
+const dash = "–";
+
+function InterfacesTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["interfaces"][number];
   if (network.interfaces.length === 0) return <Empty text={t("network.empty")} />;
+  const edit = objectActions("interface", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    {
+      key: "device", header: t("network.col.device"), priority: "primary", isTitle: true, mono: true,
+      cell: (i) => (<>{i.device}{i.is_management && <Badge tone="warning" className="ml-2">{t("network.management")}</Badge>}</>),
+    },
+    { key: "status", header: t("network.col.status"), priority: "primary", cell: (i) => <Badge tone={statusTone(i.status)}>{i.status}</Badge> },
+    { key: "name", header: t("network.col.name"), priority: "high", cell: (i) => (i.identifier ? `${i.description || i.identifier} (${i.identifier})` : <span className="text-slate-400">{t("network.unassigned")}</span>) },
+    {
+      key: "addresses", header: t("network.col.addresses"), priority: "medium", mono: true,
+      cell: (i) => i.addresses.length === 0 ? dash : i.addresses.map((a) => (
+        <div key={a.address + (a.vhid ?? "")}>
+          {a.address}
+          {a.vhid && <span className="ml-2 text-slate-500">CARP vhid {a.vhid}{a.carp_status ? ` · ${a.carp_status}` : ""}</span>}
+        </div>
+      )),
+    },
+    { key: "type", header: t("network.col.type"), priority: "medium", cell: (i) => [i.ipv4_type, i.ipv6_type].filter(Boolean).join(" / ") || dash },
+    { key: "vlan", header: t("network.col.vlan"), priority: "low", cell: (i) => (i.vlan_tag ? `${i.vlan_tag} (${i.vlan_parent ?? "?"})` : dash) },
+  ];
   return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.col.device")}</TH>
-          <TH>{t("network.col.name")}</TH>
-          <TH>{t("network.col.status")}</TH>
-          <TH>{t("network.col.addresses")}</TH>
-          <TH>{t("network.col.type")}</TH>
-          <TH>{t("network.col.vlan")}</TH>
-          {network.can_configure_interfaces && <TH><span className="sr-only">{t("common.actions")}</span></TH>}
-        </TRow>
-      </THead>
-      <TBody>
-        {network.interfaces.map((i) => (
-          <TRow key={i.device}>
-            <TD className="font-mono">
-              {i.device}
-              {i.is_management && (
-                <Badge tone="warning" className="ml-2">
-                  {t("network.management")}
-                </Badge>
-              )}
-            </TD>
-            <TD>
-              {i.identifier ? `${i.description || i.identifier} (${i.identifier})` : <span className="text-slate-400">{t("network.unassigned")}</span>}
-            </TD>
-            <TD>
-              <Badge tone={statusTone(i.status)}>{i.status}</Badge>
-            </TD>
-            <TD className="font-mono text-xs">
-              {i.addresses.length === 0 ? "–" : i.addresses.map((a) => (
-                <div key={a.address + (a.vhid ?? "")}>
-                  {a.address}
-                  {a.vhid && (
-                    <span className="ml-2 text-slate-500">
-                      CARP vhid {a.vhid}{a.carp_status ? ` · ${a.carp_status}` : ""}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </TD>
-            <TD>{[i.ipv4_type, i.ipv6_type].filter(Boolean).join(" / ") || "–"}</TD>
-            <TD>{i.vlan_tag ? `${i.vlan_tag} (${i.vlan_parent ?? "?"})` : "–"}</TD>
-            {network.can_configure_interfaces && (
-              <TD>{i.assigned && i.identifier ? <RowActions kind="interface" uuid={i.identifier} onChange={onChange} /> : null}</TD>
-            )}
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
+    <DataTable
+      bare label={t("nav.items.network-interfaces")} rows={network.interfaces} rowKey={(i) => i.device} columns={columns}
+      actions={network.can_configure_interfaces ? (i) => (i.assigned && i.identifier ? edit(i.identifier) : []) : undefined}
+    />
   );
 }
 
-function VlansTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function VlansTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["vlans"][number];
   if (network.vlans.length === 0) return <Empty text={t("network.empty")} />;
-  return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.col.device")}</TH>
-          <TH>{t("network.col.parent")}</TH>
-          <TH>{t("network.col.tag")}</TH>
-          <TH>{t("network.col.pcp")}</TH>
-          <TH>{t("common.description")}</TH>
-          <TH><span className="sr-only">{t("common.actions")}</span></TH>
-        </TRow>
-      </THead>
-      <TBody>
-        {network.vlans.map((v) => (
-          <TRow key={v.uuid}>
-            <TD className="font-mono">{v.device ?? "–"}</TD>
-            <TD className="font-mono">{v.parent}</TD>
-            <TD>{v.tag}</TD>
-            <TD>{v.pcp ?? "–"}</TD>
-            <TD>{v.description || "–"}</TD>
-            <TD><RowActions kind="vlan" uuid={v.uuid} onChange={onChange} /></TD>
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
-  );
+  const edit = objectActions("vlan", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    { key: "device", header: t("network.col.device"), priority: "primary", isTitle: true, mono: true, cell: (v) => v.device ?? dash },
+    { key: "tag", header: t("network.col.tag"), priority: "primary", tabular: true, cell: (v) => v.tag },
+    { key: "parent", header: t("network.col.parent"), priority: "high", mono: true, cell: (v) => v.parent },
+    { key: "pcp", header: t("network.col.pcp"), priority: "medium", cell: (v) => v.pcp ?? dash },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (v) => v.description || dash },
+  ];
+  return <DataTable bare label={t("nav.items.network-vlans")} rows={network.vlans} rowKey={(v) => v.uuid} columns={columns} actions={(v) => edit(v.uuid)} />;
 }
 
-function VipsTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function VipsTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["vips"][number];
   if (network.vips.length === 0) return <Empty text={t("network.empty")} />;
-  return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.col.address")}</TH>
-          <TH>{t("network.col.interface")}</TH>
-          <TH>{t("network.col.mode")}</TH>
-          <TH>VHID</TH>
-          <TH>{t("network.col.advskew")}</TH>
-          <TH>{t("common.description")}</TH>
-          <TH><span className="sr-only">{t("common.actions")}</span></TH>
-        </TRow>
-      </THead>
-      <TBody>
-        {network.vips.map((v) => (
-          <TRow key={v.uuid}>
-            <TD className="font-mono">{v.address}</TD>
-            <TD>{v.interface_label}</TD>
-            <TD>{v.mode.toUpperCase()}</TD>
-            <TD>{v.vhid ?? "–"}</TD>
-            <TD>{v.advskew ?? "–"}</TD>
-            <TD>{v.description || "–"}</TD>
-            <TD><RowActions kind="vip" uuid={v.uuid} onChange={onChange} /></TD>
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
-  );
+  const edit = objectActions("vip", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    { key: "address", header: t("network.col.address"), priority: "primary", isTitle: true, mono: true, cell: (v) => v.address },
+    { key: "mode", header: t("network.col.mode"), priority: "primary", cell: (v) => v.mode.toUpperCase() },
+    { key: "interface", header: t("network.col.interface"), priority: "high", cell: (v) => v.interface_label },
+    { key: "vhid", header: "VHID", priority: "medium", tabular: true, cell: (v) => v.vhid ?? dash },
+    { key: "advskew", header: t("network.col.advskew"), priority: "medium", tabular: true, cell: (v) => v.advskew ?? dash },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (v) => v.description || dash },
+  ];
+  return <DataTable bare label={t("nav.items.network-vips")} rows={network.vips} rowKey={(v) => v.uuid} columns={columns} actions={(v) => edit(v.uuid)} />;
 }
 
-function GatewaysTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function GatewaysTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["gateways"][number];
   if (network.gateways.length === 0) return <Empty text={t("network.empty")} />;
-  return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.col.name")}</TH>
-          <TH>{t("network.col.interface")}</TH>
-          <TH>{t("network.col.address")}</TH>
-          <TH>{t("network.col.priority")}</TH>
-          <TH>{t("network.col.status")}</TH>
-          <TH><span className="sr-only">{t("common.actions")}</span></TH>
-        </TRow>
-      </THead>
-      <TBody>
-        {network.gateways.map((g) => (
-          <TRow key={g.uuid}>
-            <TD>
-              {g.name}
-              {g.is_default && (
-                <Badge tone="info" className="ml-2">
-                  {t("network.default")}
-                </Badge>
-              )}
-              {g.disabled && (
-                <Badge tone="neutral" className="ml-2">
-                  {t("common.statusDisabled")}
-                </Badge>
-              )}
-            </TD>
-            <TD>{g.interface_label}</TD>
-            <TD className="font-mono">{g.address || "–"}</TD>
-            <TD>{g.priority ?? "–"}</TD>
-            <TD>
-              <Badge tone={statusTone(g.status)}>{g.status || "–"}</Badge>
-            </TD>
-            <TD><RowActions kind="gateway" uuid={g.uuid} onChange={onChange} /></TD>
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
-  );
+  const edit = objectActions("gateway", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    {
+      key: "name", header: t("network.col.name"), priority: "primary", isTitle: true,
+      cell: (g) => (
+        <>
+          {g.name}
+          {g.is_default && <Badge tone="info" className="ml-2">{t("network.default")}</Badge>}
+          {g.disabled && <Badge tone="neutral" className="ml-2">{t("common.statusDisabled")}</Badge>}
+        </>
+      ),
+    },
+    { key: "status", header: t("network.col.status"), priority: "primary", cell: (g) => <Badge tone={statusTone(g.status)}>{g.status || dash}</Badge> },
+    { key: "interface", header: t("network.col.interface"), priority: "high", cell: (g) => g.interface_label },
+    { key: "address", header: t("network.col.address"), priority: "high", mono: true, cell: (g) => g.address || dash },
+    { key: "priority", header: t("network.col.priority"), priority: "medium", tabular: true, cell: (g) => g.priority ?? dash },
+  ];
+  return <DataTable bare label={t("nav.items.network-gateways")} rows={network.gateways} rowKey={(g) => g.uuid} columns={columns} actions={(g) => edit(g.uuid)} />;
 }
 
-function RoutesTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function RoutesTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["routes"][number];
   if (network.routes.length === 0) return <Empty text={t("network.empty")} />;
-  return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.col.network")}</TH>
-          <TH>{t("network.col.gateway")}</TH>
-          <TH>{t("common.description")}</TH>
-          <TH>{t("network.col.status")}</TH>
-          <TH><span className="sr-only">{t("common.actions")}</span></TH>
-        </TRow>
-      </THead>
-      <TBody>
-        {network.routes.map((r) => (
-          <TRow key={r.uuid}>
-            <TD className="font-mono">{r.network}</TD>
-            <TD>{r.gateway}</TD>
-            <TD>{r.description || "–"}</TD>
-            <TD>
-              <Badge tone={r.disabled ? "neutral" : "success"}>{r.disabled ? t("common.statusDisabled") : t("network.active")}</Badge>
-            </TD>
-            <TD><RowActions kind="route" uuid={r.uuid} onChange={onChange} /></TD>
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
-  );
+  const edit = objectActions("route", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    { key: "network", header: t("network.col.network"), priority: "primary", isTitle: true, mono: true, cell: (r) => r.network },
+    { key: "status", header: t("network.col.status"), priority: "primary", cell: (r) => <Badge tone={r.disabled ? "neutral" : "success"}>{r.disabled ? t("common.statusDisabled") : t("network.active")}</Badge> },
+    { key: "gateway", header: t("network.col.gateway"), priority: "high", cell: (r) => r.gateway },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (r) => r.description || dash },
+  ];
+  return <DataTable bare label={t("nav.items.network-routes")} rows={network.routes} rowKey={(r) => r.uuid} columns={columns} actions={(r) => edit(r.uuid)} />;
 }
 
-function DnsTable({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function DnsTable({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  type Row = HostNetwork["dns_hosts"][number];
   if (network.dns_hosts.length === 0) return <Empty text={t("network.empty")} />;
-  return (
-    <Table>
-      <THead>
-        <TRow>
-          <TH>{t("network.field.hostname")}</TH>
-          <TH>{t("network.field.domain")}</TH>
-          <TH>{t("network.field.rr")}</TH>
-          <TH>{t("network.field.server")}</TH>
-          <TH>{t("common.description")}</TH>
-          <TH><span className="sr-only">{t("common.actions")}</span></TH>
-        </TRow>
-      </THead>
-      <TBody>
-        {network.dns_hosts.map((d) => (
-          <TRow key={d.uuid}>
-            <TD>
-              {d.hostname}
-              {!d.enabled && <Badge tone="neutral" className="ml-2">{t("common.statusDisabled")}</Badge>}
-            </TD>
-            <TD>{d.domain}</TD>
-            <TD>{d.record_type}</TD>
-            <TD className="font-mono">{d.server || "–"}</TD>
-            <TD>{d.description || "–"}</TD>
-            <TD><RowActions kind="dns_host" uuid={d.uuid} onChange={onChange} /></TD>
-          </TRow>
-        ))}
-      </TBody>
-    </Table>
-  );
+  const edit = objectActions("dns_host", onChange, readOnly, t);
+  const columns: Column<Row>[] = [
+    {
+      key: "hostname", header: t("network.field.hostname"), priority: "primary", isTitle: true,
+      cell: (d) => (<>{d.hostname}{!d.enabled && <Badge tone="neutral" className="ml-2">{t("common.statusDisabled")}</Badge>}</>),
+    },
+    { key: "domain", header: t("network.field.domain"), priority: "high", cell: (d) => d.domain },
+    { key: "rr", header: t("network.field.rr"), priority: "medium", cell: (d) => d.record_type },
+    { key: "server", header: t("network.field.server"), priority: "high", mono: true, cell: (d) => d.server || dash },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (d) => d.description || dash },
+  ];
+  return <DataTable bare label={t("nav.items.network-dns")} rows={network.dns_hosts} rowKey={(d) => d.uuid} columns={columns} actions={(d) => edit(d.uuid)} />;
 }
 
-function SubHeader({ title, kind, onChange }: { title: string; kind: NetworkKind; onChange: OpenChange }) {
+function SubHeader({ title, kind, onChange, readOnly }: { title: string; kind: NetworkKind; onChange: OpenChange; readOnly: boolean }) {
   const { t } = useLanguage();
   return (
     <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
       <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-      <Button variant="outline" onClick={() => onChange({ kind, action: "add" })}>
+      <Button variant="outline" disabled={readOnly} onClick={() => onChange({ kind, action: "add" })}>
         <Plus size={16} />
         {t("network.rowAdd")}
       </Button>
@@ -489,85 +375,40 @@ function SubHeader({ title, kind, onChange }: { title: string; kind: NetworkKind
   );
 }
 
-function DhcpSections({ network, onChange }: { network: HostNetwork; onChange: OpenChange }) {
+function DhcpSections({ network, onChange, readOnly }: TableProps) {
   const { t } = useLanguage();
+  const hostEdit = objectActions("dhcp_host", onChange, readOnly, t);
+  const subnetEdit = objectActions("kea_subnet", onChange, readOnly, t);
+  const reservationEdit = objectActions("kea_reservation", onChange, readOnly, t);
+  type Host = HostNetwork["dhcp_hosts"][number];
+  type Subnet = HostNetwork["kea_subnets"][number];
+  type Reservation = HostNetwork["kea_reservations"][number];
+  const hostColumns: Column<Host>[] = [
+    { key: "host", header: t("network.field.host"), priority: "primary", isTitle: true, cell: (h) => `${h.host}${h.domain ? `.${h.domain}` : ""}` },
+    { key: "ip", header: t("network.field.ip"), priority: "primary", mono: true, cell: (h) => h.ip || dash },
+    { key: "hwaddr", header: t("network.field.hwaddr"), priority: "high", mono: true, cell: (h) => h.hwaddr || dash },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (h) => h.description || dash },
+  ];
+  const subnetColumns: Column<Subnet>[] = [
+    { key: "subnet", header: t("network.field.subnet"), priority: "primary", isTitle: true, mono: true, cell: (s) => s.subnet },
+    { key: "pools", header: t("network.field.pools"), priority: "high", mono: true, cell: (s) => s.pools || dash },
+    { key: "routers", header: t("network.field.option_data.routers"), priority: "high", mono: true, cell: (s) => s.routers || dash },
+    { key: "description", header: t("common.description"), priority: "medium", cell: (s) => s.description || dash },
+  ];
+  const reservationColumns: Column<Reservation>[] = [
+    { key: "ip", header: t("network.field.ip_address"), priority: "primary", isTitle: true, mono: true, cell: (r) => r.ip_address },
+    { key: "hw", header: t("network.field.hw_address"), priority: "high", mono: true, cell: (r) => r.hw_address || dash },
+    { key: "hostname", header: t("network.field.hostname"), priority: "high", cell: (r) => r.hostname || dash },
+    { key: "subnet", header: t("network.field.subnet"), priority: "medium", mono: true, cell: (r) => r.subnet },
+  ];
   return (
     <div>
-      <SubHeader title={t("network.dhcp.dnsmasq")} kind="dhcp_host" onChange={onChange} />
-      {network.dhcp_hosts.length === 0 ? <Empty text={t("network.empty")} /> : (
-        <Table>
-          <THead>
-            <TRow>
-              <TH>{t("network.field.host")}</TH>
-              <TH>{t("network.field.ip")}</TH>
-              <TH>{t("network.field.hwaddr")}</TH>
-              <TH>{t("common.description")}</TH>
-              <TH><span className="sr-only">{t("common.actions")}</span></TH>
-            </TRow>
-          </THead>
-          <TBody>
-            {network.dhcp_hosts.map((h) => (
-              <TRow key={h.uuid}>
-                <TD>{h.host}{h.domain ? `.${h.domain}` : ""}</TD>
-                <TD className="font-mono">{h.ip || "–"}</TD>
-                <TD className="font-mono text-xs">{h.hwaddr || "–"}</TD>
-                <TD>{h.description || "–"}</TD>
-                <TD><RowActions kind="dhcp_host" uuid={h.uuid} onChange={onChange} /></TD>
-              </TRow>
-            ))}
-          </TBody>
-        </Table>
-      )}
-      <SubHeader title={t("network.dhcp.keaSubnets")} kind="kea_subnet" onChange={onChange} />
-      {network.kea_subnets.length === 0 ? <Empty text={t("network.empty")} /> : (
-        <Table>
-          <THead>
-            <TRow>
-              <TH>{t("network.field.subnet")}</TH>
-              <TH>{t("network.field.pools")}</TH>
-              <TH>{t("network.field.option_data.routers")}</TH>
-              <TH>{t("common.description")}</TH>
-              <TH><span className="sr-only">{t("common.actions")}</span></TH>
-            </TRow>
-          </THead>
-          <TBody>
-            {network.kea_subnets.map((s) => (
-              <TRow key={s.uuid}>
-                <TD className="font-mono">{s.subnet}</TD>
-                <TD className="font-mono text-xs">{s.pools || "–"}</TD>
-                <TD className="font-mono">{s.routers || "–"}</TD>
-                <TD>{s.description || "–"}</TD>
-                <TD><RowActions kind="kea_subnet" uuid={s.uuid} onChange={onChange} /></TD>
-              </TRow>
-            ))}
-          </TBody>
-        </Table>
-      )}
-      <SubHeader title={t("network.dhcp.keaReservations")} kind="kea_reservation" onChange={onChange} />
-      {network.kea_reservations.length === 0 ? <Empty text={t("network.empty")} /> : (
-        <Table>
-          <THead>
-            <TRow>
-              <TH>{t("network.field.ip_address")}</TH>
-              <TH>{t("network.field.hw_address")}</TH>
-              <TH>{t("network.field.hostname")}</TH>
-              <TH>{t("network.field.subnet")}</TH>
-              <TH><span className="sr-only">{t("common.actions")}</span></TH>
-            </TRow>
-          </THead>
-          <TBody>
-            {network.kea_reservations.map((r) => (
-              <TRow key={r.uuid}>
-                <TD className="font-mono">{r.ip_address}</TD>
-                <TD className="font-mono text-xs">{r.hw_address || "–"}</TD>
-                <TD>{r.hostname || "–"}</TD>
-                <TD className="font-mono">{r.subnet}</TD>
-                <TD><RowActions kind="kea_reservation" uuid={r.uuid} onChange={onChange} /></TD>
-              </TRow>
-            ))}
-          </TBody>
-        </Table>
-      )}
+      <SubHeader title={t("network.dhcp.dnsmasq")} kind="dhcp_host" onChange={onChange} readOnly={readOnly} />
+      {network.dhcp_hosts.length === 0 ? <Empty text={t("network.empty")} /> : <DataTable bare label={t("network.dhcp.dnsmasq")} rows={network.dhcp_hosts} rowKey={(h) => h.uuid} columns={hostColumns} actions={(h) => hostEdit(h.uuid)} />}
+      <SubHeader title={t("network.dhcp.keaSubnets")} kind="kea_subnet" onChange={onChange} readOnly={readOnly} />
+      {network.kea_subnets.length === 0 ? <Empty text={t("network.empty")} /> : <DataTable bare label={t("network.dhcp.keaSubnets")} rows={network.kea_subnets} rowKey={(s) => s.uuid} columns={subnetColumns} actions={(s) => subnetEdit(s.uuid)} />}
+      <SubHeader title={t("network.dhcp.keaReservations")} kind="kea_reservation" onChange={onChange} readOnly={readOnly} />
+      {network.kea_reservations.length === 0 ? <Empty text={t("network.empty")} /> : <DataTable bare label={t("network.dhcp.keaReservations")} rows={network.kea_reservations} rowKey={(r) => r.uuid} columns={reservationColumns} actions={(r) => reservationEdit(r.uuid)} />}
     </div>
   );
 }

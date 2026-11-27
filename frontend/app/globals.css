@@ -29,6 +29,8 @@
        previous table-based approach silently missed both. Light values = Tailwind's
        stock slate palette, so light mode is pixel-identical to before this change. */
     --slate-50: 248 250 252;
+    /* Colour of cards and tables (what .bg-white shows): edge fades and sticky cells have to match it. */
+    --surface: 255 255 255;
     --slate-100: 241 245 249;
     --slate-200: 226 232 240;
     --slate-300: 203 213 225;
@@ -51,6 +53,7 @@
        (50<->950, 100<->800, ...), expressed as variables. 50 = page, 100 = subtle
        fills/hover, 200 = borders, 500 = secondary text, 900 = primary text. */
     --slate-50: 18 18 18;
+    --surface: 28 28 30;
     --slate-100: 39 39 42;
     --slate-200: 56 56 61;
     --slate-300: 82 82 91;
@@ -233,4 +236,41 @@
   .login-shake { animation: login-shake 0.45s ease-in-out; }
   .login-glow { animation: login-glow 10s ease-in-out infinite; }
   .login-leave { opacity: 0; transform: translateY(-10px) scale(0.98); transition: opacity 0.3s ease, transform 0.3s ease; }
+}
+
+/* Native selects: Safari draws its own compact control and ignores height and padding unless `appearance` is off. With it off the
+   select has the size of the other fields on every browser; the arrow is drawn here (a light and a dark variant). */
+.select-control {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 2.25rem;
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+[data-theme="dark"] .select-control {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* iOS Safari zooms the whole page when a text field with a font size below 16 px gets the focus, and leaves it zoomed (the user has to
+   zoom out by hand). Fields are 16 px on touch devices, so nothing zooms; the page itself stays zoomable (no maximum-scale), which
+   keeps it accessible. Checkboxes, radios and buttons are not text fields and keep their size. */
+/* Touch targets (docs/DESIGN-UI-2026-11.md): on touch screens standalone links and chips are at least 32-40 px high, and a checkbox or radio
+   button is a 44 px row together with its label (a tap on the label switches it too). Only where the pointer is coarse; desktop stays compact.
+   .touch-link: a link on its own line. .touch-chip: a pill-shaped link. .touch-pad: a link that is a flex item and truncates (padding instead of height). */
+@media (pointer: coarse) {
+  .touch-link { display: inline-flex; align-items: center; min-height: 2.5rem; }
+  .touch-chip { display: inline-flex; align-items: center; min-height: 2rem; }
+  .touch-pad { padding-block: 0.5rem; }
+  input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+  label:has(> input[type="checkbox"]), label:has(> input[type="radio"]) { min-height: 2.75rem; align-items: center; }
+}
+
+@media (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

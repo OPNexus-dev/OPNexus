@@ -1,10 +1,11 @@
 "use client";
 
+import { ScrollRow } from "@/components/ui/ScrollRow";
+import { DataTable } from "@/components/ui/DataTable";
 import { useLanguage } from "@/components/LanguageProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
-import { Table, TBody, TD, TH, THead, TRow } from "@/components/ui/Table";
 import { Tabs } from "@/components/ui/Tabs";
 import { api, DnsLookupResult, PingResult, PortprobeResult, TracerouteResult } from "@/lib/api";
 import { useState } from "react";
@@ -54,7 +55,7 @@ export function HostDiagnostics({ hostId, readOnly }: { hostId: string; readOnly
 
   return (
     <div>
-      <Tabs items={tabs} active={tool} onChange={(k) => { setTool(k as Tool); setResult(null); setError(null); }} className="overflow-x-auto px-3 [&>button]:whitespace-nowrap" />
+      <ScrollRow activeKey={tool} fadeFrom="from-[rgb(var(--surface))]"><Tabs items={tabs} active={tool} onChange={(k) => { setTool(k as Tool); setResult(null); setError(null); }} className="min-w-max px-3 [&>button]:whitespace-nowrap" /></ScrollRow>
       <form onSubmit={run} className="space-y-4 p-5">
         <fieldset disabled={readOnly} className="contents">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -143,14 +144,21 @@ function TracerouteView({ r }: { r: TracerouteResult }) {
     <div className="space-y-2">
       <p className="font-mono text-xs text-slate-600">{r.notice}</p>
       {r.hops.length === 0 ? <p className="text-sm text-slate-500">{t("hostsystem.diag.noHops")}</p> : (
-        <Table>
-          <THead><TRow><TH>{t("hostsystem.diag.hop")}</TH><TH>{t("network.col.address")}</TH><TH>{t("hostsystem.diag.hostname")}</TH><TH>AS</TH><TH>{t("hostsystem.diag.time")}</TH></TRow></THead>
-          <TBody>
-            {r.hops.map((h) => (
-              <TRow key={h.ttl + h.address}><TD>{h.ttl}</TD><TD className="font-mono text-xs">{h.silent ? <span className="text-slate-400">{t("hostsystem.diag.silentHop")}</span> : h.address || "*"}</TD><TD className="font-mono text-xs">{h.host}</TD><TD>{h.as}</TD><TD className="font-mono text-xs">{h.probes}</TD></TRow>
-            ))}
-          </TBody>
-        </Table>
+        // A traceroute is read hop by hop in one line: the table scrolls on a phone (edge fade, fixed first column).
+        <DataTable
+          bare
+          mobile="scroll"
+          label="Traceroute"
+          rows={r.hops}
+          rowKey={(h) => `${h.ttl}:${h.address}`}
+          columns={[
+            { key: "hop", header: t("hostsystem.diag.hop"), priority: "primary", isTitle: true, tabular: true, cell: (h) => h.ttl },
+            { key: "address", header: t("network.col.address"), priority: "primary", mono: true, cell: (h) => (h.silent ? <span className="text-slate-400">{t("hostsystem.diag.silentHop")}</span> : h.address || "*") },
+            { key: "host", header: t("hostsystem.diag.hostname"), priority: "primary", mono: true, cell: (h) => h.host },
+            { key: "as", header: "AS", priority: "primary", cell: (h) => h.as },
+            { key: "time", header: t("hostsystem.diag.time"), priority: "primary", mono: true, cell: (h) => h.probes },
+          ]}
+        />
       )}
     </div>
   );

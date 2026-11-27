@@ -123,7 +123,7 @@ export default function LoginPage() {
             )}
           </div>
         </div>
-        <p className="login-rise mt-4 text-center text-xs text-slate-400" style={rise(380)}>
+        <p className="login-rise mt-4 text-center text-xs text-slate-600" style={rise(380)}>
           {t("common.versionLabel", { version: APP_VERSION, codename: APP_CODENAME })} · {t("login.developedBy", { maintainer: APP_MAINTAINER })}
         </p>
       </div>

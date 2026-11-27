@@ -3,6 +3,9 @@
 import { Badge, BadgeTone, badgeToneClasses } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { DataTable } from "@/components/ui/DataTable";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Input, Select } from "@/components/ui/Field";
 import { Spinner } from "@/components/ui/Spinner";
 import {
@@ -14,6 +17,7 @@ import {
   LogStats,
 } from "@/lib/api";
 import { groupHostsByCluster } from "@/lib/clusters";
+import { shortenMiddle } from "@/lib/format";
 import { useLanguage } from "@/components/LanguageProvider";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -24,6 +28,7 @@ const LIMIT = 25;
 type Preset = "1h" | "24h" | "7d" | "all" | "custom";
 
 const PRESETS: Preset[] = ["1h", "24h", "7d", "all", "custom"];
+const DEFAULT_PRESET: Preset = "24h";
 
 function presetSinceIso(preset: Preset): string | undefined {
   const now = Date.now();
@@ -74,7 +79,7 @@ function RankedBars({
         <ul className="space-y-1.5">
           {items.map((item) => (
             <li key={item.value} title={`${item.value}: ${item.count.toLocaleString(locale)}`} className="flex items-center gap-2 text-sm">
-              <span className="w-28 shrink-0 truncate text-slate-600">{item.value}</span>
+              <span className="w-44 shrink-0 whitespace-nowrap font-mono text-xs text-slate-600" title={item.value}>{shortenMiddle(item.value)}</span>
               <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
                 <span
                   className={`block h-full rounded-full ${colorClass}`}
@@ -101,7 +106,7 @@ export default function LogsPage() {
   const [srcIp, setSrcIp] = useState("");
   const [dstIp, setDstIp] = useState("");
   const [port, setPort] = useState("");
-  const [preset, setPreset] = useState<Preset>("24h");
+  const [preset, setPreset] = useState<Preset>(DEFAULT_PRESET);
   const [customSince, setCustomSince] = useState("");
   const [customUntil, setCustomUntil] = useState("");
   const [filterOptions, setFilterOptions] = useState<LogFilterOptions | null>(null);
@@ -176,24 +181,26 @@ export default function LogsPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900">{t("logs.title")}</h1>
-        <div className="w-full sm:w-72">
-          <Select aria-label={t("logs.hostOrCluster")} value={selection} onChange={(e) => setSelection(e.target.value)}>
-            <option value="">{t("logs.allHosts")}</option>
-            {Object.keys(clusters).map((name) => (
-              <option key={`cluster:${name}`} value={`cluster:${name}`}>
-                {t("logs.clusterOption", { name })}
-              </option>
-            ))}
-            {hosts.map((h) => (
-              <option key={h.id} value={`host:${h.id}`}>
-                {h.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+      <PageHeader
+        title={t("logs.title")}
+        actions={
+          <div className="w-full sm:w-72">
+            <Select aria-label={t("logs.hostOrCluster")} value={selection} onChange={(e) => setSelection(e.target.value)}>
+              <option value="">{t("logs.allHosts")}</option>
+              {Object.keys(clusters).map((name) => (
+                <option key={`cluster:${name}`} value={`cluster:${name}`}>
+                  {t("logs.clusterOption", { name })}
+                </option>
+              ))}
+              {hosts.map((h) => (
+                <option key={h.id} value={`host:${h.id}`}>
+                  {h.name}
+                </option>
+              ))}
+            </Select>
+          </div>
+        }
+      />
 
       {/* Stats/Dashboard-Panel */}
       <Card className="mb-6 p-5">
@@ -240,117 +247,78 @@ export default function LogsPage() {
       </Card>
 
       {/* Suche & Filter */}
-      <Card className="mb-6 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <Input
-            aria-label={t("logs.searchLabel")}
-            placeholder={t("logs.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <Select aria-label={t("logs.action")} value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">{t("logs.allActions")}</option>
-            {(filterOptions?.actions ?? []).map((a) => (
-              <option key={a} value={a}>
-                {a}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label={t("logs.interface")} value={iface} onChange={(e) => setIface(e.target.value)}>
-            <option value="">{t("logs.allInterfaces")}</option>
-            {(filterOptions?.interfaces ?? []).map((i) => (
-              <option key={i} value={i}>
-                {i}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label={t("logs.protocol")} value={protocol} onChange={(e) => setProtocol(e.target.value)}>
-            <option value="">{t("logs.allProtocols")}</option>
-            {(filterOptions?.protocols ?? []).map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </Select>
-          <Select aria-label={t("logs.period")} value={preset} onChange={(e) => setPreset(e.target.value as Preset)}>
-            {PRESETS.map((p) => (
-              <option key={p} value={p}>
-                {t(`logs.preset.${p}`)}
-              </option>
-            ))}
-          </Select>
+      <FilterBar
+        className="mb-4"
+        search={{ value: search, onChange: setSearch, placeholder: t("logs.searchPlaceholder"), label: t("logs.searchLabel") }}
+        filters={[
+          { key: "action", label: t("logs.action"), value: action, onChange: setAction, allLabel: t("logs.allActions"), options: (filterOptions?.actions ?? []).map((a) => ({ value: a, label: a })) },
+          { key: "interface", label: t("logs.interface"), value: iface, onChange: setIface, allLabel: t("logs.allInterfaces"), options: (filterOptions?.interfaces ?? []).map((i) => ({ value: i, label: i })) },
+          { key: "protocol", label: t("logs.protocol"), value: protocol, onChange: setProtocol, allLabel: t("logs.allProtocols"), options: (filterOptions?.protocols ?? []).map((p) => ({ value: p, label: p })) },
+          // The period always has a value; the default (24 h) plays the role of "no filter" so it is not shown as an active chip.
+          { key: "period", label: t("logs.period"), value: preset === DEFAULT_PRESET ? "" : preset, onChange: (v) => setPreset((v || DEFAULT_PRESET) as Preset), allLabel: t(`logs.preset.${DEFAULT_PRESET}`), options: PRESETS.filter((p) => p !== DEFAULT_PRESET).map((p) => ({ value: p, label: t(`logs.preset.${p}`) })) },
+        ]}
+        onReset={() => { setSearch(""); setAction(""); setIface(""); setProtocol(""); setPreset(DEFAULT_PRESET); setSrcIp(""); setDstIp(""); setPort(""); }}
+      />
+      {preset === "custom" && (
+        <div className="mb-4 grid gap-3 sm:grid-cols-2">
+          <Input aria-label={t("logs.from")} type="datetime-local" value={customSince} onChange={(e) => setCustomSince(e.target.value)} />
+          <Input aria-label={t("logs.to")} type="datetime-local" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} />
         </div>
-        {preset === "custom" && (
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Input aria-label={t("logs.from")} type="datetime-local" value={customSince} onChange={(e) => setCustomSince(e.target.value)} />
-            <Input aria-label={t("logs.to")} type="datetime-local" value={customUntil} onChange={(e) => setCustomUntil(e.target.value)} />
-          </div>
-        )}
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      )}
+      <details className="mb-4" open={!!(srcIp || dstIp || port)}>
+        <summary className="cursor-pointer text-sm font-medium text-slate-600 [@media(pointer:coarse)]:py-2">{t("logs.addressFilters")}</summary>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Input aria-label={t("logs.srcFilter")} placeholder={t("logs.srcFilter")} value={srcIp} onChange={(e) => setSrcIp(e.target.value)} />
           <Input aria-label={t("logs.dstFilter")} placeholder={t("logs.dstFilter")} value={dstIp} onChange={(e) => setDstIp(e.target.value)} />
           <Input aria-label={t("logs.portFilter")} placeholder={t("logs.portFilter")} inputMode="numeric" value={port} onChange={(e) => setPort(e.target.value)} />
           {(srcIp || dstIp || port) && <Button variant="ghost" onClick={() => { setSrcIp(""); setDstIp(""); setPort(""); }}>{t("logs.clearFilters")}</Button>}
         </div>
-      </Card>
+      </details>
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      <Card className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">{t("logs.colTime")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.colHost")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.action")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.interface")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.protocol")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.colSource")}</th>
-              <th className="px-5 py-3 font-medium">{t("logs.colDestination")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                  <span className="inline-flex items-center gap-2">
-                    <Spinner size={14} />
-                    {t("common.loading")}
-                  </span>
-                </td>
-              </tr>
-            )}
-            {!loading && entries.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                  {t("logs.noEntries")}
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              entries.map((entry) => (
-                <tr key={entry.id} className="border-b border-slate-100 last:border-0">
-                  <td className="whitespace-nowrap px-5 py-2.5 text-slate-500">
-                    {new Date(entry.timestamp).toLocaleString(locale)}
-                  </td>
-                  <td className="px-5 py-2.5 text-slate-600">{hostsById[entry.host_id] ?? "—"}</td>
-                  <td className="px-5 py-2.5">
-                    <Badge tone={actionTone(entry.action ?? "")}>{entry.action ?? "?"}</Badge>
-                  </td>
-                  <td className="px-5 py-2.5 text-slate-600">{entry.interface ?? "—"}</td>
-                  <td className="px-5 py-2.5 text-slate-600">{entry.protocol ?? "—"}</td>
-                  <td className="px-5 py-2.5 text-slate-600">
+      <Card className="overflow-hidden p-0">
+        {loading ? (
+          <div className="px-5 py-8 text-center text-slate-400">
+            <span className="inline-flex items-center gap-2">
+              <Spinner size={14} />
+              {t("common.loading")}
+            </span>
+          </div>
+        ) : (
+          <DataTable
+            label={t("logs.title")}
+            rows={entries}
+            rowKey={(entry) => entry.id}
+            mobile="list"
+            empty={<p className="px-5 py-8 text-center text-slate-400">{t("logs.noEntries")}</p>}
+            columns={[
+              { key: "time", header: t("logs.colTime"), priority: "high", tabular: true, className: "whitespace-nowrap text-slate-500", cell: (entry) => new Date(entry.timestamp).toLocaleString(locale) },
+              { key: "host", header: t("logs.colHost"), priority: "medium", cell: (entry) => hostsById[entry.host_id] ?? "—" },
+              { key: "action", header: t("logs.action"), priority: "primary", cell: (entry) => <Badge tone={actionTone(entry.action ?? "")}>{entry.action ?? "?"}</Badge> },
+              { key: "interface", header: t("logs.interface"), priority: "medium", cell: (entry) => entry.interface ?? "—" },
+              { key: "protocol", header: t("logs.protocol"), priority: "medium", cell: (entry) => entry.protocol ?? "—" },
+              {
+                key: "source", header: t("logs.colSource"), priority: "primary", isTitle: true, mono: true,
+                cell: (entry) => (
+                  <>
                     <FilterLink value={entry.source_net} onPick={setSrcIp} label={t("logs.filterBy", { value: entry.source_net ?? "" })} />
                     {entry.source_port ? <>:<FilterLink value={entry.source_port} onPick={setPort} label={t("logs.filterBy", { value: entry.source_port })} /></> : ""}
-                  </td>
-                  <td className="px-5 py-2.5 text-slate-600">
+                  </>
+                ),
+              },
+              {
+                key: "destination", header: t("logs.colDestination"), priority: "high", mono: true,
+                cell: (entry) => (
+                  <>
                     <FilterLink value={entry.destination_net} onPick={setDstIp} label={t("logs.filterBy", { value: entry.destination_net ?? "" })} />
                     {entry.destination_port ? <>:<FilterLink value={entry.destination_port} onPick={setPort} label={t("logs.filterBy", { value: entry.destination_port })} /></> : ""}
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+                  </>
+                ),
+              },
+            ]}
+          />
+        )}
 
         {!loading && total > 0 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 sm:flex-row">
@@ -385,7 +353,7 @@ export default function LogsPage() {
 function FilterLink({ value, onPick, label }: { value: string | null; onPick: (value: string) => void; label: string }) {
   if (!value) return <>—</>;
   return (
-    <button type="button" className="rounded px-0.5 text-left hover:bg-slate-100 hover:underline focus-visible:outline focus-visible:outline-2" title={label} aria-label={label} onClick={() => onPick(value)}>
+    <button type="button" data-inline-target className="rounded px-0.5 text-left hover:bg-slate-100 hover:underline focus-visible:outline focus-visible:outline-2" title={label} aria-label={label} onClick={() => onPick(value)}>
       {value}
     </button>
   );

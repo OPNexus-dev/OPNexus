@@ -221,6 +221,8 @@ services:
     environment:
       OPNEXUS_SITES: ${OPNEXUS_SITES:-localhost}
       OPNEXUS_DEFAULT_SNI: ${OPNEXUS_DEFAULT_SNI:-localhost}
+      # auto: ein Zertifikat für alle Adressen aus der internen CA (Standard) | internal: Caddy je Adresse | custom: eigenes Zertifikat (Handbuch)
+      OPNEXUS_WEB_CERT: ${OPNEXUS_WEB_CERT:-auto}
       OPNEXUS_GUI_SITES: ${OPNEXUS_GUI_SITES:-https://localhost:9441}
     ports:
       - "${PROXY_BIND_ADDRESS:-0.0.0.0}:${PROXY_HTTPS_PORT:-443}:443"

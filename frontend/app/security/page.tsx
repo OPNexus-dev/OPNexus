@@ -1,5 +1,7 @@
 "use client";
 
+import { DataTable } from "@/components/ui/DataTable";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -80,12 +82,11 @@ export default function SecurityPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
-          {t("security.title")}
-          <InfoTip text={t("security.intro")} size={18} />
-        </h1>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        title={t("security.title")}
+        info={t("security.intro")}
+        actions={
+          <>
           <Link href="/security/report" className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
             <FileText size={16} />
             {t("report.open_report")}
@@ -96,8 +97,9 @@ export default function SecurityPage() {
               {t("security.checkAll")}
             </Button>
           </fieldset>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
@@ -163,30 +165,18 @@ export default function SecurityPage() {
               <InfoTip text={t("security.hits.intro")} />
             </h2>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-5 py-3 font-medium">{t("security.hits.rule")}</th>
-                  <th className="px-5 py-3 font-medium">{t("security.hits.state")}</th>
-                  <th className="px-5 py-3 font-medium">{t("security.hits.lastHit")}</th>
-                  <th className="px-5 py-3 text-right font-medium">{t("security.hits.packets")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hits.map((hit) => (
-                  <tr key={hit.rule_uuid} className="border-b border-slate-100 last:border-0">
-                    <td className="px-5 py-2 text-slate-900">{hit.description || hit.rule_uuid}</td>
-                    <td className="px-5 py-2">
-                      <Badge tone={hit.state === "unused" ? "warning" : hit.state === "used" ? "success" : "neutral"}>{t(`security.hits.states.${hit.state}`)}</Badge>
-                    </td>
-                    <td className="px-5 py-2 text-slate-500">{hit.last_hit_at ? new Date(hit.last_hit_at).toLocaleString(locale) : <span className="text-slate-300">—</span>}</td>
-                    <td className="px-5 py-2 text-right tabular-nums text-slate-500">{hit.packets.toLocaleString(locale)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <DataTable
+            bare
+            label={t("security.hits.rule")}
+            rows={hits}
+            rowKey={(hit) => hit.rule_uuid}
+            columns={[
+              { key: "rule", header: t("security.hits.rule"), priority: "primary", isTitle: true, className: "text-slate-900", cell: (hit) => hit.description || hit.rule_uuid },
+              { key: "state", header: t("security.hits.state"), priority: "primary", cell: (hit) => <Badge tone={hit.state === "unused" ? "warning" : hit.state === "used" ? "success" : "neutral"}>{t(`security.hits.states.${hit.state}`)}</Badge> },
+              { key: "lastHit", header: t("security.hits.lastHit"), priority: "high", className: "text-slate-500", cell: (hit) => hit.last_hit_at ? new Date(hit.last_hit_at).toLocaleString(locale) : <span className="text-slate-300">—</span> },
+              { key: "packets", header: t("security.hits.packets"), priority: "high", tabular: true, align: "right", className: "text-slate-500", cell: (hit) => hit.packets.toLocaleString(locale) },
+            ]}
+          />
         </Card>
       )}
     </div>

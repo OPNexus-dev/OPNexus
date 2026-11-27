@@ -860,6 +860,20 @@ export interface ComplianceHost {
   findings?: ComplianceFinding[];
 }
 
+export interface WebCertInfo {
+  subject: string; issuer: string; not_after: string; days_left: number | null; names: string[]; fingerprint: string; uncovered: string[];
+}
+export interface WebCertStatus extends WebCertInfo {
+  mode: string; source: "custom" | "all" | "per-address"; custom_not_served: boolean;
+}
+export interface WebCertJob {
+  id: string; verb: "install" | "remove"; state: "running" | "succeeded" | "failed"; started_at: string; finished_at: string | null; exit_code: number | null;
+}
+/** What the updater knows about the proxy's certificate; `available: false` when the updater is not enabled or does not answer. */
+export interface WebCertState {
+  available: boolean; reason?: string; status?: WebCertStatus | null; error?: string | null; job?: WebCertJob | null; log?: string[]; ha_role?: string | null;
+}
+
 export interface GuiAccessSettings {
   enabled: boolean;
   idle_timeout_minutes: number;
@@ -1550,6 +1564,7 @@ export const api = {
   skipRolloutHost: (id: string, host_id: string, reason: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/skip-host`, { method: "POST", body: JSON.stringify({ host_id, reason }) }),
   abortRolloutRun: (id: string, reason: string, confirm_name: string) => request<RolloutRunDetail>(`/rollouts/runs/${id}/abort`, { method: "POST", body: JSON.stringify({ reason, confirm_name }) }),
   audit: (filters: Record<string,string | number> = {}) => request<AuditPage>(`/audit?${new URLSearchParams(Object.entries(filters).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
+  auditOperations: (filters: Record<string,string | number> = {}) => request<AuditOperationPage>(`/audit?${new URLSearchParams(Object.entries({ group: "operation", ...filters }).filter(([,v])=>v!=="").map(([k,v])=>[k,String(v)]))}`),
   dashboard: () => request<DashboardSummary>("/dashboard"),
   versionCheck: () => request<VersionCheck>("/system/version-check"),
   systemSettings: () => request<{ settings: SystemSetting[] }>("/settings/system"),
@@ -1564,6 +1579,10 @@ export const api = {
   haAction: (body: { password: string; action: HaAction }) => request<{ job: StandbyJob }>("/system/ha/action", { method: "POST", body: JSON.stringify(body) }),
   haJob: () => request<{ job: StandbyJob | null; log: string[] }>("/system/ha/job"),
   updaterUpdate: (version: string) => request<{ job: UpdaterJob }>("/system/updater/update", { method: "POST", body: JSON.stringify({ version }) }),
+  webCert: () => request<WebCertState>("/system/web-certificate"),
+  webCertCheck: (cert: string, key: string) => request<{ certificate: WebCertInfo }>("/system/web-certificate/check", { method: "POST", body: JSON.stringify({ cert, key }) }),
+  webCertInstall: (cert: string, key: string) => request<{ job: WebCertJob }>("/system/web-certificate", { method: "POST", body: JSON.stringify({ cert, key }) }),
+  webCertRemove: () => request<{ job: WebCertJob }>("/system/web-certificate", { method: "DELETE" }),
   updaterRollback: () => request<{ job: UpdaterJob }>("/system/updater/rollback", { method: "POST" }),
   getOutboundMode: (id: string) => request<OutboundMode>(`/outbound-nat/hosts/${id}/mode`),
   listPortForwards: () => request<PortForward[]>(`/port-forward`),
@@ -2036,6 +2055,9 @@ export interface OutboundMode { host_id: string; host_name: string; mode: string
 
 export interface AuditEvent { id: string; created_at: string; correlation_id: string; actor: string; kind: string; action: string; status: string; entity_id: string | null; entity_name: string | null; host_id: string | null; host_name: string | null; message: string | null; details: Record<string,unknown>; }
 export interface AuditPage { total: number; offset: number; limit: number; items: AuditEvent[]; }
+/** One operation = all audit steps with the same correlation id (GET /api/audit?group=operation). */
+export interface AuditOperation { correlation_id: string; started_at: string; ended_at: string; actor: string; kind: string; action: string; entity_id: string | null; entity_name: string | null; entities: number; hosts: { id: string | null; name: string | null }[]; result: string; message: string | null; steps: number; comment: string | null; }
+export interface AuditOperationPage { total: number; offset: number; limit: number; items: AuditOperation[]; }
 
 export type GatewayState = "online" | "degraded" | "offline" | "forced_down" | "unknown";
 export interface GatewayHealth { name: string; address: string | null; status: string; state: GatewayState; loss: number | null; delay: number | null; stddev: number | null; monitor: string | null; alert_enabled: boolean; }

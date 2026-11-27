@@ -15,7 +15,7 @@ const variantClasses: Record<Variant, string> = {
 };
 
 const baseClasses =
-  "inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed [@media(pointer:coarse)]:min-h-11";
 
 // `loading` shows a spinner before the label and disables the button, so a running
 // push/save is visibly in progress rather than just a changed word.

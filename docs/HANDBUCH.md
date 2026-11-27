@@ -231,6 +231,37 @@ Eintrag in der Hosts-Datei. `TRUST_PROXY_HEADERS=true` darf nur gesetzt sein, we
 ein Proxy davor steht, der `X-Forwarded-For` selbst setzt; der bundled Proxy tut das.
 Sonst könnte jeder Client die Anmeldesperre mit einer gefälschten Kopfzeile umgehen.
 
+**Ein Zertifikat für alle Adressen.** Der Proxy stellt **ein** Zertifikat aus, das jede Adresse aus `OPNEXUS_SITES`
+(und `OPNEXUS_DEFAULT_SNI`) enthält, signiert von derselben internen CA. Ein Browser, der eine reine IP-Adresse aufruft, sendet keinen
+Namen; ein Zertifikat je Adresse würde dann für jede Adresse das der Standard-Adresse zeigen, bei einem HA-Paar bekäme die gemeinsame Adresse (VIP)
+trotz importierter CA eine Warnung. Das Zertifikat gilt zwei Jahre und erneuert sich 90 Tage vor Ablauf selbst (der Proxy startet dafür kurz
+neu). Eine geänderte `OPNEXUS_SITES` stellt beim nächsten Start des Proxys ein neues aus. Die Root-CA bleibt gleich, es muss nichts neu importiert
+werden. Bei einem HA-Paar stellt jeder Knoten sein eigenes Zertifikat für die VIP und die eigene Adresse aus, mit der CA, die der Abgleich auf beiden
+Knoten gleich hält. `OPNEXUS_WEB_CERT=internal` in der `.env` bringt ein Zertifikat je Adresse zurück.
+
+**Ein eigenes Zertifikat.** Für ein Zertifikat der Firmen-CA oder eines, das anderswo ausgestellt wurde (etwa von Let's Encrypt auf einem anderen
+Rechner): in der Weboberfläche **Einstellungen › Zugriff › Webzertifikat** öffnen (braucht den Updater-Dienst, siehe „Updates per Klick“), **Eigenes Zertifikat
+einspielen** wählen, Zertifikatskette (PEM, Zertifikat zuerst) und privaten Schlüssel (PEM, **ohne** Passphrase) einfügen oder als Datei wählen und **Prüfen**
+drücken. Der Dialog zeigt, was er gefunden hat (Subjekt, Ablauf, Adressen und welche Ihrer Adressen das Zertifikat nicht abdeckt); **Einspielen** wird nur für
+genau das Geprüfte frei. Der Proxy startet bis zu eine Minute neu, die Seite meldet, wann das Zertifikat aktiv ist. Ein Browser, der dem Aussteller nicht
+vertraut, zeigt danach eine Warnung. **Zurück zum internen Zertifikat** macht es rückgängig. Der private Schlüssel läuft einmal durch OPNexus und wird nur im Volume
+des Proxys gespeichert; er steht in keinem Protokoll und nicht im Audit. Dasselbe auf der Kommandozeile: die beiden Dateien auf den Server legen und ausführen
+
+```bash
+./opnexus cert install --cert fullchain.pem --key privkey.pem
+./opnexus cert status        # Quelle, Adressen, Ablauf, Fingerabdruck
+./opnexus cert remove        # zurück zum Zertifikat der internen CA
+```
+
+`cert install` prüft zuerst die Dateien (lesbar, der Schlüssel gehört zum Zertifikat, nicht abgelaufen, für welche Ihrer Adressen es gilt), schreibt sie
+in das Volume des Proxys, startet den Proxy neu und **sieht nach, was der Proxy tatsächlich ausliefert**. Liefert er das neue Zertifikat nicht aus,
+wird alles zurückgenommen und der vorherige Zustand wiederhergestellt. Ein Zertifikat, das nur für einige Ihrer Adressen gilt, wird mit einer Warnung
+eingespielt, die die übrigen nennt; eines, das für keine gilt, wird abgelehnt. Ein eigenes Zertifikat erneuert sich nicht selbst: vor dem Ablauf `cert install`
+erneut ausführen (`cert status` zeigt die verbleibenden Tage). Bei einem HA-Paar gibt der Primär das Zertifikat und die Einstellung mit dem regelmäßigen
+Abgleich (alle 5 Minuten, sofort mit `./opnexus ha sync`) an den Standby weiter. Die Installation braucht OPNexus 1.41 oder neuer (der Befehl sagt es, wenn
+die Compose-Datei älter ist). Der Befehl setzt `OPNEXUS_WEB_CERT=custom` in der `.env`; fehlen die Dateien oder sind sie beim Start ungültig, fällt der
+Proxy auf das Zertifikat der internen CA zurück und nennt den Grund in `docker compose logs proxy`. Bei einem HA-Paar arbeiten Oberfläche und Befehl am Primär; der Standby zeigt das Zertifikat an und überlässt Änderungen dem Primär.
+
 **Sichern:** Der Schlüssel der internen CA liegt im Volume `caddy_data`. Geht er
 verloren, entsteht eine neue CA, und alle Clients müssen sie neu importieren.
 
@@ -270,6 +301,10 @@ Unter **Einstellungen › Betriebseinstellungen** stellst du ein, wofür früher
 Jedes Feld nennt Standard und erlaubten Bereich; „Auf Standard zurücksetzen“ nimmt eine Änderung zurück. Änderungen
 gelten sofort (spätestens nach 15 Sekunden auch in einem zweiten Backend) und stehen im Audit-Log; die Heartbeat-
 Adresse und die CA nur als „gesetzt“. Ändern dürfen nur Admins.
+
+**Speichern bleibt grau, bis sich etwas geändert hat.** Das gilt für alle Einstellungsbereiche und für jeden Bearbeiten-Dialog in OPNexus: Der Speichern-Knopf wird
+nach der ersten Änderung aktiv und wieder grau, wenn du sie zurücknimmst. Nach einem fehlgeschlagenen Speichern bleibt er aktiv, damit nichts verloren geht. Neu anlegen
+ist nie gesperrt, und ein wiederhergestellter älterer Stand ist sofort speicherbar.
 
 Steht ein Wert **in der `.env`**, gilt weiterhin dieser; das Feld ist dann gesperrt und zeigt „vom Server“. So bleiben
 automatisiert eingerichtete Server steuerbar. Bewusst **nur** in der `.env` bleiben: Adressen und TLS von OPNexus
@@ -1424,6 +1459,10 @@ API-Secrets und Konfigurationsdateien werden nicht protokolliert.
 
 Ein geöffneter Eintrag zeigt, **was sich geändert hat**, Feld für Feld (vorher und nachher), dazu den beim Ausrollen angegebenen
 Kommentar; der Rohdatensatz bleibt unter *Technische Details* erreichbar.
+
+Die Liste zeigt **eine Zeile je Vorgang**: eine Anfrage mit allen ihren Schritten (angefordert, ausstehend, angenommen, zurückgenommen, ...), mit der
+Anzahl der Schritte und dem Ergebnis. Eine Zeile öffnen zeigt die Schritte einzeln und was jeder geändert hat. Die Filter entscheiden, welche Vorgänge erscheinen (ein Vorgang erscheint, wenn irgendeiner seiner Schritte passt); JSON-Export und
+die API (`GET /api/audit?group=operation`, und `?correlation_id=` für die Schritte eines Vorgangs) lesen dieselben Datensätze, es geht also nichts verloren.
 
 ### Audit-Export
 

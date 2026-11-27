@@ -6,6 +6,7 @@ import { InfoTip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { api, AuditExportSettings } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
+import { useDirty } from "@/lib/useDirty";
 import { useEffect, useState } from "react";
 
 /** Forwarding of the audit trail to syslog and/or a webhook. Admin only: renders nothing for other roles. */
@@ -24,6 +25,8 @@ export function AuditExportSection() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [secret, setSecret] = useState("");
   const [clearSecret, setClearSecret] = useState(false);
+
+  const dirty = useDirty({ syslogEnabled, syslogHost, syslogPort, syslogProtocol, webhookEnabled, webhookUrl, secret, clearSecret }, cfg);
 
   function apply(data: AuditExportSettings) {
     setCfg(data);
@@ -152,7 +155,7 @@ export function AuditExportSection() {
         )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         <div className="flex gap-2">
-          <Button type="submit" disabled={busy || !cfg} loading={busy}>{t("common.save")}</Button>
+          <Button type="submit" disabled={busy || !cfg || !dirty} loading={busy}>{t("common.save")}</Button>
           <Button type="button" variant="ghost" disabled={busy || !cfg || !(cfg.syslog_enabled || cfg.webhook_enabled)} onClick={test}>
             {t("auditExport.test")}
           </Button>

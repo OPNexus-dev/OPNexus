@@ -1,5 +1,7 @@
 "use client";
 
+import { PageHeader } from "@/components/ui/PageHeader";
+import { ScrollRow } from "@/components/ui/ScrollRow";
 import { Badge, BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { CarpSwitchControl, carpMaintenanceWarning } from "@/components/CarpSwitchControl";
@@ -334,15 +336,16 @@ export default function UpdatesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">{t("updates.title")}<InfoTip text={t("updates.intro")} size={18} />{readOnly && <Tooltip content={t("updates.readOnlyNote")} focusable><Badge tone="warning">{t("updates.readOnlyBadge")}</Badge></Tooltip>}</h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
+      <PageHeader
+        title={<>{t("updates.title")}{readOnly && <Tooltip content={t("updates.readOnlyNote")} focusable><Badge tone="warning">{t("updates.readOnlyBadge")}</Badge></Tooltip>}</>}
+        info={t("updates.intro")}
+        actions={
+          <>
           <Tooltip content={t("updates.tipCheckAll")} focusable={readOnly || eligibleCount === 0}><Button disabled={readOnly || refreshing || bulkChecking || eligibleCount === 0} onClick={() => void checkAll(false)}>{bulkChecking ? <Spinner size={14} /> : <RefreshCw size={16} />}{t("updates.checkAgain")}</Button></Tooltip>
           <Tooltip content={t("updates.tipRefreshView")}><Button variant="ghost" disabled={refreshing || bulkChecking} onClick={() => void loadFleet()}><RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />{t("updates.refreshView")}</Button></Tooltip>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <RolloutStatusBanner onStatus={setRollout} />
       {pageError && <p role="alert" className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{pageError}</p>}
@@ -445,23 +448,23 @@ export default function UpdatesPage() {
                   {upgradeSets.length > 0 && (
                     <div>
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-violet-700">{t("updates.majorTargetsTitle")}</p>
-                      <div className="overflow-x-auto rounded-xl border border-violet-200 bg-white">
+                      <div className="rounded-xl border border-violet-200 bg-white"><ScrollRow layout="block" fadeFrom="from-[rgb(var(--surface))]">
                         <table className="w-full min-w-[540px] text-left text-sm">
                           <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-2 font-medium">{t("updates.colTarget")}</th><th className="px-4 py-2 font-medium">{t("updates.colInstalled")}</th><th className="px-4 py-2 font-medium">{t("updates.colNew")}</th><th className="px-4 py-2 font-medium">{t("updates.colRepository")}</th></tr></thead>
                           <tbody>{upgradeSets.map((set) => <tr key={set.name} className="border-b border-slate-100 last:border-0"><td className="px-4 py-2 font-medium">{set.name}</td><td className="px-4 py-2 text-slate-500">{set.old}</td><td className="px-4 py-2 text-slate-700">{set.new}</td><td className="px-4 py-2 text-slate-500">{set.repository ?? "—"}</td></tr>)}</tbody>
                         </table>
-                      </div>
+                      </ScrollRow></div>
                     </div>
                   )}
                   <div>
                     {upgradeSets.length > 0 && <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("updates.stablePackageChanges")}</p>}
                     {packages.length === 0 ? <p className="text-sm text-slate-400">{t("updates.noPackageChanges")}</p> : (
-                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                      <div className="rounded-xl border border-slate-200 bg-white"><ScrollRow layout="block" fadeFrom="from-[rgb(var(--surface))]">
                         <table className="w-full min-w-[540px] text-left text-sm">
                           <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-400"><tr><th className="px-4 py-2 font-medium">{t("updates.colPackage")}</th><th className="px-4 py-2 font-medium">{t("updates.colAction")}</th><th className="px-4 py-2 font-medium">{t("updates.colInstalled")}</th><th className="px-4 py-2 font-medium">{t("updates.colNew")}</th></tr></thead>
                           <tbody>{packages.map((pkg) => <tr key={pkg.name} className="border-b border-slate-100 last:border-0"><td className="px-4 py-2 font-medium">{pkg.name}</td><td className="px-4 py-2 text-slate-500">{packageReason(pkg.reason, t)}</td><td className="px-4 py-2 text-slate-500">{pkg.old}</td><td className="px-4 py-2 text-slate-700">{pkg.new}</td></tr>)}</tbody>
                         </table>
-                      </div>
+                      </ScrollRow></div>
                     )}
                   </div>
                 </div>

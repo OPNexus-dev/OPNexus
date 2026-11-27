@@ -1,5 +1,8 @@
 "use client";
 
+import { DataTable } from "@/components/ui/DataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Badge } from "@/components/ui/Badge";
 import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
@@ -7,6 +10,7 @@ import { StatusDot } from "@/components/ui/StatusDot";
 import { api, Host } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { APP_CODENAME, APP_MAINTAINER, APP_VERSION } from "@/lib/version";
+import { Network } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface HostDetails {
@@ -94,91 +98,30 @@ export default function AboutPage() {
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
       <h2 className="mb-3 text-lg font-semibold text-slate-900">{t("about.fleetStatus")}</h2>
-      <Card className="overflow-x-auto" tabIndex={0}>
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">{t("certs.colHost")}</th>
-              <th className="px-5 py-3 font-medium">{t("about.colAddress")}</th>
-              <th className="px-5 py-3 font-medium">{t("hosts.status")}</th>
-              <th className="px-5 py-3 font-medium">CARP</th>
-              <th className="px-5 py-3 font-medium">{t("hosts.cluster")}</th>
-              <th className="px-5 py-3 font-medium">{t("about.colVersion")}</th>
-              <th className="px-5 py-3 font-medium">{t("about.colLiveRules")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {hosts === null &&
-              [0, 1].map((i) => (
-                <tr key={i} className="border-b border-slate-100 last:border-0">
-                  <td colSpan={7} className="px-5 py-4">
-                    <span className="inline-flex items-center gap-2 text-slate-400">
-                      <Spinner size={13} />
-                      {t("common.loading")}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            {hosts?.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-5 py-8 text-center text-slate-400">
-                  {t("drift.noHosts")}
-                </td>
-              </tr>
-            )}
-            {hosts?.map((host) => {
-              const d = details[host.id];
-              return (
-                <tr key={host.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-5 py-3 font-medium text-slate-900">{host.name}</td>
-                  <td className="px-5 py-3 text-slate-500">{host.base_url}</td>
-                  <td className="px-5 py-3">
-                    <StatusDot status={host.status} />
-                  </td>
-                  <td className="px-5 py-3">
-                    {host.carp_status ? (
-                      <span
-                        className={
-                          host.carp_status === "MASTER"
-                            ? "rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700"
-                            : "rounded-full bg-flame-100 px-2.5 py-0.5 text-xs font-medium text-flame-700"
-                        }
-                      >
-                        {host.carp_status}
-                      </span>
-                    ) : (
-                      <span className="text-slate-300">—</span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-slate-500">{host.cluster_name ?? <span className="text-slate-300">—</span>}</td>
-                  <td className="px-5 py-3 text-slate-600">
-                    {d?.firmware.loading ? (
-                      <Spinner size={13} />
-                    ) : d?.firmware.version ? (
-                      d.firmware.version
-                    ) : (
-                      <span className="text-red-500" title={d?.firmware.error ?? undefined}>
-                        {t("about.unavailable")}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-3 text-slate-600">
-                    {d?.ruleCount.loading ? (
-                      <Spinner size={13} />
-                    ) : d?.ruleCount.count !== null && d?.ruleCount.count !== undefined ? (
-                      d.ruleCount.count
-                    ) : (
-                      <span className="text-red-500" title={d?.ruleCount.error ?? undefined}>
-                        {t("about.unavailable")}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+      {hosts === null && <Card className="p-5" aria-busy="true"><span className="inline-flex items-center gap-2 text-slate-400"><Spinner size={13} />{t("common.loading")}</span></Card>}
+      {hosts && (
+        <DataTable
+          label={t("about.fleetStatus")}
+          rows={hosts}
+          rowKey={(host) => host.id}
+          empty={<EmptyState icon={Network} title={t("drift.noHosts")} />}
+          columns={[
+            { key: "host", header: t("certs.colHost"), priority: "primary", isTitle: true, className: "text-slate-900", cell: (host) => host.name },
+            { key: "status", header: t("hosts.status"), priority: "primary", cell: (host) => <StatusDot status={host.status} /> },
+            { key: "address", header: t("about.colAddress"), priority: "high", className: "text-slate-500", cell: (host) => host.base_url },
+            { key: "carp", header: "CARP", priority: "medium", cell: (host) => host.carp_status ? <Badge tone={host.carp_status === "MASTER" ? "success" : "warning"}>{host.carp_status}</Badge> : <span className="text-slate-300">—</span> },
+            { key: "cluster", header: t("hosts.cluster"), priority: "medium", className: "text-slate-500", cell: (host) => host.cluster_name ?? <span className="text-slate-300">—</span> },
+            {
+              key: "version", header: t("about.colVersion"), priority: "high", className: "text-slate-600",
+              cell: (host) => { const d = details[host.id]; return d?.firmware.loading ? <Spinner size={13} /> : d?.firmware.version ? d.firmware.version : <span className="text-red-500" title={d?.firmware.error ?? undefined}>{t("about.unavailable")}</span>; },
+            },
+            {
+              key: "rules", header: t("about.colLiveRules"), priority: "high", tabular: true, className: "text-slate-600",
+              cell: (host) => { const d = details[host.id]; return d?.ruleCount.loading ? <Spinner size={13} /> : d?.ruleCount.count !== null && d?.ruleCount.count !== undefined ? d.ruleCount.count : <span className="text-red-500" title={d?.ruleCount.error ?? undefined}>{t("about.unavailable")}</span>; },
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

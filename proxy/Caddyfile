@@ -21,6 +21,10 @@ http:// {
 }
 
 {$OPNEXUS_SITES} {
+	# Ein Zertifikat für alle Adressen (oder ein eigenes), geschrieben von docker-entrypoint.sh; fehlt die Datei oder ist sie leer,
+	# stellt Caddy je Adresse ein eigenes Zertifikat aus.
+	import /data/opnexus-web/*.caddy
+
 	encode zstd gzip
 
 	header {

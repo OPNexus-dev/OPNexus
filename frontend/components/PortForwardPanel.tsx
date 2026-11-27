@@ -1,5 +1,6 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
 import { useConfirm } from "@/components/ui/Confirm";
 import { protocolSelect } from "@/lib/protocols";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
@@ -14,7 +15,9 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
-import { Tabs } from "@/components/ui/Tabs";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import { StatChip } from "@/components/ui/StatChip";
 import { useToast } from "@/components/ui/Toast";
 import { LiveNat } from "@/components/LiveNat";
 import {
@@ -138,6 +141,10 @@ function PortForwardContent() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<PortForward | null>(null);
+  // One editor session per opening: editing an existing item, "Save" stays grey until the form differs from what the editor opened with.
+  // A restored older revision opens different from the stored item, so it is savable at once.
+  const [session, setSession] = useState<{ restored: boolean } | null>(null);
+  const dirty = useDirty(form, session);
   const [groups, setGroups] = useState<DeviceGroup[]>([]);
   const [hierarchyGroups, setHierarchyGroups] = useState<PolicyHierarchyGroup[]>([]);
   const [review, setReview] = useState<{ rule: PortForward; mode: "preview" | "history" } | null>(null);
@@ -313,6 +320,7 @@ function PortForwardContent() {
 
   function openEditor(rule: PortForward | null, copy = false, restored?: PortForwardCreate) {
     setEditing(copy ? null : rule);
+    setSession({ restored: !!restored });
     const candidate = restored ?? (rule ? { ...rule, description: copy ? `${rule.description.slice(0, 247)}${t("rules.copySuffix")}` : rule.description } : { ...emptyForm, target_group_ids: groupFilter && groups.some(g => g.id === groupFilter) ? [groupFilter] : [] });
     const available = restored ? {
       ...candidate,
@@ -394,8 +402,17 @@ function PortForwardContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("rules.groupTitle", { name: selectedGroup.name }) : "Port Forward"}<InfoTip text={t("rules.subtitle")} size={18} /></h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <SegmentedControl
+            label={t("rules.view.label")}
+            value={activeTab}
+            onChange={setActiveTab}
+            options={[{ value: "managed", label: t("rules.managed") }, { value: "live", label: t("nat.liveTab") }]}
+          />
+          <InfoTip text={t("rules.subtitle")} size={16} />
+          {selectedGroup && <span className="text-sm font-medium text-slate-700">{t("rules.groupTitle", { name: selectedGroup.name })}</span>}
+        </div>
         {activeTab === "managed" && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
@@ -412,30 +429,30 @@ function PortForwardContent() {
 
       {showAdopt && <AdoptObjectsModal kind="port-forward" hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
 
-      <Tabs
-        className="mb-6"
-        items={[
-          { key: "managed", label: t("rules.managed") },
-          { key: "live", label: t("nat.liveTab") },
-        ]}
-        active={activeTab}
-        onChange={(key) => setActiveTab(key as "managed" | "live")}
-      />
-
       {activeTab === "live" ? (
         <LiveNat kind="port-forward" />
       ) : (
         <>
       {error && <div className="mb-4"><p role="alert" className="text-sm text-red-600">{error}</p><Button variant="ghost" onClick={load}>{t("rules.retry")}</Button></div>}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Input aria-label={t("rules.searchLabel")} placeholder={t("rules.searchPlaceholder")} value={search} onChange={e => setSearch(e.target.value)} />
-        <Select aria-label={t("rules.groupFilter")} value={groupFilter} onChange={e => setGroupFilter(e.target.value)}><option value="">{t("rules.allGroups")}</option>{groups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}</Select>
-        <Select aria-label={t("rules.stateFilter")} value={stateFilter} onChange={e => setStateFilter(e.target.value)}><option value="">{t("rules.allStates")}</option>{workflowStates.map((value) => <option key={value} value={value}>{t(`workflow.${value}`)}</option>)}</Select>
-      </div>
+      <FilterBar
+        className="mb-4"
+        search={{ value: search, onChange: setSearch, placeholder: t("rules.searchPlaceholder"), label: t("rules.searchLabel") }}
+        filters={[
+          { key: "group", label: t("rules.groupFilter"), value: groupFilter, onChange: setGroupFilter, allLabel: t("rules.allGroups"), options: groups.map((g) => ({ value: g.id, label: g.name })) },
+          { key: "state", label: t("rules.stateFilter"), value: stateFilter, onChange: setStateFilter, allLabel: t("rules.allStates"), options: workflowStates.map((value) => ({ value, label: t(`workflow.${value}`) })) },
+        ]}
+        onReset={() => { setSearch(""); setStateFilter(""); setGroupFilter(selectedGroup ? groupFilter : ""); }}
+        trailing={rules ? (
+          <>
+            <StatChip tone="warning" count={groupRules.filter((r) => r.workflow_state === "draft").length} label={t("rules.chip.draft")} />
+            <StatChip tone="info" count={groupRules.filter((r) => ["attention", "cleanup", "pending"].includes(r.workflow_state)).length} label={t("rules.chip.review")} />
+            <StatChip tone="success" count={groupRules.filter((r) => r.workflow_state === "synced").length} label={t("rules.chip.synced")} />
+          </>
+        ) : undefined}
+      />
       {selectedGroup && <p className="mb-3 text-sm text-slate-500">{t("rules.groupSummary", { members: selectedGroup.host_ids.length, rules: groupRules.length })}<Link href="/groups" className="text-sky-700 underline">{t("rules.manageMembers")}</Link></p>}
       {ruleFilter && <Button variant="ghost" onClick={() => setGroupFilter(groupFilter)}>{selectedGroup ? t("rules.showAllInGroup") : t("rules.showAll")}</Button>}
-      {rules && <div className="mb-4 flex flex-wrap gap-4 text-sm text-slate-600"><span>{t("rules.countDraft", { count: groupRules.filter(r => r.workflow_state === "draft").length })}</span><span>{t("rules.countReview", { count: groupRules.filter(r => ["attention", "cleanup", "pending"].includes(r.workflow_state)).length })}</span><span>{t("rules.countSynced", { count: groupRules.filter(r => r.workflow_state === "synced").length })}</span></div>}
       <div className="flex flex-col gap-4">
         {rules === null && !error && <Card className="p-6"><Loading>{t("rules.loading")}</Loading></Card>}
         {rules !== null && visibleRules.length === 0 && (
@@ -671,7 +688,7 @@ function PortForwardContent() {
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>
                 {t("common.cancel")}
               </Button>
-              <Button type="submit" disabled={saving} loading={saving}>
+              <Button type="submit" disabled={saving || (!!editing && !session?.restored && !dirty)} loading={saving}>
                 {saving ? t("common.saving") : t("rules.saveDraft")}
               </Button>
             </div>

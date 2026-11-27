@@ -1,5 +1,8 @@
 "use client";
 
+import { useChanged } from "@/lib/useDirty";
+import { DataTable } from "@/components/ui/DataTable";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
 import { InfoTip, Tooltip } from "@/components/ui/Tooltip";
 import { Badge } from "@/components/ui/Badge";
@@ -12,7 +15,7 @@ import { useToast } from "@/components/ui/Toast";
 import { api, User, UserRole } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
 import { useNotAdmin } from "@/lib/useReadOnly";
-import { Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
+import { Pencil, Plus, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 function RoleBadge({ role }: { role: UserRole }) {
@@ -72,83 +75,53 @@ export default function UsersPage() {
   return (
     <fieldset disabled={readOnly} className="contents">
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{t("users.title")}<InfoTip text={t("users.intro")} size={18} /></h1>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus size={16} />
-          {t("users.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("users.title")}
+        info={t("users.intro")}
+        actions={
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus size={16} />
+            {t("users.new")}
+          </Button>
+        }
+      />
 
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
 
-      <Card className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">{t("users.colUsername")}</th>
-              <th className="px-5 py-3 font-medium">{t("users.colRole")}</th>
-              <th className="px-5 py-3 font-medium">{t("users.colCreated")}</th>
-              <th className="px-5 py-3 font-medium">{t("users.colLastLogin")}</th>
-              <th className="px-5 py-3 font-medium"><span className="sr-only">{t("common.actions")}</span></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users === null &&
-              [0, 1].map((i) => (
-                <tr key={i} className="border-b border-slate-100 last:border-0">
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-14 rounded-full" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3"><Skeleton className="h-4 w-24" /></td>
-                  <td className="px-5 py-3" />
-                </tr>
-              ))}
-            {users?.map((user) => {
-              const isSelf = user.username === ownUsername;
-              return (
-                <tr key={user.id} className="border-b border-slate-100 last:border-0">
-                  <td className="px-5 py-3 font-medium text-slate-900">
-                    {user.username}
-                    {isSelf && <span className="ml-2 text-xs font-normal text-slate-400">{t("users.you")}</span>}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span className="inline-flex flex-wrap items-center gap-1.5">
-                      <RoleBadge role={user.role} />
-                      {user.auth_source === "oidc" && <Tooltip content={t("users.ssoTip")} focusable><Badge tone="neutral">SSO</Badge></Tooltip>}
-                      {user.totp_enabled && <Tooltip content={t("twofa.userOnTip")} focusable><Badge tone="success"><ShieldCheck size={12} />2FA</Badge></Tooltip>}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-slate-500">{new Date(user.created_at).toLocaleDateString(locale)}</td>
-                  <td className="px-5 py-3 text-slate-500">
-                    {user.last_login_at ? new Date(user.last_login_at).toLocaleString(locale) : <span className="text-slate-300">—</span>}
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" disabled={user.auth_source === "oidc"} title={user.auth_source === "oidc" ? t("users.ssoTip") : undefined} onClick={() => setEditing(user)}>
-                        <Pencil size={14} />
-                        {t("rules.edit")}
-                      </Button>
-                      {user.totp_enabled && !isSelf && (
-                        <Tooltip content={t("twofa.resetTip")}><Button variant="outline" onClick={() => handleReset2fa(user)}>{t("twofa.reset")}</Button></Tooltip>
-                      )}
-                      <Button
-                        variant="dangerSubtle"
-                        disabled={isSelf}
-                        title={isSelf ? t("users.cannotDeleteSelf") : undefined}
-                        onClick={() => handleDelete(user)}
-                      >
-                        <Trash2 size={14} />
-                        {t("rules.delete")}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+      {users === null && <Card className="space-y-3 p-5" aria-busy="true">{[0, 1].map((i) => <Skeleton key={i} className="h-5 w-full" />)}</Card>}
+      {users && (
+        <DataTable
+          label={t("users.title")}
+          rows={users}
+          rowKey={(user) => user.id}
+          columns={[
+            {
+              key: "username", header: t("users.colUsername"), priority: "primary", isTitle: true,
+              cell: (user) => (<>{user.username}{user.username === ownUsername && <span className="ml-2 text-xs font-normal text-slate-400">{t("users.you")}</span>}</>),
+            },
+            {
+              key: "role", header: t("users.colRole"), priority: "primary",
+              cell: (user) => (
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <RoleBadge role={user.role} />
+                  {user.auth_source === "oidc" && <Tooltip content={t("users.ssoTip")} focusable><Badge tone="neutral">SSO</Badge></Tooltip>}
+                  {user.totp_enabled && <Tooltip content={t("twofa.userOnTip")} focusable><Badge tone="success"><ShieldCheck size={12} />2FA</Badge></Tooltip>}
+                </span>
+              ),
+            },
+            { key: "created", header: t("users.colCreated"), priority: "medium", className: "text-slate-500", cell: (user) => new Date(user.created_at).toLocaleDateString(locale) },
+            { key: "lastLogin", header: t("users.colLastLogin"), priority: "high", className: "text-slate-500", cell: (user) => (user.last_login_at ? new Date(user.last_login_at).toLocaleString(locale) : <span className="text-slate-300">—</span>) },
+          ]}
+          actions={(user) => {
+            const isSelf = user.username === ownUsername;
+            return [
+              { key: "edit", label: t("rules.edit"), icon: Pencil, disabled: user.auth_source === "oidc", onSelect: () => setEditing(user) },
+              ...(user.totp_enabled && !isSelf ? [{ key: "reset2fa", label: t("twofa.reset"), icon: ShieldOff, onSelect: () => handleReset2fa(user) }] : []),
+              { key: "delete", label: t("rules.delete"), icon: Trash2, tone: "danger" as const, disabled: isSelf, onSelect: () => handleDelete(user) },
+            ];
+          }}
+        />
+      )}
 
       {showCreate && (
         <CreateUserModal
@@ -235,6 +208,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: User; onClose: () => 
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const changed = useChanged({ role, newPassword });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -280,7 +254,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: User; onClose: () => 
           <Button type="button" variant="ghost" onClick={onClose}>
             {t("common.cancel")}
           </Button>
-          <Button type="submit" variant="secondary" disabled={saving} loading={saving}>
+          <Button type="submit" variant="secondary" disabled={saving || !changed} loading={saving}>
             {saving ? t("common.saving") : t("common.save")}
           </Button>
         </div>

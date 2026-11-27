@@ -1,8 +1,9 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useConfirm } from "@/components/ui/Confirm";
 import { protocolSelect } from "@/lib/protocols";
-import { InfoTip } from "@/components/ui/Tooltip";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -114,6 +115,9 @@ function PolicyHierarchyContent() {
   const roleOptions = useInterfaceRoleOptions();
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleError, setRuleError] = useState<string | null>(null);
+  // Editing an existing group or rule: Save stays grey until something differs from what the dialog opened with (new ones are always savable).
+  const groupDirty = useDirty(groupForm, groupModal);
+  const ruleDirty = useDirty(ruleForm, ruleModal);
 
   const [review, setReview] = useState<{ rule: PolicyHierarchyRule; mode: "preview" | "history" } | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -283,15 +287,16 @@ function PolicyHierarchyContent() {
 
   return (
     <div>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{t("ph.title")}<InfoTip text={t("ph.subtitle")} size={18} /></h1>
-        </div>
-        <Button onClick={() => openGroupModal(null)} disabled={readOnly}>
-          <Plus size={16} />
-          {t("groups.new")}
-        </Button>
-      </div>
+      <PageHeader
+        title={t("ph.title")}
+        info={t("ph.subtitle")}
+        actions={
+          <Button onClick={() => openGroupModal(null)} disabled={readOnly}>
+            <Plus size={16} />
+            {t("groups.new")}
+          </Button>
+        }
+      />
 
       {error && (
         <div className="my-4">
@@ -450,7 +455,7 @@ function PolicyHierarchyContent() {
             {groupError && <p className="text-sm text-red-600">{groupError}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setGroupModal(null)}>{t("common.cancel")}</Button>
-              <Button type="submit" disabled={groupSaving} loading={groupSaving}>{groupSaving ? t("common.saving") : t("common.save")}</Button>
+              <Button type="submit" disabled={groupSaving || (!!groupModal?.editing && !groupDirty)} loading={groupSaving}>{groupSaving ? t("common.saving") : t("common.save")}</Button>
             </div>
           </form>
         </Modal>
@@ -510,7 +515,7 @@ function PolicyHierarchyContent() {
             {ruleError && <p className="text-sm text-red-600">{ruleError}</p>}
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setRuleModal(null)}>{t("common.cancel")}</Button>
-              <Button type="submit" disabled={ruleSaving} loading={ruleSaving}>{ruleSaving ? t("common.saving") : t("rules.saveDraft")}</Button>
+              <Button type="submit" disabled={ruleSaving || (!!ruleModal?.editing && !ruleDirty)} loading={ruleSaving}>{ruleSaving ? t("common.saving") : t("rules.saveDraft")}</Button>
             </div>
           </form>
         </Modal>

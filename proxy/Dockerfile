@@ -1,6 +1,8 @@
 # Caddy mit eingebackener Caddyfile, damit ein Release-Image ohne
 # Repo-Checkout lauffähig ist (nur docker-compose.yml + .env nötig).
 FROM caddy:2-alpine
+# openssl: das Webzertifikat für alle Adressen (docker-entrypoint.sh)
+RUN apk add --no-cache openssl
 COPY Caddyfile /etc/caddy/Caddyfile
 # Konfiguration des HA-Gate (Dienst `ha-gate` in docker-compose.ha.yml, startet dieses Image mit dieser Datei).
 COPY Caddyfile.ha-gate /etc/caddy/Caddyfile.ha-gate

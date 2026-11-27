@@ -6,6 +6,7 @@ import { InfoTip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { api, OidcSettings } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
+import { useDirty } from "@/lib/useDirty";
 import { useEffect, useState } from "react";
 
 /** Single sign-on (OpenID Connect) and separation of duties. Admin only: renders nothing for other roles. */
@@ -28,6 +29,8 @@ export function OidcSection() {
   const [viewer, setViewer] = useState("");
   const [operatorsDeploy, setOperatorsDeploy] = useState(true);
   const [requireComment, setRequireComment] = useState(false);
+
+  const dirty = useDirty({ enabled, name, issuer, clientId, secret, scopes, claim, admin, operator, viewer }, cfg);
 
   function apply(d: OidcSettings) {
     setCfg(d);
@@ -151,7 +154,7 @@ export function OidcSection() {
           </fieldset>
           {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
           <div className="flex gap-2">
-            <Button type="submit" disabled={busy !== null || !cfg} loading={busy === "save"}>{t("common.save")}</Button>
+            <Button type="submit" disabled={busy !== null || !cfg || !dirty} loading={busy === "save"}>{t("common.save")}</Button>
             <Button type="button" variant="ghost" disabled={busy !== null || !cfg || !issuer} loading={busy === "test"} onClick={test}>{t("sso.test")}</Button>
           </div>
         </form>

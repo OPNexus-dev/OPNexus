@@ -7,6 +7,7 @@ import { InfoTip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { api, GuiAccessSettings } from "@/lib/api";
 import { useLanguage } from "@/components/LanguageProvider";
+import { useDirty } from "@/lib/useDirty";
 import { useEffect, useState } from "react";
 
 /** Switch and limits for opening a firewall's own web interface through OPNexus. Admin only: renders nothing for other roles. */
@@ -21,6 +22,8 @@ export function GuiAccessSection() {
   const [idle, setIdle] = useState(15);
   const [absolute, setAbsolute] = useState(60);
   const [slotCount, setSlotCount] = useState(4);
+
+  const dirty = useDirty({ enabled, idle, absolute, slotCount }, cfg);
 
   function apply(data: GuiAccessSettings) {
     setCfg(data);
@@ -107,7 +110,7 @@ export function GuiAccessSection() {
           <p className="text-xs text-slate-500">{t("guiAccess.lastChange", { who: cfg.updated_by, when: new Date(cfg.updated_at).toLocaleString(locale) })}</p>
         )}
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-        <Button type="submit" disabled={busy || !cfg || !valid} loading={busy}>{t("common.save")}</Button>
+        <Button type="submit" disabled={busy || !cfg || !valid || !dirty} loading={busy}>{t("common.save")}</Button>
       </form>
     </section>
   );

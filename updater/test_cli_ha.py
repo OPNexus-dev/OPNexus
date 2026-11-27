@@ -366,7 +366,9 @@ class AgentPath(Harness):
                  ("ha update-standby 1.37.0", "call update-standby --param 1.37.0"), ("ha receive data", "call receive/data"),
                  ("ha receive env", "call receive/env"), ("ha receive env-init", "call receive/env-init"), ("ha receive ha-ca", "call receive/ha-ca"),
                  ("ha receive ca " + "a" * 64, "call receive/ca --param " + "a" * 64), ("ha receive ca-sum", "call receive/ca-sum"),
-                 ("ha receive stamp 1700000000", "call receive/stamp --param 1700000000")]
+                 ("ha receive stamp 1700000000", "call receive/stamp --param 1700000000"),
+                 ("ha receive web-cert " + "c" * 64, "call receive/web-cert --param " + "c" * 64), ("ha receive web-cert-clear", "call receive/web-cert-clear"),
+                 ("ha receive web-cert-sum", "call receive/web-cert-sum")]
         for call, verb in cases:
             self.run_body(f"ha_load; ha_peer {call}", stdin="x\n")
             self.assertTrue(self.called("python /app/ha_cli.py " + verb) or self.called("exec -T updater python /app/ha_cli.py " + verb), verb)
@@ -1864,6 +1866,175 @@ class Sync(Harness):
         self.assertEqual(r.returncode, 1)
         self.assertFalse((self.node / ".opnexus-ha-sync").exists())
         self.assertFalse(self.called("last_sync_at"))  # neither the file nor the database claims a sync that did not happen
+
+
+class WebCertSync(Harness):
+    """Eigenes Webzertifikat (opnexus cert install) zwischen den Knoten: Sender in `ha sync`, Empfänger in `ha receive`."""
+
+    def make_pair(self, cn="a", key_of=None, days=30):
+        import subprocess
+        d = self.tmp / f"pair-{cn}"; d.mkdir(exist_ok=True)
+        crt, key = d / "custom.crt", d / "custom.key"
+        subprocess.run(["openssl", "ecparam", "-name", "prime256v1", "-genkey", "-noout", "-out", str(key)], check=True, capture_output=True)
+        subprocess.run(["openssl", "req", "-new", "-x509", "-key", str(key), "-subj", f"/CN={cn}", "-days", str(days), "-out", str(crt)], check=True, capture_output=True)
+        return d
+
+    def tar_of(self, d, names=("custom.crt", "custom.key"), out=None):
+        import tarfile
+        out = out or (self.tmp / f"{d.name}.tar")
+        with tarfile.open(out, "w") as t:
+            for n in names:
+                t.add(d / n, arcname=n)
+        return out
+
+    @staticmethod
+    def checksum(d):
+        import hashlib
+        return hashlib.sha256((d / "custom.crt").read_bytes() + (d / "custom.key").read_bytes()).hexdigest()
+
+    # -- Empfänger (am Standby) ---------------------------------------------------------------------------------------------------
+    def receive(self, d, tar=None, sum=None, role="standby"):
+        self.env(ENV_HA.format(role=role, node="b"))
+        self.set_rules([{"match": ["ps -q proxy"], "out": "abc123\n"}])
+        t = tar or self.tar_of(d)
+        return self.run_body(f"cmd_ha receive web-cert {sum or self.checksum(d)} < '{t}'")
+
+    def test_a_good_certificate_is_written_to_the_proxy_volume_and_the_proxy_is_recreated(self):
+        d = self.make_pair()
+        r = self.receive(d)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(self.called("tar -x -C /data/opnexus-web -f -"))
+        self.assertEqual(self.env_value("OPNEXUS_WEB_CERT"), "custom")
+        self.assertTrue(self.called("up -d --no-deps proxy"))   # a restart would not apply the new setting
+
+    def test_a_stopped_proxy_is_not_started_by_the_transfer(self):
+        d = self.make_pair()
+        self.env(ENV_HA.format(role="standby", node="b"))
+        self.set_rules([{"match": ["ps -q proxy"], "out": ""}])
+        r = self.run_body(f"cmd_ha receive web-cert {self.checksum(d)} < '{self.tar_of(d)}'")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertFalse(self.called("up -d --no-deps proxy"))
+        self.assertEqual(self.env_value("OPNEXUS_WEB_CERT"), "custom")
+
+    def test_the_primary_accepts_nothing(self):
+        d = self.make_pair()
+        r = self.receive(d, role="primary")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(self.called("tar -x -C /data/opnexus-web"))
+
+    def test_a_wrong_checksum_is_refused_before_anything_is_written(self):
+        d = self.make_pair()
+        r = self.receive(d, sum="0" * 64)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("Prüfsumme", r.stderr)
+        self.assertFalse(self.called("tar -x -C /data/opnexus-web"))
+        self.assertIsNone(self.env_value("OPNEXUS_WEB_CERT"))
+
+    def test_a_key_that_does_not_belong_to_the_certificate_is_refused(self):
+        import shutil
+        a, b = self.make_pair("a"), self.make_pair("b")
+        mixed = self.tmp / "mixed"; mixed.mkdir()
+        shutil.copy(a / "custom.crt", mixed / "custom.crt"); shutil.copy(b / "custom.key", mixed / "custom.key")
+        r = self.receive(mixed)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("passen nicht zusammen", r.stderr)
+        self.assertFalse(self.called("tar -x -C /data/opnexus-web"))
+
+    def test_an_archive_with_other_paths_links_or_extra_files_is_refused(self):
+        import io, tarfile
+        d = self.make_pair()
+        for label, build in (
+            ("path traversal", lambda t: (t.add(d / "custom.crt", arcname="../custom.crt"), t.add(d / "custom.key", arcname="custom.key"))),
+            ("absolute path", lambda t: (t.add(d / "custom.crt", arcname="/etc/custom.crt"), t.add(d / "custom.key", arcname="custom.key"))),
+            ("extra file", lambda t: (t.add(d / "custom.crt", arcname="custom.crt"), t.add(d / "custom.key", arcname="custom.key"), t.addfile(tarfile.TarInfo("evil.sh"), io.BytesIO(b"")))),
+            ("only one file", lambda t: t.add(d / "custom.crt", arcname="custom.crt")),
+            ("symlink", lambda t: (t.add(d / "custom.crt", arcname="custom.crt"), t.addfile(self._link("custom.key")))),
+        ):
+            bad = self.tmp / "bad.tar"
+            with tarfile.open(bad, "w") as t:
+                build(t)
+            r = self.receive(d, tar=bad)
+            self.assertNotEqual(r.returncode, 0, label)
+            self.assertFalse(self.called("tar -x -C /data/opnexus-web"), label)
+
+    @staticmethod
+    def _link(name):
+        import tarfile
+        info = tarfile.TarInfo(name); info.type = tarfile.SYMTYPE; info.linkname = "/etc/passwd"
+        return info
+
+    def test_an_oversized_archive_is_refused(self):
+        import tarfile
+        d = self.make_pair()
+        (d / "custom.crt").write_bytes((d / "custom.crt").read_bytes() + b"#" * 300000)
+        r = self.receive(d)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("256 KiB", r.stderr)
+
+    def test_a_malformed_checksum_parameter_is_refused(self):
+        d = self.make_pair()
+        for bad in ("", "abc", "G" * 64, "a" * 63, "a" * 64 + ";rm"):
+            self.env(ENV_HA.format(role="standby", node="b"))
+            r = self.run_body(f"cmd_ha receive web-cert '{bad}' < '{self.tar_of(d)}'")
+            self.assertNotEqual(r.returncode, 0, repr(bad))
+
+    def test_clear_removes_the_files_and_goes_back_to_auto(self):
+        self.env(ENV_HA.format(role="standby", node="b") + "OPNEXUS_WEB_CERT=custom\n")
+        self.set_rules([{"match": ["ps -q proxy"], "out": "abc123\n"}])
+        r = self.run_body("cmd_ha receive web-cert-clear")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(self.called("rm -f /data/opnexus-web/custom.crt /data/opnexus-web/custom.key"))
+        self.assertEqual(self.env_value("OPNEXUS_WEB_CERT"), "auto")
+        self.assertTrue(self.called("up -d --no-deps proxy"))
+
+    # -- Sender (am Primär, in `ha sync`) ------------------------------------------------------------------------------------------
+    def sync_webcert(self, mine, have):
+        self.env(ENV_HA.format(role="primary", node="a"))
+        rules = [{"match": ["cat custom.crt custom.key | sha256sum"], "out": mine}, {"match": ["tar -C /data/opnexus-web -cf -"], "out": "TARDATA"}]
+        self.set_rules(rules, ssh=[{"match": ["ha receive web-cert-sum"], "out": have}])
+        return self.run_body("ha_sync_webcert")
+
+    def test_a_new_own_certificate_is_sent_with_its_checksum(self):
+        r = self.sync_webcert("a" * 64 + "\n", "")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(self.called("ha receive web-cert " + "a" * 64))
+
+    def test_a_changed_certificate_is_sent_again(self):
+        r = self.sync_webcert("a" * 64 + "\n", "b" * 64 + "\n")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(self.called("ha receive web-cert " + "a" * 64))
+
+    def test_an_unchanged_certificate_is_not_sent_again(self):
+        r = self.sync_webcert("a" * 64 + "\n", "a" * 64 + "\n")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertFalse(self.called("ha receive web-cert " + "a" * 64))
+
+    def test_without_an_own_certificate_the_standbys_one_is_removed(self):
+        r = self.sync_webcert("", "a" * 64 + "\n")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(self.called("ha receive web-cert-clear"))
+
+    def test_without_one_on_either_side_nothing_is_sent(self):
+        r = self.sync_webcert("", "")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertFalse(self.called("ha receive web-cert "))
+        self.assertFalse(self.called("ha receive web-cert-clear"))
+
+    def test_the_mode_travels_with_the_regular_env_sync(self):
+        self.env(ENV_HA.format(role="primary", node="a") + "OPNEXUS_WEB_CERT=custom\nOPNEXUS_SITES=10.0.0.5\n")
+        r = self.run_body("ha_sync_lines")
+        keys = {ln.split("=", 1)[0] for ln in r.stdout.splitlines()}
+        self.assertIn("OPNEXUS_WEB_CERT", keys)
+        self.assertNotIn("OPNEXUS_SITES", keys)   # addresses stay node specific
+
+    def test_a_standby_without_the_verb_does_not_stop_the_sync_of_the_secrets(self):
+        self.env(ENV_HA.format(role="primary", node="a"))
+        self.set_rules([{"match": ["pg_is_in_recovery"], "out": "f\n"}, {"match": ["cat custom.crt custom.key | sha256sum"], "out": "a" * 64 + "\n"}],
+                       ssh=[{"match": ["ha receive web-cert"], "rc": 2}])
+        r = self.run_body("cmd_ha_sync --quiet")
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertIn("Webzertifikats", r.stderr)
+        self.assertRegex((self.node / ".opnexus-ha-sync").read_text().strip(), r"^\d{10}$")
 
 
 class Update(Harness):

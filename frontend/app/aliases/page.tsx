@@ -1,5 +1,6 @@
 "use client";
 
+import { useDirty } from "@/lib/useDirty";
 import { useConfirm } from "@/components/ui/Confirm";
 import { Tooltip, InfoTip } from "@/components/ui/Tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -33,6 +34,8 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldGroup, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
+import { FilterBar } from "@/components/ui/FilterBar";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Tabs } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { useReadOnly } from "@/lib/useReadOnly";
@@ -95,6 +98,10 @@ function AliasesContent() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [editing, setEditing] = useState<PolicyAlias | null>(null);
+  // One editor session per opening: editing an existing item, "Save" stays grey until the form differs from what the editor opened with.
+  // A restored older revision opens different from the stored item, so it is savable at once.
+  const [session, setSession] = useState<{ restored: boolean } | null>(null);
+  const dirty = useDirty(form, session);
   const [review, setReview] = useState<{ alias: PolicyAlias; mode: "preview" | "history" } | null>(null);
   const [search, setSearch] = useState("");
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -170,6 +177,7 @@ function AliasesContent() {
 
   function openEditor(alias: PolicyAlias | null, copy = false, restored?: PolicyAliasCreate) {
     setEditing(copy ? null : alias);
+    setSession({ restored: !!restored });
     const candidate =
       restored ??
       (alias
@@ -242,39 +250,44 @@ function AliasesContent() {
 
   return (
     <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-slate-900 flex items-center gap-2">{selectedGroup ? t("aliases.titleNamed", { name: selectedGroup.name }) : t("aliases.title")}<InfoTip text={t("aliases.subtitle")} size={18} /></h1>
-        {aliasFilter && (
-          <Button variant="ghost" onClick={() => router.push(groupFilter ? `/aliases?group=${groupFilter}` : "/aliases")}>
-            {t("aliases.showAll")}
-          </Button>
-        )}
-        {activeTab === "managed" && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
-              <Download size={16} />
-              {t("adopt.button")}
-            </Button>
-            <Button disabled={readOnly} onClick={() => openEditor(null)}>
-              <Plus size={16} />
-              {t("aliases.new")}
-            </Button>
-          </div>
-        )}
-      </div>
+      <PageHeader
+        title={selectedGroup ? t("aliases.titleNamed", { name: selectedGroup.name }) : t("aliases.title")}
+        info={t("aliases.subtitle")}
+        actions={
+          <>
+            {aliasFilter && (
+              <Button variant="ghost" onClick={() => router.push(groupFilter ? `/aliases?group=${groupFilter}` : "/aliases")}>
+                {t("aliases.showAll")}
+              </Button>
+            )}
+            {activeTab === "managed" && (
+              <>
+                <Button variant="outline" onClick={() => setShowAdopt(true)} disabled={readOnly}>
+                  <Download size={16} />
+                  {t("adopt.button")}
+                </Button>
+                <Button disabled={readOnly} onClick={() => openEditor(null)}>
+                  <Plus size={16} />
+                  {t("aliases.new")}
+                </Button>
+              </>
+            )}
+          </>
+        }
+        tabs={
+          <Tabs
+            items={[
+              { key: "managed", label: t("rules.managed") },
+              { key: "live", label: t("rules.live") },
+            ]}
+            active={activeTab}
+            onChange={(key) => setActiveTab(key as "managed" | "live")}
+          />
+        }
+      />
 
       {usageFor && <AliasUsageModal aliasId={usageFor.id} aliasName={usageFor.name} onClose={() => setUsageFor(null)} />}
       {showAdopt && <AdoptObjectsModal kind="aliases" hosts={hosts} onClose={() => setShowAdopt(false)} onAdopted={load} />}
-
-      <Tabs
-        className="mb-6"
-        items={[
-          { key: "managed", label: t("rules.managed") },
-          { key: "live", label: t("rules.live") },
-        ]}
-        active={activeTab}
-        onChange={(key) => setActiveTab(key as "managed" | "live")}
-      />
 
       {activeTab === "live" ? (
         <LiveAliasesDrift />
@@ -292,17 +305,14 @@ function AliasesContent() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Input aria-label={t("aliases.searchLabel")} placeholder={t("aliases.searchPlaceholder")} value={search} onChange={(e) => setSearch(e.target.value)} />
-        <Select aria-label={t("rules.stateFilter")} value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
-          <option value="">{t("rules.allStates")}</option>
-          {workflowStates.map((value) => (
-            <option key={value} value={value}>
-              {t(`workflow.${value}`)}
-            </option>
-          ))}
-        </Select>
-      </div>
+      <FilterBar
+        className="mb-4"
+        search={{ value: search, onChange: setSearch, placeholder: t("aliases.searchPlaceholder"), label: t("aliases.searchLabel") }}
+        filters={[
+          { key: "state", label: t("rules.stateFilter"), value: stateFilter, onChange: setStateFilter, allLabel: t("rules.allStates"), options: workflowStates.map((value) => ({ value, label: t(`workflow.${value}`) })) },
+        ]}
+        onReset={() => { setSearch(""); setStateFilter(""); }}
+      />
 
       <div className="flex flex-col gap-4">
         {aliases === null && !error && <Card className="p-6"><Loading>{t("aliases.loading")}</Loading></Card>}
@@ -509,7 +519,7 @@ function AliasesContent() {
               <Button type="button" variant="ghost" onClick={() => setShowModal(false)}>
                 {t("common.cancel")}
               </Button>
-              <Button type="submit" disabled={saving} loading={saving}>
+              <Button type="submit" disabled={saving || (!!editing && !session?.restored && !dirty)} loading={saving}>
                 {saving ? t("common.saving") : t("rules.saveDraft")}
               </Button>
             </div>

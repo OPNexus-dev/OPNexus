@@ -1,4 +1,7 @@
 "use client";
+import { useDirty } from "@/lib/useDirty";
+import { ScrollRow } from "@/components/ui/ScrollRow";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { TwoFactorSection } from "@/components/TwoFactorSection";
 import { NotificationChannelsSection } from "@/components/NotificationChannelsSection";
 import { OpnexusUpdateSection } from "@/components/OpnexusUpdateSection";
@@ -15,6 +18,7 @@ import { OidcSection } from "@/components/OidcSection";
 import { CleanupSettings } from "@/components/CleanupSettings";
 import { BackupSettingsSection } from "@/components/BackupSettingsSection";
 import { GuiAccessSection } from "@/components/GuiAccessSection";
+import { WebCertificateSection } from "@/components/WebCertificateSection";
 import { SystemSettingsSection } from "@/components/SystemSettingsSection";
 import { AuditExportSection } from "@/components/AuditExportSection";
 import { APP_CODENAME, APP_MAINTAINER, APP_VERSION } from "@/lib/version";
@@ -144,58 +148,62 @@ function NotificationsSection() {
     api.notificationSettings().then(applyFromServer).catch((e) => setError(errorMessage(e)));
   }, [errorMessage]);
 
+  // What a save would send: the form is "dirty" while this differs from what was loaded or saved last (the Save button stays grey otherwise).
+  const payload = {
+    webhook_enabled: webhookEnabled,
+    webhook_url: webhookUrl,
+    ...(webhookSecret ? { webhook_signing_secret: webhookSecret } : {}),
+    clear_webhook_signing_secret: clearWebhookSecret,
+    email_enabled: emailEnabled,
+    smtp_host: smtpHost,
+    smtp_port: smtpPort,
+    smtp_security: smtpSecurity,
+    smtp_username: smtpUsername,
+    ...(smtpPassword ? { smtp_password: smtpPassword } : {}),
+    clear_smtp_password: clearSmtpPassword,
+    smtp_from_address: smtpFrom,
+    smtp_to_addresses: smtpTo.split(",").map((s) => s.trim()).filter(Boolean),
+    host_offline_enabled: hostOffline,
+    cert_expiring_enabled: certExpiring,
+    rule_drift_enabled: ruleDrift,
+    revert_failed_enabled: revertFailed,
+    maintenance_unknown_enabled: maintenanceUnknown,
+    carp_health_enabled: carpHealth,
+    nat_drift_enabled: natDrift,
+    network_drift_enabled: networkDrift,
+    carp_auto_revert_failed_enabled: carpAutoRevertFailed,
+    scheduled_maintenance_failed_enabled: scheduledFailed,
+    backup_failed_enabled: backupFailed,
+    compliance_alerts_enabled: complianceAlerts,
+    gateway_down_enabled: gatewayDown,
+    resource_threshold_enabled: resourceThreshold,
+    service_down_enabled: serviceDown,
+    rollout_problems_enabled: rolloutProblems,
+    api_rights_enabled: apiRights,
+    ha_alerts_enabled: haAlerts,
+    server_disk_enabled: serverDisk,
+    server_disk_threshold_pct: serverDiskLimit,
+    gateway_loss_threshold_pct: gatewayLoss,
+    gateway_delay_threshold_ms: gatewayDelay,
+    disk_threshold_pct: diskLimit,
+    memory_threshold_pct: memoryLimit,
+    swap_threshold_pct: swapLimit,
+    load_per_cpu_threshold: loadLimit,
+    alert_confirm_samples: confirmSamples,
+    resource_confirm_samples: resourceSamples,
+    service_watchlist: watchlist.split(/[\s,]+/).filter(Boolean),
+    poll_interval_seconds: pollInterval,
+    language: textLanguage,
+  };
+  const dirty = useDirty(payload, ns);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setNotice("");
     setSaving(true);
     try {
-      const data = await api.saveNotificationSettings({
-        webhook_enabled: webhookEnabled,
-        webhook_url: webhookUrl,
-        ...(webhookSecret ? { webhook_signing_secret: webhookSecret } : {}),
-        clear_webhook_signing_secret: clearWebhookSecret,
-        email_enabled: emailEnabled,
-        smtp_host: smtpHost,
-        smtp_port: smtpPort,
-        smtp_security: smtpSecurity,
-        smtp_username: smtpUsername,
-        ...(smtpPassword ? { smtp_password: smtpPassword } : {}),
-        clear_smtp_password: clearSmtpPassword,
-        smtp_from_address: smtpFrom,
-        smtp_to_addresses: smtpTo.split(",").map((s) => s.trim()).filter(Boolean),
-        host_offline_enabled: hostOffline,
-        cert_expiring_enabled: certExpiring,
-        rule_drift_enabled: ruleDrift,
-        revert_failed_enabled: revertFailed,
-        maintenance_unknown_enabled: maintenanceUnknown,
-        carp_health_enabled: carpHealth,
-        nat_drift_enabled: natDrift,
-        network_drift_enabled: networkDrift,
-        carp_auto_revert_failed_enabled: carpAutoRevertFailed,
-        scheduled_maintenance_failed_enabled: scheduledFailed,
-        backup_failed_enabled: backupFailed,
-        compliance_alerts_enabled: complianceAlerts,
-        gateway_down_enabled: gatewayDown,
-        resource_threshold_enabled: resourceThreshold,
-        service_down_enabled: serviceDown,
-        rollout_problems_enabled: rolloutProblems,
-        api_rights_enabled: apiRights,
-        ha_alerts_enabled: haAlerts,
-        server_disk_enabled: serverDisk,
-        server_disk_threshold_pct: serverDiskLimit,
-        gateway_loss_threshold_pct: gatewayLoss,
-        gateway_delay_threshold_ms: gatewayDelay,
-        disk_threshold_pct: diskLimit,
-        memory_threshold_pct: memoryLimit,
-        swap_threshold_pct: swapLimit,
-        load_per_cpu_threshold: loadLimit,
-        alert_confirm_samples: confirmSamples,
-        resource_confirm_samples: resourceSamples,
-        service_watchlist: watchlist.split(/[\s,]+/).filter(Boolean),
-        poll_interval_seconds: pollInterval,
-        language: textLanguage,
-      });
+      const data = await api.saveNotificationSettings(payload);
       applyFromServer(data);
       setNotice(t("settings.notify.saved"));
     } catch (e) {
@@ -382,7 +390,7 @@ function NotificationsSection() {
           </FieldGroup>
         </div>
 
-        <div className="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" disabled={saving || !ns}>{t("common.save")}</Button></div>
+        <div className="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" disabled={saving || !ns || !dirty}>{t("common.save")}</Button></div>
         </fieldset>
       </form>
       <NotificationChannelsSection />
@@ -446,18 +454,16 @@ function LogIngestSection() {
     api.logSettings().then(applyFromServer).catch((e) => setError(errorMessage(e)));
   }, [errorMessage]);
 
+  const payload = { enabled, poll_interval_seconds: pollInterval, retention_days: retentionDays, max_size_gb: maxSizeGb };
+  const dirty = useDirty(payload, ls);
+
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setNotice("");
     setSaving(true);
     try {
-      const data = await api.saveLogSettings({
-        enabled,
-        poll_interval_seconds: pollInterval,
-        retention_days: retentionDays,
-        max_size_gb: maxSizeGb,
-      });
+      const data = await api.saveLogSettings(payload);
       applyFromServer(data);
       setNotice(t("settings.logs.saved"));
     } catch (e) {
@@ -491,7 +497,7 @@ function LogIngestSection() {
             </label>
           </div>
           {ls && <LogUsage used={ls.used_bytes} entries={ls.entries} limitGb={ls.max_size_gb} oldest={ls.oldest_at} />}
-          <div className="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" disabled={saving || !ls}>{t("common.save")}</Button></div>
+          <div className="flex justify-end border-t border-slate-100 pt-4"><Button type="submit" disabled={saving || !ls || !dirty}>{t("common.save")}</Button></div>
         </fieldset>
       </form>
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
@@ -507,7 +513,7 @@ type CategoryKey = "account" | "notifications" | "access" | "operation" | "data"
 const CATEGORIES: { key: CategoryKey; icon: typeof User; anchors: string[]; adminOnly?: boolean }[] = [
   { key: "account", icon: User, anchors: ["account", "appearance", "language", "password", "two-factor"] },
   { key: "notifications", icon: Bell, anchors: ["notifications", "channels", "system-integrations"] },
-  { key: "access", icon: KeyRound, anchors: ["access", "system-security", "sso", "duties", "gui-access"] },
+  { key: "access", icon: KeyRound, anchors: ["access", "system-security", "sso", "duties", "web-certificate", "gui-access"] },
   { key: "operation", icon: SlidersHorizontal, anchors: ["operation", "system-operation", "system-monitoring", "logs", "cleanup"] },
   { key: "data", icon: HardDrive, anchors: ["data", "backups", "audit-export"], adminOnly: true },
   { key: "system", icon: Info, anchors: ["system", "opnexus-update", "ha", "setup", "about"] },
@@ -589,7 +595,7 @@ export default function SettingsPage(){
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.currentPassword')}</span><Input aria-label={t('settings.currentPassword')} type="password" autoComplete="current-password" required value={current} onChange={e=>setCurrent(e.target.value)}/></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.newPassword')}</span><Input aria-label={t('settings.newPassword')} type="password" autoComplete="new-password" minLength={10} maxLength={1024} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
           <label className="block text-sm"><span className="mb-1 block font-medium text-slate-700">{t('settings.repeatPassword')}</span><Input aria-label={t('settings.repeatPassword')} type="password" autoComplete="new-password" minLength={10} required value={repeat} onChange={e=>setRepeat(e.target.value)}/></label>
-          <Button type="submit" disabled={saving}>{t('settings.changePassword')}</Button>
+          <Button type="submit" disabled={saving || !current || !password || !repeat}>{t('settings.changePassword')}</Button>
         </form>
       </section>
       <div id="two-factor" className="scroll-mt-4"><TwoFactorSection/></div>
@@ -606,7 +612,7 @@ export default function SettingsPage(){
   const content: Record<CategoryKey, React.ReactNode> = {
     account,
     notifications: <><NotificationsSection/><SystemSettingsSection groups={["integrations"]}/></>,
-    access: <><SystemSettingsSection groups={["security"]}/><OidcSection/><GuiAccessSection/></>,
+    access: <><SystemSettingsSection groups={["security"]}/><OidcSection/><WebCertificateSection/><GuiAccessSection/></>,
     operation: <><SystemSettingsSection groups={["operation","monitoring"]}/><div id="logs" className="scroll-mt-4"><LogIngestSection/></div><CleanupSettings/></>,
     data: <><BackupSettingsSection/><AuditExportSection/></>,
     system: <><OpnexusUpdateSection/><HaSection/><div id="setup" className="scroll-mt-4"><SetupAssistantSection/></div>{about}</>,
@@ -614,10 +620,11 @@ export default function SettingsPage(){
   const shown = categories.some((c)=>c.key===active) ? active : "account";
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="mb-4 text-2xl font-semibold">{t("settings.title")}</h1>
+    <div className="max-w-5xl">
+      <PageHeader title={t("settings.title")} />
       <div className="lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
-        <nav aria-label={t("settings.nav.label")} className="-mx-4 mb-4 overflow-x-auto px-4 lg:mx-0 lg:mb-0 lg:overflow-visible lg:px-0">
+        <nav aria-label={t("settings.nav.label")} className="mb-4 lg:mb-0">
+          <ScrollRow activeKey={shown} className="lg:overflow-visible">
           <ul className="flex gap-2 lg:sticky lg:top-4 lg:flex-col lg:gap-1">
             {categories.map(({key,icon:Icon})=>(
               <li key={key} className="shrink-0">
@@ -633,6 +640,7 @@ export default function SettingsPage(){
               </li>
             ))}
           </ul>
+          </ScrollRow>
         </nav>
         <div className="min-w-0 space-y-6">
           <div>

@@ -11,7 +11,7 @@ export function Label({ className, ...props }: LabelHTMLAttributes<HTMLLabelElem
 }
 
 const controlClass =
-  "min-h-[2.5rem] w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
+  "min-h-[2.5rem] [@media(pointer:coarse)]:min-h-11 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   const labelId = useContext(FieldLabel);
@@ -20,7 +20,7 @@ export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElem
 
 export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
   const labelId = useContext(FieldLabel);
-  return <select aria-labelledby={props["aria-label"] ? undefined : labelId} {...props} className={clsx(controlClass, className)} />;
+  return <select aria-labelledby={props["aria-label"] ? undefined : labelId} {...props} className={clsx(controlClass, "select-control", className)} />;
 }
 
 export function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {

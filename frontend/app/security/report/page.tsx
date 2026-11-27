@@ -39,7 +39,7 @@ export default function SecurityReportPage() {
 
   return (
     <div className="mx-auto max-w-3xl bg-white p-6 text-slate-900 print:max-w-none print:p-0">
-      <div className="mb-6 flex items-start justify-between print:mb-4">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-3 print:mb-4">
         <div>
           <h1 className="text-2xl font-semibold">{t("report.title")}</h1>
           <p className="text-sm text-slate-500">

@@ -1,5 +1,7 @@
 "use client";
 
+import { ScrollRow } from "@/components/ui/ScrollRow";
+import { ScrollCard } from "@/components/ui/ScrollCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -25,7 +27,7 @@ function GateMatrix({ gate, run, title }: { gate: RolloutGate; run: RolloutRunDe
   const names = Object.fromEntries(run.hosts.filter((h) => h.host_id).map((h) => [h.host_id as string, h.host_name]));
   const checks = CHECKS.filter((c) => Object.values(gate.hosts).some((row) => row[c]));
   return (
-    <div className="overflow-x-auto">
+    <ScrollRow layout="block" fadeFrom="from-[rgb(var(--slate-50))]">
       <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-700">
         {title}
         <Badge tone={gate.verdict === "ok" ? "success" : gate.verdict === "warn" ? "warning" : "danger"}>{t(`rollouts.gate.verdict.${gate.verdict}`)}</Badge>
@@ -57,7 +59,7 @@ function GateMatrix({ gate, run, title }: { gate: RolloutGate; run: RolloutRunDe
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollRow>
   );
 }
 
@@ -173,7 +175,7 @@ export default function RolloutRunPage() {
       </ol>
 
       <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{t("rollouts.detail.hosts")}</h2>
-      <Card className="mb-6 overflow-x-auto">
+      <ScrollCard className="mb-6">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
             <tr>
@@ -206,7 +208,7 @@ export default function RolloutRunPage() {
             ))}
           </tbody>
         </table>
-      </Card>
+      </ScrollCard>
 
       <h2 className="mb-2 flex items-center gap-1 text-sm font-semibold uppercase tracking-wide text-slate-500">{t("rollouts.gate.title")}<InfoTip text={t("rollouts.gate.hint")} size={13} /></h2>
       <div className="space-y-4">
